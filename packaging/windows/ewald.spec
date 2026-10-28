@@ -19,8 +19,10 @@ GPU = os.environ.get("EWALD_VARIANT", "cpu") == "gpu"
 hiddenimports = (collect_submodules("ewald")
                  # ASE picks readers by format name at runtime
                  + collect_submodules("ase.io") + collect_submodules("ase.calculators")
+                 # pymatgen is a core dependency (D79) that notebooks and plugins import freely
+                 + collect_submodules("pymatgen", filter=lambda m: ".tests" not in m)
                  + ["qtconsole.inprocess", "ipykernel.inprocess", "pyvistaqt"])
-datas = collect_data_files("ewald") + collect_data_files("ase") + collect_data_files("pyvista") + collect_data_files("qtconsole")
+datas = collect_data_files("ewald") + collect_data_files("ase") + collect_data_files("pymatgen") + collect_data_files("pyvista") + collect_data_files("qtconsole")
 # pip and setuptools for the Plugins side bar (ewald.exe -m pip, ewald.plugin_catalog.frozen_pip_command),
 # plus every bundled distribution's metadata, so pip sees ewald, numpy, ... as installed and a
 # plugin's requirements on them are met

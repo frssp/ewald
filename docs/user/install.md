@@ -47,8 +47,15 @@ or install a tagged version straight from the repository (this builds from sourc
 pip install "ewald[gui] @ git+https://github.com/frssp/ewald@v0.2.0"
 ```
 
-Windows releases also carry a standalone installer that needs no Python at all, in a CPU and a
-CUDA build ([Windows release](../developer/windows-release.md)). `ewald --version` prints the
+Windows releases also carry installers that need no Python of your own
+([Windows release](../developer/windows-release.md)):
+
+- `ewald-X.Y.Z-win64-online-setup.exe` (small, the default): installs a private Python and then
+  downloads ewald and its packages with pip, so plugins install like in any Python. Needs the
+  internet during setup (a proxy that re-signs HTTPS is fine: pip trusts the Windows certificate
+  store); a checkbox adds NVIDIA GPU support.
+- `ewald-X.Y.Z-win64-cpu-setup.exe` and `-gpu-setup.exe`: the standalone app with everything
+  inside, for PCs without internet. `ewald --version` prints the
 installed version; what changed between versions is in
 [CHANGELOG.md](https://github.com/frssp/ewald/blob/main/CHANGELOG.md).
 

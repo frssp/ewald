@@ -341,7 +341,7 @@ class DataCollection:
 
     def to_pymatgen(self):
         """This frame as a pymatgen ``Structure`` (a ``Molecule`` when there is no cell), via
-        :meth:`to_ase`; needs ``pip install pymatgen``."""
+        :meth:`to_ase`."""
         AseAtomsAdaptor = _pymatgen_adaptor("to_pymatgen")
         atoms = self.to_ase()
         if self.cell.is_valid:

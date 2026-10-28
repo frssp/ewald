@@ -631,7 +631,9 @@ Plugins and AI
   the servers (the cloud container has no route to them); finding every database from the
   providers.optimade.org index instead of the fixed table; more pages in the side bar; the
   OPTIMADE `assemblies` (alternative disorder configurations) are drawn as all sites.
-- Materials Project (ewald-mp, `mp:mp-149/...`): phonon bands and DOS (`get_phonon_bandstructure_by_material_id`
+- Materials Project (ewald-mp, `mp:mp-149/...`): relaxation trajectories without mp-api (MP
+  serves them only as Delta/parquet tables); an mp-api button on its settings page for the
+  standalone app, where there is no shell to `pip install mp-api` in; phonon bands and DOS (`get_phonon_bandstructure_by_material_id`
   into `PhononMode`), elastic tensors and other summary fields as attributes, projected band
   structures (`load_projections=True`), more pages in the side bar; other `schemes=` sources.
 
@@ -720,6 +722,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   owner's Windows PC: install, open a VASP/LAMMPS file, render, quit without a crash dialog, and
   the GPU build with `device="cuda"` on the RTX. CI only runs it on Mesa software OpenGL, where
   the CLI smoke script crashes on process exit (ignored there).
+- The online installer (D79) on the owner's Windows PC behind the company network: setup downloads
+  ewald and its packages (progress lines under the bar), the Start menu entry opens the app without
+  a console window, the Plugins side bar installs ewald-mp into that Python, `ewald command prompt`
+  has `python`/`pip` on PATH, uninstall removes the folder; once with *NVIDIA GPU support*
+  (`device="cuda"` on the RTX through `cupy-cuda12x[ctk]`, unverified in CI).
 - Plugins side bar in the Windows exe (D76): install ewald-mp and ewald-plumed, restart, use
   them; once with git on PATH and once without (GitHub zip); update and remove.
 - Simple (ASE) atoms on the owner's Windows PC (200 %): round discs in the OpenGL 1.x viewport
@@ -742,10 +749,12 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   search Si --db <name>` for every name in `ewald optimade databases`,
   then `load("optimade:mp/mp-149")`, `load("optimade:cod/1000041")` and the OPTIMADE side bar,
   on Windows behind the owner's network.
-- ewald-mp with a real API key (the tests use a stand-in `MPRester`): set the key in Preferences ›
-  Materials Project, then `python -m ewald_mp search Si`, `load("mp:mp-149/bands")`, `/dos`,
-  `/chgcar` and `/relax` (mp-api's trajectory call reads MP's open data tables), and that the
-  keychain keeps the key on Windows.
+- ewald-mp 0.2 with a real API key (the tests use a local stand-in for MP's REST API; the
+  container reaches MP's open data bucket but not the API): in the Windows app install
+  Materials Project from the Plugins side bar and check that only ewald-mp gets installed, set the
+  key in Preferences › Materials Project, then `python -m ewald_mp search Si`, the side bar,
+  `load("mp:mp-149")`, `conventional=True`, `/bands`, `/dos`, `/chgcar`, and that `/relax` says
+  to install mp-api; with mp-api installed, `/relax` once. Also that the keychain keeps the key.
 - Laptops with two GPUs (owner's Windows laptop: Intel Arc + GeForce RTX 4050, 2026-10-26): the
   Windows high-performance choice moves the 3D view to the RTX (first maximize 0.2 s instead of
   ~4 s on Arc) and the CUDA ray tracer runs there (numbers in docs/user/gpu.md; CuPy needs

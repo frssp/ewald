@@ -13,7 +13,7 @@ DIST = {"PIL": "pillow", "cupyx": "cupy-cuda12x", "cupy": "cupy-cuda12x", "image
         "MDAnalysis": "mdanalysis", "PySide6": "pyside6", "vtkmodules": "vtk",
         "Metal": "pyobjc-framework-metal"}
 # used opportunistically when installed, or arriving with a declared package
-UNDECLARED_OK = {"pymatgen", "anyio"}
+UNDECLARED_OK = {"anyio"}
 
 
 def _requirement_names(reqs):

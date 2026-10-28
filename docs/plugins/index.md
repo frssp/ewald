@@ -46,7 +46,7 @@ from the Plugins panel or with pip:
 | Plugin | Package | Adds |
 |---|---|---|
 | `phonopy` | `ewald-phonopy` | phonopy's input with forces or force constants (`phonopy-fc`), `from_phonopy` for `phonopy.Phonopy` objects; band.yaml, VASP IBRION=5-8 OUTCARs and `PhononMode` are built in ([Phonon modes](../user/phonons.md)) |
-| `mp` | `ewald-mp` | the Materials Project through mp-api with your API key (Preferences › Materials Project, kept in the keychain): `load("mp:mp-149")`, `/bands`, `/dos`, `/electronic`, `/chgcar`, `/relax`; `search("Li-P-S", is_stable=True)`, a side bar and the read-only AI tool `mp_search` |
+| `mp` | `ewald-mp` | the Materials Project with your API key (Preferences › Materials Project, kept in the keychain), installing nothing else: `load("mp:mp-149")`, `/bands`, `/dos`, `/electronic`, `/chgcar`; `/relax` with the optional mp-api (`pip install mp-api`); `search("Li-P-S", is_stable=True)`, a side bar and the read-only AI tool `mp_search` |
 | `plumed` | `ewald-plumed` | `Plumed`, `LoadColvar`, `FreeEnergySurface`, the `ewald_plumed.plumed` library and two AI tools ([PLUMED](../user/plumed.md)) |
 
 ```bash

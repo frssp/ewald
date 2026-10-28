@@ -27,6 +27,7 @@ dependencies = ["numpy>=2.0", "scipy", "ase>=3.23", "matplotlib", "pillow", "pyv
                 "truststore>=0.9",   # downloads trust the OS certificate store (company proxies that re-sign HTTPS)
                 # small wheels that used to be extras: one install has every feature that needs no GPU, Qt or OVITO
                 "spglib>=2.0",   # SymmetryAnalysis (space group, Wyckoff positions)
+                "pymatgen>=2024.2",   # to_pymatgen/from_pymatgen, bond-valence oxidation states; shared by plugins and notebooks (D79)
                 "imageio-ffmpeg",   # bundled ffmpeg binary for MP4/AVI/MOV
                 "h5py",   # H5MD, vaspout.h5, MDTraj HDF5
                 "anthropic>=1.0", "openai>=1.40", "mcp",   # Ask AI (Claude, OpenAI-compatible providers), MCP server

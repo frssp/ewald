@@ -12,8 +12,14 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 - NumPy `.npz` trajectories are read and written built in (`positions`, `types`/`numbers`, `cell`,
   per-atom and per-frame arrays such as `forces` and `energies`; group "npz"). (D78, #100)
+- Windows online installer `ewald-X.Y.Z-win64-online-setup.exe`: a private Python into which setup
+  pip-installs ewald and its dependencies, so plugins and packages install as in any Python; an
+  NVIDIA GPU checkbox adds CuPy. The offline installers stay. (D79, #101)
 
 ### Changed
+
+- `pymatgen` is a required dependency (also bundled in the standalone apps): `to_pymatgen()`,
+  `from_pymatgen()` and bond-valence oxidation states for ionic radii always work. (D79, #101)
 
 - OPTIMADE structure databases are built in (group "optimade"): `load("optimade:mp/mp-149")`,
   `ewald.optimade.search`, the OPTIMADE side bar, the read-only AI tool `optimade_search`,

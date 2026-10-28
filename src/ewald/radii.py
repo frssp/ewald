@@ -17,7 +17,7 @@ covalent radius, and the fallback is reported.
 Shannon radii depend on the oxidation state and the coordination number (CN). :func:`resolve` takes
 the oxidation state of each type from, in order: the ``oxidation_states`` argument, a type name such
 as ``"Fe3+"`` or ``"O2-"``, an integer "Oxidation State" or "Charge" property, a pymatgen
-bond-valence analysis when pymatgen is installed (small cells only), a charge-balanced guess
+bond-valence analysis (small cells only), a charge-balanced guess
 from the oxidation states most common in the ICSD, and finally the most common state alone. The CN is counted from the structure (oxidation
 partners closer than 1.25 x the typical nearest cation-anion distance) unless ``coordination`` gives
 it; without a structure it is VI. The nearest CN the table has is used. A type left without an

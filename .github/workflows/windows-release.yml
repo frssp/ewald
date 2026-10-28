@@ -1,6 +1,7 @@
 name: Windows release
 
-# Builds Windows wheels and the standalone app (PyInstaller folder + Inno Setup installer),
+# Builds Windows wheels, the standalone app (PyInstaller folder + Inno Setup installer) and the
+# online installer (a private Python that pip-installs ewald from the network, D79),
 # smoke-tests the frozen app, and on a v* tag attaches everything to a GitHub Release.
 # See docs/developer/windows-release.md and docs/developer/release.md (release.yml builds the rest).
 # Manual only (Actions minutes); dispatch it on a v* tag to publish a release.
@@ -124,9 +125,73 @@ jobs:
           compression-level: 0
           retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 30 || 3 }}
 
+  online:
+    # the online installer (D79): a private Python 3.12 from python.org's NuGet package; setup pip
+    # installs ewald (this release's cp312 wheel) and its dependencies from the network
+    name: online installer
+    needs: wheels
+    runs-on: windows-latest
+    env:
+      PYTHON_NUGET: "3.12.10"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: wheels
+          path: wheels
+      - name: Version
+        id: version
+        shell: bash
+        run: |
+          v=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/ewald/__init__.py)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - name: Python for the installer (python.org NuGet package)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://www.nuget.org/api/v2/package/python/$env:PYTHON_NUGET" -OutFile python.zip
+          Expand-Archive python.zip -DestinationPath nuget-python
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Move-Item nuget-python\tools dist\online-python
+          dist\online-python\python.exe -c "import sys, venv, ensurepip; print(sys.version)"
+          "{0:N0} MB" -f ((Get-ChildItem dist\online-python -Recurse | Measure-Object Length -Sum).Sum / 1MB)
+      - name: Installer (Inno Setup)
+        shell: pwsh
+        run: |
+          if (-not (Get-Command iscc -ErrorAction SilentlyContinue)) {
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+            if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+            $env:PATH += ";${env:ProgramFiles(x86)}\Inno Setup 6"
+          }
+          iscc /DAppVersion=${{ steps.version.outputs.version }} packaging\windows\ewald-online.iss
+          Get-ChildItem dist\*-online-setup.exe | Format-Table Name, @{n="MB"; e={[math]::Round($_.Length / 1MB)}}
+      - uses: pyvista/setup-headless-display-action@v3
+      - name: Smoke test (silent install from the network with this run's wheel, then the frozen-app smoke script)
+        shell: pwsh
+        run: |
+          $wheel = (Get-ChildItem wheels\ewald-*-cp312-cp312-win_amd64.whl).FullName
+          $dir = "$env:RUNNER_TEMP\ewald-online"
+          $setup = (Get-ChildItem dist\*-online-setup.exe).FullName
+          $p = Start-Process $setup -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/CURRENTUSER", "/DIR=$dir", "/SOURCE=$wheel", "/LOG=$env:RUNNER_TEMP\setup.log" -PassThru -Wait
+          Get-Content "$dir\install.log" -Tail 30
+          if ($p.ExitCode -ne 0) { Get-Content "$env:RUNNER_TEMP\setup.log" -Tail 40; throw "setup exited with $($p.ExitCode)" }
+          & "$dir\python\python.exe" -c "import ewald, pymatgen, PySide6, vtk; print('ewald', ewald.__version__, 'pymatgen ok')"
+          & "$dir\python\python.exe" packaging\windows\smoke.py tests\data smoke_out *> smoke.log
+          Get-Content smoke.log
+          if (-not (Select-String -Path smoke.log -Pattern "SMOKE OK" -Quiet)) { throw "smoke test failed" }
+          exit 0   # python's exit status is ignored: it crashes on exit in the runner's Mesa (smoke.py says why)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-online
+          path: dist/*-online-setup.exe
+          compression-level: 0
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 30 || 3 }}
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [wheels, app]
+    needs: [wheels, app, online]
     runs-on: ubuntu-latest
     permissions:
       contents: write

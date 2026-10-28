@@ -1023,6 +1023,24 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   leaving every plugin where it is.
 - **Landed:** public PR #100; frssp/ewald-plugins PR #29 (ewald-optimade 0.2.0, catalog entries removed).
 
+### D79. pymatgen is a core dependency; Windows gets an online installer next to the offline app (2026-10-28)
+
+- **Decision:** `pymatgen` joins the required dependencies (pip installs and the standalone apps,
+  which bundle it), so notebooks, plugins and `to_pymatgen()`/`from_pymatgen()` can count on it.
+  Windows releases add `ewald-X.Y.Z-win64-online-setup.exe`: a private Python 3.12 into which
+  setup pip-installs ewald and its dependencies from the network, so plugins install like in any
+  Python. The offline CPU and GPU installers stay in every release.
+- **Why:** installing the Materials Project plugin in the standalone app pulled in about 50
+  packages. The owner asked "Exe 설치파일 에서 네트워크로 pip 설치하게 하면 안되나?" and, on
+  structure manipulation and analysis without pymatgen, "그럼 원소 조작 분석은 어떻게해?", then
+  picked "필수 dep + 네트워크 setup" on the decision card, and "둘 다 배포" (keep the offline
+  installer as well) on the next one.
+- **Considered:** keeping pymatgen optional with the offline app only (recommended at the time:
+  core used pymatgen only in two converters); bundling pymatgen in the standalone app only; the
+  online installer alone, dropping the PyInstaller build.
+- **Landed:** public PR #101 (with ewald-mp 0.2, frssp/ewald-plugins PR #30, which no longer needs
+  mp-api or pymatgen).
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
