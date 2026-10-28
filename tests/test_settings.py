@@ -70,3 +70,12 @@ def test_every_option_has_a_page():
     for opt in settings.OPTIONS:
         assert opt.page in settings.PAGES
         assert settings.Settings()[opt.key] == opt.default
+
+
+def test_installable_components(monkeypatch):
+    """Optional components with an Install button (D80): CuPy with the CUDA wheels, not on a Mac."""
+    monkeypatch.setattr(settings.sys, "platform", "win32")
+    assert settings.installable("cupy") == ["cupy-cuda12x[ctk]"]
+    assert settings.installable("pyopencl") and settings.installable("ovito") == []
+    monkeypatch.setattr(settings.sys, "platform", "darwin")
+    assert settings.installable("cupy") == []

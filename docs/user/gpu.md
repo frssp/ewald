@@ -6,8 +6,12 @@ Analysis runs on an NVIDIA GPU through CuPy when you pass `device="cuda"`:
 data = pipe.compute(10, device="cuda")
 ```
 
-Install CuPy with the `gpu` extra (CUDA 12) or the CuPy wheel that matches your CUDA. The
-device can be:
+Install CuPy from the app: Preferences › Compute › Optional components › *GPU compute (CUDA,
+NVIDIA)* › Install, or `ewald gpu --install` in a terminal. Both pip-install `cupy-cuda12x[ctk]`,
+CuPy with the CUDA 12 libraries as wheels (about 1.5 GB), into the Python EWALD runs in, or for
+the Windows standalone app into its add-on folder `%LOCALAPPDATA%\ewald\python`; only an NVIDIA
+driver (R525 or later) is needed. In your own Python the `gpu` extra or the CuPy wheel that
+matches an installed CUDA works too. The device can be:
 
 | `device` | Meaning |
 |---|---|

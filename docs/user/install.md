@@ -54,8 +54,10 @@ Windows releases also carry installers that need no Python of your own
   downloads ewald and its packages with pip, so plugins install like in any Python. Needs the
   internet during setup (a proxy that re-signs HTTPS is fine: pip trusts the Windows certificate
   store); a checkbox adds NVIDIA GPU support.
-- `ewald-X.Y.Z-win64-cpu-setup.exe` and `-gpu-setup.exe`: the standalone app with everything
-  inside, for PCs without internet. `ewald --version` prints the
+- `ewald-X.Y.Z-win64-setup.exe` (or `-portable.zip`): the standalone app with everything
+  inside, for PCs without internet. GPU compute on an NVIDIA card is installed later from the
+  app: Preferences › Compute › Optional components › Install (about 1.5 GB download, needs only
+  the NVIDIA driver; [GPU compute](gpu.md)). `ewald --version` prints the
 installed version; what changed between versions is in
 [CHANGELOG.md](https://github.com/frssp/ewald/blob/main/CHANGELOG.md).
 

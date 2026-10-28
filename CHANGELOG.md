@@ -15,9 +15,16 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 - Windows online installer `ewald-X.Y.Z-win64-online-setup.exe`: a private Python into which setup
   pip-installs ewald and its dependencies, so plugins and packages install as in any Python; an
   NVIDIA GPU checkbox adds CuPy. The offline installers stay. (D79, #101)
+- GPU compute installs from the app: Preferences › Compute › Optional components › Install (or
+  `ewald gpu --install`) pip-installs CuPy with the CUDA 12 libraries, also into the Windows
+  standalone app's add-on folder; only the NVIDIA driver is needed. (D80, #102)
 
 ### Changed
 
+- The Windows standalone app is one build, `ewald-X.Y.Z-win64-setup.exe` / `-portable.zip`; the
+  separate GPU build (about 1.8 GB per file) is gone, since GPU compute now installs from the app.
+  The app bundles the whole standard library, so packages pip installs later find what they
+  import. (D80, #102)
 - `pymatgen` is a required dependency (also bundled in the standalone apps): `to_pymatgen()`,
   `from_pymatgen()` and bond-valence oxidation states for ionic radii always work. (D79, #101)
 

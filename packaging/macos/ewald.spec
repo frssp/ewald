@@ -42,6 +42,10 @@ for dist in importlib.metadata.distributions():
 # debugpy: ipykernel imports it optionally, but its vendored pydevd tree breaks when frozen
 excludes = ["tkinter", "ovito", "torch", "tensorflow", "PyQt5", "PyQt6", "PySide2", "debugpy",
             "cupy", "cupyx", "cupy_backends", "nvidia"]
+sys.path.insert(0, os.path.join(HERE, ".."))
+from bundle_excludes import VTK_UNUSED  # noqa: E402  (packaging/bundle_excludes.py)
+
+excludes += VTK_UNUSED
 
 a = Analysis(
     [os.path.join(WIN, "launch_gui.py"), os.path.join(WIN, "launch_cli.py")],

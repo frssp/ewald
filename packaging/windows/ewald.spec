@@ -1,20 +1,21 @@
 # PyInstaller spec for the Windows app: one folder with ewald.exe (console CLI) and
 # ewald-gui.exe (windowed), sharing one _internal/ directory.
 #
-#   pip install ".[gui]" pyinstaller setuptools            (+ cupy-cuda12x and nvidia-*-cu12 for the GPU build)
+#   pip install ".[gui]" pyinstaller setuptools
 #   pyinstaller --noconfirm packaging/windows/ewald.spec
 #
-# EWALD_VARIANT=gpu bundles CuPy and the CUDA runtime wheels; otherwise CuPy is excluded.
-import os
-
+# CuPy is never bundled: GPU compute is installed from the app (Preferences › Compute › Optional
+# components › Install, or ewald.exe gpu --install) into the add-on folder (D80).
 import importlib.metadata
+import importlib.util
+import os
+import sys
 
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules, copy_metadata
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 HERE = os.path.dirname(os.path.abspath(SPEC))
 # the app icon rendered by src/ewald/assets/icon/make_icons.py; EWALD_ICON overrides it
 ICON = os.environ.get("EWALD_ICON") or os.path.join(HERE, "..", "..", "src", "ewald", "assets", "icon", "ewald.ico")
-GPU = os.environ.get("EWALD_VARIANT", "cpu") == "gpu"
 
 hiddenimports = (collect_submodules("ewald")
                  # ASE picks readers by format name at runtime
@@ -36,19 +37,22 @@ for dist in importlib.metadata.distributions():
             datas += copy_metadata(name)
         except Exception as exc:  # noqa: BLE001  a broken dist-info in the build env
             print("no metadata for", name, exc)
+# the whole standard library (but GUI toolkits and tests): packages pip installs later (CuPy from
+# the GPU Install button, plugins) import modules that nothing bundled imports
+STDLIB_SKIP = {"tkinter", "turtle", "turtledemo", "idlelib", "test", "lib2to3", "ensurepip", "venv", "curses",
+               "dbm", "msilib", "this", "antigravity", "__phello__", "_pyrepl"}
+for name in sorted(sys.stdlib_module_names - STDLIB_SKIP):
+    if name.startswith("_") or importlib.util.find_spec(name) is None:
+        continue
+    hiddenimports += collect_submodules(name, filter=lambda m: ".test" not in m and ".idle" not in m)
 binaries = []
 # debugpy: ipykernel imports it optionally, but its vendored pydevd tree breaks when frozen
-excludes = ["tkinter", "ovito", "torch", "tensorflow", "PyQt5", "PyQt6", "PySide2", "debugpy"]
-if GPU:
-    hiddenimports += collect_submodules("cupy") + collect_submodules("cupyx") + collect_submodules("cupy_backends")
-    datas += collect_data_files("cupy", include_py_files=False)
-    # nvidia-*-cu12 wheels: DLLs under nvidia/<lib>/bin, kept at the same relative path
-    import importlib.util
+excludes = ["tkinter", "ovito", "torch", "tensorflow", "PyQt5", "PyQt6", "PySide2", "debugpy",
+            "cupy", "cupyx", "cupy_backends", "nvidia"]
+sys.path.insert(0, os.path.join(HERE, ".."))
+from bundle_excludes import VTK_UNUSED  # noqa: E402  (packaging/bundle_excludes.py)
 
-    if importlib.util.find_spec("nvidia") is not None:
-        binaries += collect_dynamic_libs("nvidia")
-else:
-    excludes += ["cupy", "cupyx", "cupy_backends", "nvidia"]
+excludes += VTK_UNUSED
 
 a = Analysis(
     [os.path.join(HERE, "launch_cli.py"), os.path.join(HERE, "launch_gui.py")],
