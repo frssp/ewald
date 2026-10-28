@@ -627,7 +627,7 @@ Plugins and AI
   from aiida-quantumespresso, NEB and aiida-lammps outputs, streaming very long remote
   trajectories frame by frame instead of one bundle, export of analysis results back as new
   nodes (opt-in, never default). Not yet tried against a real remote AiiDA host.
-- OPTIMADE (ewald-optimade, `optimade:DB/ID`): its database table was written without reaching
+- OPTIMADE (built in since 2026-10-28, `optimade:DB/ID`): its database table was written without reaching
   the servers (the cloud container has no route to them); finding every database from the
   providers.optimade.org index instead of the fixed table; more pages in the side bar; the
   OPTIMADE `assemblies` (alternative disorder configurations) are drawn as all sites.
@@ -720,7 +720,7 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   owner's Windows PC: install, open a VASP/LAMMPS file, render, quit without a crash dialog, and
   the GPU build with `device="cuda"` on the RTX. CI only runs it on Mesa software OpenGL, where
   the CLI smoke script crashes on process exit (ignored there).
-- Plugins side bar in the Windows exe (D76): install ewald-mp and ewald-optimade, restart, use
+- Plugins side bar in the Windows exe (D76): install ewald-mp and ewald-plumed, restart, use
   them; once with git on PATH and once without (GitHub zip); update and remove.
 - Simple (ASE) atoms on the owner's Windows PC (200 %): round discs in the OpenGL 1.x viewport
   (36-segment meshes now) and in the normal viewport (impostors); View › Atoms › *Sphere detail*
@@ -738,8 +738,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - The floating view chips (D62) on macOS (fine on the owner's Windows laptop at 200 %,
   2026-10-26): the see-through chips composite over the VTK view without flicker, and fold before
   they overlap when the Structure view is split or narrow.
-- ewald-optimade against the real servers (the container reaches none of them): `python -m
-  ewald_optimade search Si --db <name>` for every name in `python -m ewald_optimade databases`,
+- OPTIMADE against the real servers (the container reaches none of them): `ewald optimade
+  search Si --db <name>` for every name in `ewald optimade databases`,
   then `load("optimade:mp/mp-149")`, `load("optimade:cod/1000041")` and the OPTIMADE side bar,
   on Windows behind the owner's network.
 - ewald-mp with a real API key (the tests use a stand-in `MPRester`): set the key in Preferences ›

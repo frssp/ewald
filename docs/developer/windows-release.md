@@ -57,7 +57,7 @@ Frozen-app specifics, already handled in the spec and runtime hook:
   newer one). The runtime hook puts `%LOCALAPPDATA%\ewald\python\Lib\site-packages` on `sys.path`.
   Without git on the PC, GitHub `git+https` sources are fetched as GitHub's zip of the pinned commit.
   Any package can be added the same way from a terminal: `ewald.exe -m pip install --prefix ... <pkg>`.
-  The CI smoke step `packaging/windows/smoke_pip.py` installs ewald-optimade both ways.
+  The CI smoke step `packaging/windows/smoke_pip.py` installs ewald-plumed both ways.
 - Older add-ons in `%LOCALAPPDATA%\ewald\site-packages` (installed with `pip install --target`
   from a separate Python 3.12) are still on `sys.path`, as is *Extra module paths* (`python.extra_paths`).
 

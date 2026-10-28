@@ -60,6 +60,8 @@ cell. The status bar says how many frames of earlier runs a later one replaced.
 | GROMACS XTC/TRR, DCD, AMBER NetCDF | MDAnalysis, lazy, needs `MDAnalysis` | atom types from `topology=` (`.gro`, `.pdb`, `.tpr`, `.psf`, LAMMPS `.data`, ...) or a file with the same stem, or `conf.gro`/`topol.tpr` next to it; type "X" without one; TRR velocities in Å/ps |
 | ASE database (`*.db`, `.json`) | ASE, lazy | one row per frame; `selection="natoms<100,relaxed=1"` is an `ase db` query; key-value pairs, `Row Id`, `Unique Id` become attributes |
 | ASE trajectory (`*.traj`) | ASE, lazy | written by ASE optimizers and MD |
+| NumPy archive (`*.npz`) | native | `positions` (frames, atoms, 3; also `coords`, `pos`), `types` (or `symbols`, or atomic `numbers`), optional `cell` (3, 3 or one per frame; also `box`, `lattice`), `pbc`, `origin`; every other (frames, atoms[, k]) array becomes a property and every (frames,) array an attribute (`forces` → `Force`, `energies` → `Energy`); found by its `positions` array, so other `.npz` files are left alone; pickled (object) arrays are refused; written back in the same layout |
+| OPTIMADE databases (`optimade:mp/mp-149`) | built in | structures of Materials Project, COD, OQMD, Alexandria, NOMAD, Materials Cloud, JARVIS and other OPTIMADE servers, no key; see [Structure databases](#structure-databases-optimade) |
 | NEB runs (VASP folder `00 .. NN`, LAMMPS `neb`) | native | one frame per image, energies per image; see [NEB runs](#neb-runs) |
 | CIF | ASE | every data block is a frame |
 | others | ASE | anything `ase.io.read` understands, with `format=` set to the ASE name |
@@ -88,6 +90,67 @@ netCDF-4, which is HDF5 underneath), and where they stand in ewald:
 
 "Lazy" means the file is indexed once and each frame is read when it is needed, so a
 multi-gigabyte trajectory opens immediately and uses memory for the frames in the cache only.
+
+## Structure databases (OPTIMADE)
+
+Crystal structures of [OPTIMADE](https://www.optimade.org) databases open by address, with no
+account or API key:
+
+```python
+from ewald import load
+from ewald.optimade import search
+
+pipe = load("optimade:mp/mp-149")       # Materials Project, Si
+pipe = load("optimade:cod/1000041")     # Crystallography Open Database
+pipe = load("optimade:oqmd?Li-P-S")     # every Li-P-S structure it finds, one frame each (limit=50)
+
+search("LiFePO4", db="mp")              # hits with .uri, .formula, .nsites
+search("Li P S", db="alexandria")       # structures that contain Li, P and S
+search('elements HAS ALL "Si","O" AND nsites<=6', db="cod")   # an OPTIMADE filter as it is
+```
+
+| Address | Opens |
+|---|---|
+| `optimade:DB/ID` | one structure, by the database's own id (it may hold slashes) |
+| `optimade:DB?QUERY` | every structure the query finds, one frame each (`limit=50`) |
+| `optimade:ID` | `ID` in the default database (Preferences › OPTIMADE) |
+
+`load("optimade:DB", filter='...')` sends an OPTIMADE filter as it is. A query is a formula
+(`LiFePO4`, `Ca(OH)2`), a chemical system with exactly those elements (`Li-P-S`), elements a
+structure must contain (`Li P S` or `Li,P,S`), or an OPTIMADE filter (anything with `=`, `<`, `>`
+or a keyword such as `HAS`, `AND`).
+
+| Name | Database |
+|---|---|
+| `mp` | Materials Project |
+| `cod`, `tcod` | Crystallography Open Database, Theoretical COD |
+| `oqmd` | Open Quantum Materials Database |
+| `alexandria`, `alexandria-pbesol` | Alexandria (PBE, PBEsol) |
+| `nomad` | NOMAD |
+| `mc3d`, `mc2d` | Materials Cloud three- and two-dimensional crystals |
+| `jarvis` | JARVIS-DFT |
+| `odbx` | open database of xtals |
+
+Add others under Preferences › OPTIMADE › Extra databases, one `name = base URL` per line (the
+URL without `/v1`), e.g. `mylab = https://optimade.mylab.org`; `ewald optimade databases` lists
+them all and `ewald optimade search Li-P-S --db mp [--json]` searches from a shell. Downloads
+use the operating system's certificate store, so a network that re-signs HTTPS works too.
+
+A frame holds positions, elements and the cell. A direction that is not periodic (a molecule, a
+slab) gets a box around the atoms with 10 Å of vacuum and is non-periodic. A partly occupied site
+shows its majority element and gets the particle property `Occupancy`; site names that are not
+plain elements (`Fe1`, mixed sites) are kept as `Species`. `attributes["OPTIMADE"]` holds the
+database, id, address and the formulas the server gives.
+
+The OPTIMADE button on the activity bar opens a side bar: pick a database, type a query, then
+double-click a hit to open it, **Insert cell** to add `pipe = load("optimade:...")` to the
+notebook, or **Open all** for every hit as frames. The AI gets the read-only tool
+`optimade_search` ([What the AI may do](ai-permissions.md)). All of this was the `ewald-optimade`
+plugin until 2026-10-28; it is the built-in plugin group "optimade" now, which
+`ewald plugins --disable optimade` (or the Plugins side bar) switches off. With an older
+`ewald-optimade` still installed, `ewald plugins` says to uninstall it; its code is not loaded.
+For band structures, DOS and charge densities of Materials Project entries, use the `ewald-mp`
+plugin ([Plugins](../plugins/index.md)).
 
 ## Simulation results
 
