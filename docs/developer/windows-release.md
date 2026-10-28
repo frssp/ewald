@@ -100,7 +100,10 @@ cuBLAS/cuSOLVER back `linalg` calls in the local-order modifiers. The runtime ho
 `nvidia/*/bin` folder to the DLL search path. The user needs only an NVIDIA driver new enough for
 CUDA 12 (R525 or later); no CUDA Toolkit install. Cost: measured on the first CI build, the CPU
 installer and zip are about 240 MB each, the GPU ones about 1.7 GB each (cuBLAS, cuSOLVER and
-cuSPARSE dominate), close to GitHub's 2 GiB limit per release file. Dropping libraries we do not
+cuSPARSE dominate), close to GitHub's 2 GiB limit per release file. With pymatgen bundled (D79,
+2026-10-28) the CPU setup.exe and zip together are 0.72 GB and the GPU pair 3.6 GB (about 1.8 GB
+each), so the GPU files are within about 0.3 GB of the limit; the online installer with its GPU
+task has no such limit. Dropping libraries we do not
 call (cuSPARSE is only needed for `cupyx.scipy.sparse`) is the first size fix.
 
 Kept as a separate installer rather than one build because most machines that open trajectory files
