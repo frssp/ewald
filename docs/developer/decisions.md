@@ -1006,7 +1006,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   waits until its build has been run once. The owner had checked the Windows exe beforehand.
 - **Considered:** releasing as 0.1.0 with the unreleased changes folded in; including the macOS
   wheels and disk images in the same release; 1.0 (rejected, the API still changes).
-- **Landed:** public PR #NN.
+- **Landed:** public PR #99.
 
 ## Adding an entry
 
