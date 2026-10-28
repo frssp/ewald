@@ -998,6 +998,16 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   pip plugins; bundling the light first-party plugins into the app.
 - **Landed:** public PR #98.
 
+### D77. The first public release is 0.2.0, Windows and Linux first (2026-10-28)
+
+- **Decision:** the first tag is v0.2.0, not v0.1.0: the 0.1.0 section prepared in the private
+  repository stays in the CHANGELOG as never released, and 0.2.0 carries everything since. The
+  release ships the sdist, Linux and Windows wheels and the Windows apps (CPU and GPU); macOS
+  waits until its build has been run once. The owner had checked the Windows exe beforehand.
+- **Considered:** releasing as 0.1.0 with the unreleased changes folded in; including the macOS
+  wheels and disk images in the same release; 1.0 (rejected, the API still changes).
+- **Landed:** public PR #99.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

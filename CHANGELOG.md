@@ -8,6 +8,11 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-28
+
+The first public release. 0.1.0 below was prepared in the private repository and never tagged,
+so this release also carries everything listed there.
+
 ### Added
 
 - The standalone Windows and macOS apps install pip plugins from the Plugins side bar: they bundle
@@ -160,7 +165,7 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 - Claude tool plugins (`@claude_tool`, `ewald.tools` entry points); built-in formats listed as
   plugins that `ewald plugins --disable` can switch off (#75).
 
-## [0.1.0] - 2026-10-19
+## [0.1.0] - 2026-10-19 (not released)
 
 First release: EWALD (Extensible Workbench for Atomic Lattices & Dynamics), an atomistic
 structure and trajectory viewer and analysis library with an OVITO-style pipeline API
@@ -259,5 +264,6 @@ a PySide6 desktop GUI built around Python notebooks, and Claude tools.
   inventory generated from the code and one TODO list (#28), `llms.txt` for LLM use.
 - Security and license fixes from the code health review (#46).
 
-[Unreleased]: https://github.com/frssp/ewald/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/frssp/ewald/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/frssp/ewald/releases/tag/v0.2.0
 [0.1.0]: https://github.com/frssp/ewald/releases/tag/v0.1.0

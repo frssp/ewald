@@ -864,10 +864,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - The API key in a real keychain (macOS Keychain, Windows Credential Manager, GNOME Keyring /
   KWallet); the container has none, so only the 0600 file fallback runs for real.
 - The release workflows (`release.yml`: sdist and Linux wheels; `windows-release.yml` and
-  `macos-release.yml`: wheels, apps, installers) on a real `v*` tag. v0.1.0 is prepared (CHANGELOG, version,
-  `packaging/release_check.py` passes locally) and waits only for `git tag v0.1.0`, a push and
-  dispatching the three workflows ([Releases](developer/release.md)); until then Windows users
-  without Build Tools get ewald without `ewald._native` (blocked on GitHub Actions minutes).
+  `macos-release.yml`: wheels, apps, installers) on a real `v*` tag. `windows-release.yml` ran green
+  on a branch (2026-10-27) and the owner ran its exe; v0.2.0 is the first tag
+  ([Releases](developer/release.md)). macOS has not been built yet.
 - Installing without a compiler on real Windows (MSVC missing raises in `build_ext.run`; tested
   here with `CXX=/bin/false` on Linux). pip shows the "not built" warning only with `-v`.
 - macOS on a real Mac (Apple Silicon and Intel): the source install and the full test suite, the
