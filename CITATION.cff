@@ -14,8 +14,8 @@ authors:
 repository-code: "https://github.com/frssp/ewald"
 url: "https://github.com/frssp/ewald"
 license: MIT
-version: 0.1.0
-date-released: "2026-10-20"
+version: 0.2.0
+date-released: "2026-10-28"
 # doi: 10.5281/zenodo.XXXXXXX   (archive a release on Zenodo, then fill this in)
 keywords:
   - atomistic simulation

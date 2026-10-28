@@ -23,7 +23,7 @@ version's section of `CHANGELOG.md`. ewald is not on PyPI yet (publishing
 it is a separate decision). Users install a wheel from the release page, or straight from the repository:
 
 ```bash
-pip install "ewald[gui] @ git+https://github.com/frssp/ewald@v0.1.0"
+pip install "ewald[gui] @ git+https://github.com/frssp/ewald@v0.2.0"
 ```
 
 ## Version

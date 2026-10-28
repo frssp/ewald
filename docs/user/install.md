@@ -38,13 +38,13 @@ needed: Linux (x86_64), macOS (arm64 and Intel) and Windows, for Python 3.10 to 
 the one for your platform and Python from the release page, then
 
 ```bash
-pip install "ewald-0.1.0-cp312-cp312-win_amd64.whl[gui]"
+pip install "ewald-0.2.0-cp312-cp312-win_amd64.whl[gui]"
 ```
 
 or install a tagged version straight from the repository (this builds from source):
 
 ```bash
-pip install "ewald[gui] @ git+https://github.com/frssp/ewald@v0.1.0"
+pip install "ewald[gui] @ git+https://github.com/frssp/ewald@v0.2.0"
 ```
 
 Windows releases also carry a standalone installer that needs no Python at all, in a CPU and a

@@ -34,7 +34,7 @@ def load(path, *args, **kwargs) -> Pipeline:
     return import_file(resolve_data_path(path), *args, **kwargs)
 
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __title__ = "EWALD: Extensible Workbench for Atomic Lattices & Dynamics"
 
 __all__ = ["Cell", "DataCollection", "Pipeline", "Modifier", "PythonModifier", "AllFramesModifier", "Frames", "each_frame", "all_frames",
