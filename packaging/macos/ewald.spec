@@ -23,8 +23,10 @@ from ewald import __version__  # noqa: E402
 hiddenimports = (collect_submodules("ewald")
                  # ASE picks readers by format name at runtime
                  + collect_submodules("ase.io") + collect_submodules("ase.calculators")
+                 # pymatgen is a core dependency (D79) that notebooks and plugins import freely
+                 + collect_submodules("pymatgen", filter=lambda m: ".tests" not in m)
                  + ["qtconsole.inprocess", "ipykernel.inprocess", "pyvistaqt"])
-datas = collect_data_files("ewald") + collect_data_files("ase") + collect_data_files("pyvista") + collect_data_files("qtconsole")
+datas = collect_data_files("ewald") + collect_data_files("ase") + collect_data_files("pymatgen") + collect_data_files("pyvista") + collect_data_files("qtconsole")
 # pip and setuptools for the Plugins side bar, plus every bundled distribution's metadata
 # (as in packaging/windows/ewald.spec)
 hiddenimports += collect_submodules("pip") + collect_submodules("setuptools") + ["_distutils_hack"]

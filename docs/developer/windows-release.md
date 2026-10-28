@@ -12,6 +12,7 @@ Each release produces three kinds of files, all attached to a GitHub Release whe
 | `ewald-X.Y.Z-cp3XX-cp3XX-win_amd64.whl` (3.10 to 3.13) | people with their own Python | the package with the compiled `ewald._native`; `pip install <wheel>[gui,gpu]` |
 | `ewald-X.Y.Z-win64-cpu-setup.exe` and `-portable.zip` | people without Python | standalone app: `ewald-gui.exe` (viewer) and `ewald.exe` (CLI and script runner) |
 | `ewald-X.Y.Z-win64-gpu-setup.exe` and `-portable.zip` | NVIDIA users without Python | the same app with CuPy and the CUDA 12 runtime libraries bundled |
+| `ewald-X.Y.Z-win64-online-setup.exe` | everyone else without Python (the default) | a private Python; pip downloads ewald and its dependencies during setup (see below) |
 
 The wheels are the main channel for scripting work: they behave exactly like the source install, and
 `pip install cupy-cuda12x`, `ovito`, `anthropic` and so on just work next to them. The standalone app
@@ -60,6 +61,33 @@ Frozen-app specifics, already handled in the spec and runtime hook:
   The CI smoke step `packaging/windows/smoke_pip.py` installs ewald-plumed both ways.
 - Older add-ons in `%LOCALAPPDATA%\ewald\site-packages` (installed with `pip install --target`
   from a separate Python 3.12) are still on `sys.path`, as is *Extra module paths* (`python.extra_paths`).
+
+## Online installer (D79)
+
+`packaging/windows/ewald-online.iss`, built by the `online` job. It ships only Python 3.12 (the
+`tools\` folder of python.org's NuGet package `python`, a full CPython with pip) and the icon. Setup
+copies it to `{app}\python` (per user: `%LOCALAPPDATA%\Programs\ewald-python`), then runs
+`python -m pip install "ewald[gui] @ <this release's cp312 wheel on GitHub>"`; everything else
+comes from PyPI. The *NVIDIA GPU support* task adds `cupy-cuda12x[ctk]` (CuPy with the CUDA 12
+libraries as wheels). pip's output scrolls under the progress bar and goes to `{app}\install.log`;
+a failed install says to check the network or use the offline installer, and exits with code 1.
+
+The shortcuts and file association run `python\pythonw.exe -m ewald gui`. The app is not frozen, so
+the Plugins side bar uses the normal `python -m pip install` into that Python (no `--prefix`, no
+constraints), and `pymatgen`, `mp-api` or anything else a notebook needs installs the same way
+(`ewald command prompt` in the Start menu has that Python on `PATH`). Uninstall removes the whole
+`python` folder, including what pip put there. It installs next to the offline app (different
+AppId and folder).
+
+Why both: the online setup is small and gives a real Python environment, but needs the network
+during setup and resolves the dependencies on the user's PC; the offline app works anywhere
+(company PCs without internet, firewalls that block PyPI). pip 24.2 and later trusts the Windows
+certificate store (truststore) and requests reads the Windows proxy settings, so networks that
+re-sign HTTPS work, but a network that blocks pypi.org or files.pythonhosted.org does not.
+
+`/SOURCE=<wheel path or URL>` installs another wheel (the CI smoke step installs the wheel it just
+built, silently: `/VERYSILENT /SUPPRESSMSGBOXES /CURRENTUSER /DIR=...`), then runs `smoke.py`
+with that Python.
 
 ## CUDA
 

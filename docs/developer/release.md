@@ -14,6 +14,7 @@ How a version of ewald is cut and what it ships. Platform packaging is in
 | `ewald-X.Y.Z-macos-{arm64,x86_64}.dmg` | `macos-release.yml` | EWALD.app, not notarized |
 | `ewald-X.Y.Z-cp3XX-*-win_amd64.whl` | `windows-release.yml` | Python 3.10 to 3.13 |
 | `ewald-X.Y.Z-win64-{cpu,gpu}-setup.exe`, `-portable.zip` | `windows-release.yml` | standalone app with the EWALD icon |
+| `ewald-X.Y.Z-win64-online-setup.exe` | `windows-release.yml` | private Python 3.12; pip installs this release's cp312 wheel and its dependencies during setup (D79) |
 
 All wheels carry the compiled `ewald._native` (`EWALD_REQUIRE_NATIVE=1` turns a failed C++ build
 into an error), so wheel users never need a compiler.

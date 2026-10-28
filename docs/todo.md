@@ -722,6 +722,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   owner's Windows PC: install, open a VASP/LAMMPS file, render, quit without a crash dialog, and
   the GPU build with `device="cuda"` on the RTX. CI only runs it on Mesa software OpenGL, where
   the CLI smoke script crashes on process exit (ignored there).
+- The online installer (D79) on the owner's Windows PC behind the company network: setup downloads
+  ewald and its packages (progress lines under the bar), the Start menu entry opens the app without
+  a console window, the Plugins side bar installs ewald-mp into that Python, `ewald command prompt`
+  has `python`/`pip` on PATH, uninstall removes the folder; once with *NVIDIA GPU support*
+  (`device="cuda"` on the RTX through `cupy-cuda12x[ctk]`, unverified in CI).
 - Plugins side bar in the Windows exe (D76): install ewald-mp and ewald-plumed, restart, use
   them; once with git on PATH and once without (GitHub zip); update and remove.
 - Simple (ASE) atoms on the owner's Windows PC (200 %): round discs in the OpenGL 1.x viewport
