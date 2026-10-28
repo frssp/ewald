@@ -36,15 +36,10 @@ jobs:
           retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 30 || 3 }}
 
   app:
-    name: app (${{ matrix.variant }})
+    # one standalone app: GPU compute is installed from the app itself (D80), not a separate build
+    name: app
     runs-on: windows-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # the GPU build (about 1.7 GB per file, 30 min) runs only for tags and manual runs
-        variant: ${{ fromJSON(github.event_name == 'pull_request' && '["cpu"]' || '["cpu", "gpu"]') }}
     env:
-      EWALD_VARIANT: ${{ matrix.variant }}
       EWALD_REQUIRE_NATIVE: "1"
     steps:
       - uses: actions/checkout@v5
@@ -60,11 +55,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install ".[gui]" pyinstaller setuptools
-          if [ "$EWALD_VARIANT" = gpu ]; then
-            # CuPy plus the CUDA 12 runtime libraries it loads (the user only needs an NVIDIA driver)
-            python -m pip install cupy-cuda12x nvidia-cuda-runtime-cu12 nvidia-cuda-nvrtc-cu12 \
-              nvidia-cufft-cu12 nvidia-cublas-cu12 nvidia-curand-cu12 nvidia-cusolver-cu12 nvidia-cusparse-cu12
-          fi
       - name: Version
         id: version
         shell: bash
@@ -92,15 +82,24 @@ jobs:
           ./dist/ewald/ewald.exe -m pip --version
           ./dist/ewald/ewald.exe run packaging/windows/smoke_pip.py | tee smoke_pip.log
           grep -q "PIP SMOKE OK" smoke_pip.log
+      - name: Smoke test (GPU compute installed from the app)
+        shell: bash
+        run: |
+          # what Preferences › Compute › Optional components › Install runs: CuPy and the CUDA 12
+          # wheels into the add-on folder (outside dist/, so the installer stays the same size)
+          export LOCALAPPDATA="$RUNNER_TEMP/ewald-local-gpu"
+          # exit status ignored: the GPU summary after pip probes OpenGL, and Mesa crashes on exit;
+          # smoke_gpu.py fails when pip did not install CuPy
+          ./dist/ewald/ewald.exe gpu --install || echo "exit status $? (ignored)"
+          ./dist/ewald/ewald.exe run packaging/windows/smoke_gpu.py | tee smoke_gpu.log
+          grep -q "GPU SMOKE OK" smoke_gpu.log
+          du -sh "$LOCALAPPDATA/ewald/python"
       - name: Smoke test (windowed GUI)
         shell: pwsh
         run: |
           $env:EWALD_SMOKE_TEST = "1"
           $p = Start-Process -FilePath dist\ewald\ewald-gui.exe -ArgumentList "tests\data\vasp\XDATCAR" -PassThru -Wait
           if ($p.ExitCode -ne 0) { throw "ewald-gui.exe exited with $($p.ExitCode)" }
-      - name: Size
-        shell: bash
-        run: du -sh dist/ewald && du -sh dist/ewald/_internal/* | sort -rh | head -15
       - name: Installer (Inno Setup)
         shell: pwsh
         run: |
@@ -109,16 +108,22 @@ jobs:
             if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
             $env:PATH += ";${env:ProgramFiles(x86)}\Inno Setup 6"
           }
-          iscc /DAppVersion=${{ steps.version.outputs.version }} /DVariant=${{ matrix.variant }} packaging\windows\ewald.iss
+          iscc /DAppVersion=${{ steps.version.outputs.version }} packaging\windows\ewald.iss
       - name: Portable zip
         shell: pwsh
         run: |
-          $name = "ewald-${{ steps.version.outputs.version }}-win64-${{ matrix.variant }}-portable.zip"
+          $name = "ewald-${{ steps.version.outputs.version }}-win64-portable.zip"
           7z a -tzip -mx=7 "dist\$name" .\dist\ewald\* | Out-Null
           Get-ChildItem dist\*.exe, dist\*.zip | Format-Table Name, @{n="MB"; e={[math]::Round($_.Length / 1MB)}}
+      - name: Size (last, so it ends the log)
+        shell: bash
+        run: |
+          du -sh dist/ewald && du -sh dist/ewald/_internal/* | sort -rh | head -30 | tee size.txt
+          echo "files over 5 MB:" | tee -a size.txt
+          find dist/ewald -type f -size +5M -exec du -h {} + | sort -rh | head -40 | tee -a size.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: app-${{ matrix.variant }}
+          name: app
           path: |
             dist/*-setup.exe
             dist/*-portable.zip

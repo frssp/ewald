@@ -7167,3 +7167,26 @@ def test_wait_all_holds_the_exit_until_detached_threads_end(app):
     release.set()
     assert workers.wait_all(5000) and t.isFinished()
     app.processEvents()
+
+
+def test_preferences_install_button_for_gpu_compute(app, monkeypatch):
+    """Compute › Optional components › Install (D80): applies the edits, closes, then asks the
+    window to pip-install CuPy with the CUDA wheels in the Plugins side bar."""
+    import importlib.util
+
+    from ewald import settings
+    from ewald.gui.preferences import PreferencesDialog
+
+    real = importlib.util.find_spec
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name, *a: None if name == "cupy" else real(name, *a))
+    monkeypatch.setattr(settings.sys, "platform", "linux")
+    dlg = PreferencesDialog(settings.load(), page="Compute")
+    asked = []
+    dlg.installRequested.connect(asked.append)
+    row = dlg.component_rows["cupy"]
+    button = next(b for b in row.findChildren(QtWidgets.QPushButton) if b.text() == "Install")
+    assert "cupy-cuda12x[ctk]" in button.toolTip()
+    button.click()
+    for _ in range(5):
+        app.processEvents()
+    assert asked == [["cupy-cuda12x[ctk]"]] and dlg.result() == QtWidgets.QDialog.Accepted

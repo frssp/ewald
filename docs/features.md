@@ -337,7 +337,7 @@ Details: [Command line](user/cli.md).
 | `ewald mcp [INPUT]` | serve the analysis tools over MCP (stdio) | `--allow-code` |
 | `ewald remote [REMOTE_CMD]` | saved SSH profiles: list, add, remove, test, ls, get |  |
 | `ewald optimade [OPTIMADE_CMD]` | search OPTIMADE structure databases (Materials Project, COD, OQMD, ...) |  |
-| `ewald gpu` | the GPUs here, which one the 3D view uses and CUDA/OpenCL devices | `--prefer` |
+| `ewald gpu` | the GPUs here, which one the 3D view uses and CUDA/OpenCL devices | `--prefer` `--install` |
 | `ewald inventory` | print or update the feature inventory (docs/features.md) | `-o` `--gui` |
 
 ## AI integration

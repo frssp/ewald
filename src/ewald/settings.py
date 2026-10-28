@@ -327,7 +327,7 @@ def all_options() -> list[Option]:
 # ---------------------------------------------------------------- devices / optional components
 def _probe_cuda():
     if importlib.util.find_spec("cupy") is None:
-        return False, "CuPy not installed: pip install 'ewald[gpu]'"
+        return False, "CuPy not installed: Install in Optional components below"
     from .backend import gpu_available
 
     if not gpu_available():
@@ -378,12 +378,27 @@ DEVICES = (
 COMPONENTS = (
     ("ewald._native", "PTM, Voronoi, CSP matching, interval CNA (C++ extension)",
      "install a C++ compiler, then reinstall ewald (docs/user/install.md)"),
-    ("cupy", "GPU compute (CUDA)", "pip install 'ewald[gpu]'"),
+    ("cupy", "GPU compute (CUDA, NVIDIA)", "pip install 'ewald[gpu]'"),
     ("pyopencl", "GPU ray tracing on any GPU (OpenCL)", "pip install 'ewald[opencl]'"),
     ("ovito", "Dislocation analysis (DXA)", "pip install 'ewald[gui,ovito]'"),
     ("imageio_ffmpeg", "Movie export (.mp4)", "pip install imageio-ffmpeg (part of the ewald install)"),
     ("qtconsole", "IPython console in the GUI", "pip install 'ewald[gui]'"),
 )
+
+
+# components the Install button of Preferences › Compute › Optional components pip-installs (into
+# the Python ewald runs in, or the standalone app's add-on folder: plugin_catalog.pip_command).
+# CuPy with [ctk] brings the CUDA 12 libraries as wheels, so only an NVIDIA driver is needed
+# (D80: the GPU support is an installable feature, not a separate Windows build).
+CUDA_REQUIREMENT = "cupy-cuda12x[ctk]"
+INSTALLABLE = {"cupy": [CUDA_REQUIREMENT], "pyopencl": ["pyopencl>=2022.1"]}
+
+
+def installable(module: str) -> list[str]:
+    """The pip requirements that install optional component ``module`` here, or [] (no CUDA on macOS)."""
+    if module == "cupy" and sys.platform == "darwin":
+        return []
+    return list(INSTALLABLE.get(module, []))
 
 
 def component_status():

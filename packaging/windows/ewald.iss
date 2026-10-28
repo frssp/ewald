@@ -1,12 +1,9 @@
 ; Inno Setup script for the PyInstaller folder dist\ewald.
-;   iscc /DAppVersion=0.1.0 /DVariant=cpu /DSourceDir=..\..\dist\ewald packaging\windows\ewald.iss
+;   iscc /DAppVersion=0.3.0 /DSourceDir=..\..\dist\ewald packaging\windows\ewald.iss
 ; Per-user install (no admin), Start menu entries, optional file associations and PATH entry.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
-#endif
-#ifndef Variant
-  #define Variant "cpu"
 #endif
 #ifndef SourceDir
   #define SourceDir "..\..\dist\ewald"
@@ -19,7 +16,7 @@
 AppId={{6E3F2B1C-5A0D-4E8B-9C47-3B1E2D0A7F51}
 AppName=ewald
 AppVersion={#AppVersion}
-AppVerName=ewald {#AppVersion} ({#Variant})
+AppVerName=ewald {#AppVersion}
 AppPublisher=frssp
 DefaultDirName={autopf}\ewald
 DefaultGroupName=ewald
@@ -33,7 +30,7 @@ Compression=lzma2/max
 SolidCompression=yes
 DiskSpanning=no
 OutputDir={#OutputDir}
-OutputBaseFilename=ewald-{#AppVersion}-win64-{#Variant}-setup
+OutputBaseFilename=ewald-{#AppVersion}-win64-setup
 UninstallDisplayIcon={app}\ewald-gui.exe
 SetupIconFile=..\..\src\ewald\assets\icon\ewald.ico
 WizardStyle=modern

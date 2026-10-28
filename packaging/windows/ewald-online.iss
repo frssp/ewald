@@ -138,7 +138,7 @@ begin
     SuppressibleMsgBox('ewald could not be downloaded and installed. Check the internet connection (and a proxy, '
       + 'if your network uses one), then run this setup again.' + #13#10#13#10
       + 'Details are in ' + LogPath + #13#10#13#10
-      + 'Without internet, use the offline installer ewald-{#AppVersion}-win64-cpu-setup.exe from the same release.',
+      + 'Without internet, use the offline installer ewald-{#AppVersion}-win64-setup.exe from the same release.',
       mbError, MB_OK, IDOK);
 end;
 

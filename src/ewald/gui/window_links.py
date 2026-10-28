@@ -471,8 +471,9 @@ class LinksMixin:
                 queue.pop(0)
                 view.run(cell)
 
-    def _install_notebook_packages(self, requirements):
-        """A notebook's bar asked for the pip packages its steps need: pip runs in the Plugins side bar."""
+    def install_packages(self, requirements):
+        """pip install ``requirements`` in the Plugins side bar (it asks first and shows pip's output):
+        what a notebook's steps need, or an optional component from Preferences › Compute."""
         self._show_side_bar(self.plugins_dock)
         self.plugins_panel.install_requirements(requirements)
 

@@ -1040,6 +1040,22 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   online installer alone, dropping the PyInstaller build.
 - **Landed:** public PR #101 (with ewald-mp 0.2, frssp/ewald-plugins PR #30, which no longer needs
   mp-api or pymatgen).
+- **Replaced in part:** the offline GPU installer was dropped by D80 (2026-10-28).
+
+### D80. GPU compute is an installable feature, not a separate Windows build (2026-10-28)
+
+- **Decision:** the Windows standalone app is one build (`ewald-X.Y.Z-win64-setup.exe` and
+  `-portable.zip`) without CuPy. GPU compute installs from the app: Preferences › Compute ›
+  Optional components › Install, or `ewald gpu --install`, pip-installs `cupy-cuda12x[ctk]`
+  (CuPy with the CUDA 12 libraries as wheels) into the Python EWALD runs in, for the standalone
+  app its add-on folder. The online installer keeps its GPU checkbox.
+- **Why:** with pymatgen bundled (D79) the GPU setup.exe and zip grew to about 1.8 GB each. The
+  owner wrote "용략이 작도록 할려면 오프라인 버젼은 좀 손봐야겠네" and asked "Gpu버젼 따로 하지
+  말고 그냥 피쳐 처럼 사용자가 설치하게 해야하나?", then picked "GPU는 설치형 기능으로" on the
+  decision card.
+- **Considered:** keeping the GPU build and dropping CUDA libraries we call rarely (cuSPARSE);
+  keeping both builds as they were.
+- **Landed:** public PR #102.
 
 ## Adding an entry
 

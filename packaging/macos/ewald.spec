@@ -42,6 +42,10 @@ for dist in importlib.metadata.distributions():
 # debugpy: ipykernel imports it optionally, but its vendored pydevd tree breaks when frozen
 excludes = ["tkinter", "ovito", "torch", "tensorflow", "PyQt5", "PyQt6", "PySide2", "debugpy",
             "cupy", "cupyx", "cupy_backends", "nvidia"]
+sys.path.insert(0, os.path.join(HERE, ".."))
+from bundle_excludes import VTK_UNUSED  # noqa: E402  (packaging/bundle_excludes.py)
+
+excludes += VTK_UNUSED
 
 a = Analysis(
     [os.path.join(WIN, "launch_gui.py"), os.path.join(WIN, "launch_cli.py")],
@@ -52,7 +56,9 @@ a = Analysis(
     # keep ewald's .py sources next to the bytecode: numba cache=True locates functions by source file
     # pip runs its own files as scripts (build backend hooks), so pip and setuptools stay plain .py
     module_collection_mode={"ewald": "pyz+py", "pip": "py", "setuptools": "py", "_distutils_hack": "py"},
-    noarchive=False,
+    # bytecode as files in _internal/, shared by both executables: a PYZ archive would be embedded
+    # in each of them (62 MB apiece on Windows with pymatgen and the standard library)
+    noarchive=True,
 )
 pyz = PYZ(a.pure)
 

@@ -172,7 +172,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.plugins_panel.changed.connect(self.panel.refresh_packages)
         self.plugins_panel.themeRequested.connect(self.use_ui_theme)
         self.plugins_panel.restartRequested.connect(self.restart_app)
-        self.panel.pipRequested.connect(self._install_notebook_packages)
+        self.panel.pipRequested.connect(self.install_packages)
         self.panel.switched.connect(self._notebook_switched)
         self._plot_docks = {}  # view id -> (PlotSlot, id, PlotsPanel): cells' plots in the Plots panel
         self._closed_docks = set()  # ... whose tab the user closed (the cell's thumbnail opens it again)
@@ -323,6 +323,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         dlg = prefs.PreferencesDialog(self.settings, self, page=page)
         dlg.applied.connect(lambda s: prefs.apply_settings(self, s))
         dlg.applied.connect(lambda s: self._plugin_event("settings", s))
+        dlg.installRequested.connect(self.install_packages)   # Compute › Optional components › Install
         dlg.exec()
         return dlg
 

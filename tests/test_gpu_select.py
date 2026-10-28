@@ -1,4 +1,7 @@
 """GPU choice on laptops with two GPUs (Windows Graphics settings, Linux PRIME), simulated here."""
+import os
+import sys
+
 import pytest
 
 from ewald import gpu_select
@@ -128,3 +131,42 @@ def test_setting_and_cli(capsys, monkeypatch):
 
     main(["gpu"])
     assert "GPUs: Test GPU" in capsys.readouterr().out
+
+
+def test_gpu_install_runs_pip_for_cupy_with_cuda_wheels(capsys, monkeypatch):
+    """`ewald gpu --install` (D80): the same pip as the Plugins side bar, with cupy-cuda12x[ctk]."""
+    import subprocess
+
+    from ewald import plugin_catalog
+    from ewald.__main__ import main
+
+    calls = []
+    monkeypatch.setattr(subprocess, "run", lambda cmd, env=None: calls.append(cmd) or subprocess.CompletedProcess(cmd, 0))
+    monkeypatch.setattr(gpu_select, "list_gpus", lambda: ["Test GPU"])
+    main(["gpu", "--install"])
+    assert calls == [plugin_catalog.pip_command("install", ["cupy-cuda12x[ctk]"])]
+    assert "Installed" in capsys.readouterr().out
+    monkeypatch.setattr(sys, "platform", "darwin")   # no CUDA on a Mac: nothing to install
+    monkeypatch.setattr(gpu_select, "summary", lambda: "")
+    calls.clear()
+    assert main(["gpu", "--install"]) == 1 and not calls
+
+
+def test_cuda_dll_dirs_finds_the_nvidia_wheels(tmp_path, monkeypatch):
+    """Windows: the bin folders of pip's nvidia-* wheels go on the DLL path before CuPy loads."""
+    from ewald import backend
+
+    for lib in ("cublas", "cuda_runtime"):
+        (tmp_path / "nvidia" / lib / "bin").mkdir(parents=True)
+    (tmp_path / "nvidia" / "cu12").mkdir()               # a folder without bin/ is skipped
+    added_dirs = []
+    monkeypatch.setattr(backend, "_DLL_DIRS", set())
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(backend.os, "add_dll_directory", added_dirs.append, raising=False)
+    monkeypatch.setenv("PATH", "")
+    found = backend.cuda_dll_dirs([str(tmp_path), str(tmp_path / "missing")])
+    assert [os.path.basename(os.path.dirname(d)) for d in found] == ["cublas", "cuda_runtime"]
+    assert added_dirs == found and found[0] in os.environ["PATH"]
+    assert backend.cuda_dll_dirs([str(tmp_path)]) == []   # once per folder
+    monkeypatch.setattr(sys, "platform", "linux")
+    assert backend.cuda_dll_dirs([str(tmp_path)]) == []

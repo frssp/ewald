@@ -16,6 +16,12 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   of a 1M-atom frame with bonds (4.4 s) still run on the GUI thread; the compute worker could
   build the `Scene` too.
 
+- A smaller Windows standalone app (D80 follow-up): setup.exe 204 MB and zip 322 MB (were 294 and
+  396) after leaving out unused VTK modules (`packaging/bundle_excludes.py`) and sharing the
+  bytecode (`noarchive`). The `Size` step of `windows-release.yml` lists what is still big
+  (llvmlite 115 MB, ffmpeg 84 MB, VTK 230 MB, Qt 105 MB). Next candidates: Qt Quick/QML, which
+  nothing uses, and making movie export's ffmpeg an installable component like GPU compute.
+
 ## Next
 
 - Running-cell marks in a kernel notebook: when a cell rebinds `pipe` and the cells below run
@@ -718,10 +724,12 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
-- The frozen Windows app from `windows-release.yml` (CPU and GPU setup.exe, portable zip) on the
-  owner's Windows PC: install, open a VASP/LAMMPS file, render, quit without a crash dialog, and
-  the GPU build with `device="cuda"` on the RTX. CI only runs it on Mesa software OpenGL, where
-  the CLI smoke script crashes on process exit (ignored there).
+- The frozen Windows app from `windows-release.yml` (setup.exe, portable zip) on the owner's
+  Windows PC: install, open a VASP/LAMMPS file, render, quit without a crash dialog. Then GPU
+  compute from Preferences › Compute › Optional components › Install (D80): pip finishes in the
+  Plugins side bar, Compute › Device lists the RTX under CUDA without a restart, and
+  `device="cuda"` runs. CI installs it on a GPU-less runner only (`smoke_gpu.py`) and runs the app
+  on Mesa software OpenGL, where the CLI smoke script crashes on process exit (ignored there).
 - The online installer (D79) on the owner's Windows PC behind the company network: setup downloads
   ewald and its packages (progress lines under the bar), the Start menu entry opens the app without
   a console window, the Plugins side bar installs ewald-mp into that Python, `ewald command prompt`

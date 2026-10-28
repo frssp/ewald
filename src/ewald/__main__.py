@@ -169,6 +169,9 @@ def build_parser():
     gp.add_argument("--prefer", choices=("auto", "high-performance", "power-saving"),
                     help="Windows: run this Python on that GPU from its next start (Graphics settings); "
                          "auto removes the choice")
+    gp.add_argument("--install", action="store_true",
+                    help="install GPU compute: CuPy with the CUDA 12 libraries (about 1.5 GB; needs only an "
+                         "NVIDIA driver), into the standalone app's add-on folder when run from it")
     inv = sub.add_parser("inventory", help="print or update the feature inventory (docs/features.md)")
     inv.add_argument("--output", "-o", default=None, help="rewrite this file, e.g. docs/features.md")
     inv.add_argument("--gui", action="store_true",
@@ -187,6 +190,23 @@ CORE = {"anthropic": "anthropic", "openai": "openai", "mcp": "mcp", "anyio": "mc
 def _gpu_cmd(args):
     from . import gpu_select
 
+    if args.install:
+        import os
+        import subprocess
+
+        from . import plugin_catalog, settings
+
+        reqs = settings.installable("cupy")
+        if not reqs:
+            print("CUDA is not available on macOS; the Metal ray tracer needs no install (docs/user/gpu.md)")
+            return 1
+        cmd = plugin_catalog.pip_command("install", reqs)
+        print(" ".join(cmd))
+        env = {**os.environ, **plugin_catalog.pip_env(reqs)}
+        code = subprocess.run(cmd, env=env).returncode
+        if code:
+            return code
+        print("Installed. An open EWALD window finds it in Preferences › Compute › Device.")
     if args.prefer:
         if sys.platform != "win32":
             print("--prefer sets the Windows Graphics settings choice; elsewhere set EWALD_GPU or "

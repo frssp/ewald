@@ -17,9 +17,5 @@ prefix = str(local / "python")
 plugin_site = sysconfig.get_path("purelib", sysconfig.get_preferred_scheme("prefix"), vars={"base": prefix, "platbase": prefix})
 os.makedirs(plugin_site, exist_ok=True)   # on sys.path from the start, so a plugin pip installs imports at once
 sys.path.append(plugin_site)
-# GPU build: CUDA DLLs from the bundled nvidia-*-cu12 wheels
-nvidia = Path(sys._MEIPASS) / "nvidia"
-if nvidia.is_dir() and hasattr(os, "add_dll_directory"):
-    for b in nvidia.glob("*/bin"):
-        os.add_dll_directory(str(b))
-        os.environ["PATH"] = str(b) + os.pathsep + os.environ.get("PATH", "")
+# GPU compute installed from the app (cupy-cuda12x[ctk] into plugin_site): ewald.backend.cuda_dll_dirs
+# puts the CUDA wheels' DLL folders on the search path before CuPy loads

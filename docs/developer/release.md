@@ -13,7 +13,7 @@ How a version of ewald is cut and what it ships. Platform packaging is in
 | `ewald-X.Y.Z-cp3XX-*-macosx_11_0_{arm64,x86_64}.whl` | `macos-release.yml` | Python 3.10 to 3.13 |
 | `ewald-X.Y.Z-macos-{arm64,x86_64}.dmg` | `macos-release.yml` | EWALD.app, not notarized |
 | `ewald-X.Y.Z-cp3XX-*-win_amd64.whl` | `windows-release.yml` | Python 3.10 to 3.13 |
-| `ewald-X.Y.Z-win64-{cpu,gpu}-setup.exe`, `-portable.zip` | `windows-release.yml` | standalone app with the EWALD icon |
+| `ewald-X.Y.Z-win64-setup.exe`, `-portable.zip` | `windows-release.yml` | standalone app with the EWALD icon; GPU compute installs from the app (D80) |
 | `ewald-X.Y.Z-win64-online-setup.exe` | `windows-release.yml` | private Python 3.12; pip installs this release's cp312 wheel and its dependencies during setup (D79) |
 
 All wheels carry the compiled `ewald._native` (`EWALD_REQUIRE_NATIVE=1` turns a failed C++ build
@@ -72,8 +72,9 @@ user would notice add a line there (what changed, in user terms, with the PR num
    or Actions › Release / Windows release / macOS release › Run workflow, choosing the tag under
    "Use workflow from". Each workflow checks that the tag matches `__version__` and
    fails before building anything if it does not.
-6. Before announcing a GPU build, run a script with `device="cuda"` on an NVIDIA machine with the
-   GPU app (the runners have no GPU).
+6. Before announcing GPU support, install it in the standalone app (Preferences › Compute ›
+   Optional components › Install) on an NVIDIA machine and run a script with `device="cuda"`
+   (the runners have no GPU).
 
 Fixing a bad release: delete the GitHub Release and the tag (`git push origin :refs/tags/vX.Y.Z`),
 fix on main, and tag again. Once anyone has installed it, release `X.Y.(Z+1)` instead.

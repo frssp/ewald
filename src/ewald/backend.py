@@ -8,6 +8,9 @@ either device, so the GPU path is exercised by the same tests as the CPU path.
 """
 from __future__ import annotations
 
+import os
+import sys
+
 import numpy as np
 
 
@@ -38,9 +41,34 @@ class Backend:
 CPU = Backend("cpu", np)
 
 
+_DLL_DIRS: set = set()
+
+
+def cuda_dll_dirs(paths=None) -> list[str]:
+    """Windows: put the ``nvidia/<lib>/bin`` folders of pip's CUDA wheels (``cupy-cuda12x[ctk]``,
+    also when installed into the standalone app's add-on folder) on the DLL search path before
+    CuPy loads, so only an NVIDIA driver is needed. Returns the folders added; elsewhere none."""
+    if sys.platform != "win32" or not hasattr(os, "add_dll_directory"):
+        return []
+    added = []
+    for entry in sys.path if paths is None else paths:
+        nvidia = os.path.join(entry or ".", "nvidia")
+        if not os.path.isdir(nvidia):
+            continue
+        for name in sorted(os.listdir(nvidia)):
+            for b in (os.path.join(nvidia, name, "bin"), os.path.join(nvidia, name, "bin", "x64")):
+                if os.path.isdir(b) and b not in _DLL_DIRS:
+                    os.add_dll_directory(b)
+                    os.environ["PATH"] = b + os.pathsep + os.environ.get("PATH", "")
+                    _DLL_DIRS.add(b)
+                    added.append(b)
+    return added
+
+
 def gpu_available() -> bool:
     """True when CuPy is installed and sees an NVIDIA GPU, so ``device="cuda"`` will run there."""
     try:
+        cuda_dll_dirs()
         import cupy
 
         return cupy.cuda.runtime.getDeviceCount() > 0
@@ -64,10 +92,11 @@ def get_backend(device: str | Backend | None = None) -> Backend:
         return get_backend("cuda") if gpu_available() else CPU
     if device in ("cuda", "gpu"):
         try:
+            cuda_dll_dirs()
             import cupy
         except ImportError as exc:
-            raise RuntimeError("device='cuda' needs CuPy: pip install 'ewald[gpu]' "
-                               "(or cupy-cuda12x matching your CUDA)") from exc
+            raise RuntimeError("device='cuda' needs CuPy: Preferences › Compute › Optional components › "
+                               "Install, or pip install 'ewald[gpu]'") from exc
         if not gpu_available():
             raise RuntimeError("CuPy is installed but no CUDA device was found")
         return Backend("cuda", cupy, raw_kernels=True)

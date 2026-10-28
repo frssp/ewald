@@ -10,8 +10,7 @@ Each release produces three kinds of files, all attached to a GitHub Release whe
 | File | For | Contents |
 |---|---|---|
 | `ewald-X.Y.Z-cp3XX-cp3XX-win_amd64.whl` (3.10 to 3.13) | people with their own Python | the package with the compiled `ewald._native`; `pip install <wheel>[gui,gpu]` |
-| `ewald-X.Y.Z-win64-cpu-setup.exe` and `-portable.zip` | people without Python | standalone app: `ewald-gui.exe` (viewer) and `ewald.exe` (CLI and script runner) |
-| `ewald-X.Y.Z-win64-gpu-setup.exe` and `-portable.zip` | NVIDIA users without Python | the same app with CuPy and the CUDA 12 runtime libraries bundled |
+| `ewald-X.Y.Z-win64-setup.exe` and `-portable.zip` | people without Python, or offline | standalone app: `ewald-gui.exe` (viewer) and `ewald.exe` (CLI and script runner); GPU compute is installed from the app (see CUDA below) |
 | `ewald-X.Y.Z-win64-online-setup.exe` | everyone else without Python (the default) | a private Python; pip downloads ewald and its dependencies during setup (see below) |
 
 The wheels are the main channel for scripting work: they behave exactly like the source install, and
@@ -91,28 +90,43 @@ with that Python.
 
 ## CUDA
 
-The CPU build excludes CuPy; `device="auto"` falls back to NumPy as today.
+There is one standalone app (D80, 2026-10-28). It never bundles CuPy: GPU compute is an
+installable feature. Preferences › Compute › Optional components › *GPU compute (CUDA, NVIDIA)*
+› Install (or `ewald.exe gpu --install`) runs the bundled pip, the same way the Plugins side bar
+installs plugins (`plugin_catalog.pip_command`): `cupy-cuda12x[ctk]` goes into the add-on folder
+`%LOCALAPPDATA%\ewald\python`, with the CUDA 12 libraries as wheels (`cuda-toolkit`: NVRTC, which
+compiles our `RawKernel` neighbor-list source, cuFFT for the MSD FFT, cuBLAS/cuSOLVER for
+`linalg` in the local-order modifiers, cuRAND, cuSPARSE), about 1.5 GB. `ewald.backend.cuda_dll_dirs`
+puts each `nvidia/*/bin` folder on the DLL search path before CuPy loads. The user needs only an
+NVIDIA driver new enough for CUDA 12 (R525 or later); no CUDA Toolkit install.
 
-The GPU build bundles `cupy-cuda12x` and the CUDA 12 runtime wheels it loads at run time
-(`nvidia-cuda-runtime-cu12`, `-cuda-nvrtc-`, `-cufft-`, `-cublas-`, `-curand-`, `-cusolver-`,
-`-cusparse-`). NVRTC is what compiles our `RawKernel` neighbor-list source; cuFFT backs the MSD FFT;
-cuBLAS/cuSOLVER back `linalg` calls in the local-order modifiers. The runtime hook adds each bundled
-`nvidia/*/bin` folder to the DLL search path. The user needs only an NVIDIA driver new enough for
-CUDA 12 (R525 or later); no CUDA Toolkit install. Cost: measured on the first CI build, the CPU
-installer and zip are about 240 MB each, the GPU ones about 1.7 GB each (cuBLAS, cuSOLVER and
-cuSPARSE dominate), close to GitHub's 2 GiB limit per release file. With pymatgen bundled (D79,
-2026-10-28) the CPU setup.exe and zip together are 0.72 GB and the GPU pair 3.6 GB (about 1.8 GB
-each), so the GPU files are within about 0.3 GB of the limit; the online installer with its GPU
-task has no such limit. Dropping libraries we do not
-call (cuSPARSE is only needed for `cupyx.scipy.sparse`) is the first size fix.
+Why not a GPU build: with pymatgen bundled (D79) the GPU setup.exe and zip were about 1.8 GB each,
+within 0.3 GB of GitHub's 2 GiB limit per release file, and most machines that open trajectory
+files have no NVIDIA GPU. The spec bundles the whole standard library (but tkinter, tests and
+the like), so CuPy and plugins that pip installs later find every module they import.
 
-Kept as a separate installer rather than one build because most machines that open trajectory files
-have no NVIDIA GPU, and the CUDA libraries roughly double the download. The GitHub runners have no
-GPU, so CI only checks that the GPU build starts and falls back cleanly; a real GPU check is a manual
-step before tagging (`ewald run` on a script with `device="cuda"`).
+The GitHub runners have no GPU, so CI checks what it can: the `app` job installs GPU compute into
+a scratch add-on folder with `ewald.exe gpu --install`, and `packaging/windows/smoke_gpu.py` checks
+that a new process imports CuPy from there, finds the CUDA DLL folders and falls back to the CPU
+for `device="auto"`. A real GPU check is a manual step before announcing it (`ewald run` on a
+script with `device="cuda"` on an NVIDIA machine). The online installer keeps its GPU checkbox,
+which installs the same packages during setup.
 
 DXA (`ovito`) is not bundled: the `ovito` wheel pins its own PySide6 and is redistributed under its
 own terms. Users who need DXA install it into the add-on folder, or use the wheel install.
+
+## Size
+
+The `Size` step at the end of the `app` job lists the biggest folders and files of the build.
+`packaging/bundle_excludes.py` leaves out the VTK modules nothing imports (`VTK_UNUSED`: the
+VTK-m/Viskores accelerators, CFD/geoscience readers, VR and testing; on Linux 554 MB of VTK
+became 429 MB), and `tests/test_packaging.py` checks that ewald, the GUI and pyvista import none
+of them. The specs build with `noarchive=True`: the bytecode lies as files in `_internal/`, shared
+by `ewald.exe` and `ewald-gui.exe`, where a PYZ archive was embedded in each (62 MB apiece). On
+Linux both changes together took the gzip-compressed folder from 536 MB to 431 MB; on Windows
+(2026-10-28, with the whole standard library now bundled) the setup.exe went from 294 MB to
+204 MB and the zip from 396 MB to 322 MB (the folder is 1.0 GB). Left to look at: Qt modules and translations, and movie export's ffmpeg
+(imageio-ffmpeg, about 80 MB), which could become an installable component like GPU compute.
 
 ## Installer: Inno Setup
 

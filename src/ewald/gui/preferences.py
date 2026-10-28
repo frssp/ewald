@@ -146,6 +146,7 @@ class PreferencesDialog(QtWidgets.QDialog):
     """Edits a copy of ``settings``; Apply/OK copy it back and emit ``applied``."""
 
     applied = QtCore.Signal(object)
+    installRequested = QtCore.Signal(object)   # pip requirements of an optional component (Install button)
     EDITOR_WIDTH = 240
 
     def __init__(self, settings: Settings, parent=None, page: str | None = None):
@@ -936,6 +937,13 @@ class PreferencesDialog(QtWidgets.QDialog):
             lay.addLayout(text, 1)
             if found:
                 lay.addWidget(QtWidgets.QLabel(f"Installed {version}".strip(), objectName="badgeOk"))
+            elif reqs := settings_mod.installable(mod):
+                # pip in the Plugins side bar, also in the standalone app (its add-on folder)
+                install = QtWidgets.QPushButton("Install", objectName="secondary",
+                                                toolTip="pip install " + " ".join(reqs))
+                install.clicked.connect(lambda _=False, r=reqs: self._install_component(r))
+                lay.addWidget(install)
+                lay.addWidget(QtWidgets.QLabel("Not installed", objectName="badgeOff"))
             else:
                 lay.addWidget(QtWidgets.QLabel(cmd, objectName="mono"))
                 copy = QtWidgets.QPushButton("Copy", objectName="secondary", toolTip="Copy the install command")
@@ -943,6 +951,12 @@ class PreferencesDialog(QtWidgets.QDialog):
                 lay.addWidget(copy)
                 lay.addWidget(QtWidgets.QLabel("Not installed", objectName="badgeOff"))
             self.component_rows[mod] = row
+
+    def _install_component(self, requirements):
+        """Install: keep the edits (Apply), close, then pip runs in the Plugins side bar, which asks first."""
+        if self.apply():
+            self.done(QtWidgets.QDialog.Accepted)
+            QtCore.QTimer.singleShot(0, lambda: self.installRequested.emit(list(requirements)))
 
     def _api_key_rows(self, rows):
         """Masked key field, where the key comes from, Test connection and Remove.
