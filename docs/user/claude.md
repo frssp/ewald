@@ -55,7 +55,8 @@ its own arguments, `theme` among them, are for that one picture), `list_visuals`
 (overlays such as the coordinate tripod), `list_styles` (themes and color maps, each marked
 whether it reads in grayscale), `export_file`, `get_script` and `python_api` (the API reference
 for writing cells: the notebook's cell kinds, `show`/`view`/`paint`, every modifier and the modifier plugins
-installed here; the model is told to read it before it writes Python). Plugins add their own tools with
+installed here; the model is told to read it before it writes Python) and `search_api` (the entries
+of that reference matching a few words: the model looks for an existing step before it writes one). Plugins add their own tools with
 `@ai_tool` (also spelled `@claude_tool`; [AI tool plugins](../plugins/tools.md)); the ewald-plumed plugin adds
 `compute_plumed_cvs` and `read_plumed_output` ([PLUMED](plumed.md)).
 

@@ -538,3 +538,84 @@ def api_reference(with_plugins: bool = False) -> str:
     text = "\n".join([GUIDE, recipes_reference(), function_reference(), modifier_reference()])
     plugins_text = plugin_reference() if with_plugins else ""
     return text + ("\n" + plugins_text if plugins_text else "")
+
+
+# ------------------------------------------------------------------------------------------- search
+_WORD = re.compile(r"[A-Za-z][a-z]+|[A-Z]+(?![a-z])|\d+")
+
+
+def _terms(text: str) -> list[str]:
+    """Lower-case search terms: CamelCase and snake_case split (SiteHopping -> site, hopping),
+    a plural or -ing ending dropped, so "hops" finds "hop" and "Hopping"."""
+    out = []
+    for word in _WORD.findall(text):
+        w = word.lower()
+        for end in ("ing", "es", "s"):
+            if len(w) > len(end) + 2 and w.endswith(end):
+                w = w[:-len(end)]
+                break
+        out.append(w)
+    return out
+
+
+def reference_chunks(with_plugins: bool = False) -> list[tuple[str, str]]:
+    """The reference cut into ``(section, text)`` pieces: one per modifier or function entry, one
+    per recipe (its title and cells), one per paragraph of the guide."""
+    chunks, section = [], ""
+    lines = api_reference(with_plugins).splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("#"):
+            section = line.lstrip("# ").strip()
+            i += 1
+        elif line.startswith("```"):
+            end = next((k for k in range(i + 1, len(lines)) if lines[k].startswith("```")), len(lines) - 1)
+            block = "\n".join(lines[i:end + 1])
+            if chunks and chunks[-1][0] == section and not chunks[-1][1].startswith("- `"):
+                chunks[-1] = (section, chunks[-1][1] + "\n" + block)   # a recipe's cells join its title
+            else:
+                chunks.append((section, block))
+            i = end + 1
+        elif line.strip():
+            k = i + 1
+            if line.startswith("- "):    # an entry runs until the next entry, heading or blank line
+                while k < len(lines) and lines[k].strip() and not lines[k].startswith(("- ", "#", "```")):
+                    k += 1
+            else:
+                while k < len(lines) and lines[k].strip() and not lines[k].startswith(("#", "```")):
+                    k += 1
+            chunks.append((section, "\n".join(lines[i:k])))
+            i = k
+        else:
+            i += 1
+    return chunks
+
+
+def search_reference(query: str, limit: int = 6, with_plugins: bool = False) -> list[dict]:
+    """The pieces of the reference that best match ``query`` (BM25 over words; an entry whose name
+    contains a query word ranks first): ``[{"section", "text", "score"}]``, best first."""
+    import math
+
+    chunks = reference_chunks(with_plugins)
+    docs = [_terms(text) for _, text in chunks]
+    names = [_terms(m.group(1)) if (m := re.match(r"- `(\w+)", text)) else [] for _, text in chunks]
+    want = list(dict.fromkeys(_terms(query)))
+    if not want or not docs:
+        return []
+    avg = sum(map(len, docs)) / len(docs)
+    df = {t: sum(t in set(d) for d in docs) for t in want}
+    scored = []
+    for (section, text), doc, name in zip(chunks, docs, names):
+        score = 0.0
+        for t in want:
+            f = doc.count(t)
+            if f:
+                idf = math.log(1 + (len(docs) - df[t] + 0.5) / (df[t] + 0.5))
+                score += idf * f * 2.2 / (f + 1.2 * (0.25 + 0.75 * len(doc) / avg))
+                if t in name:
+                    score += 2 * idf
+        if score > 0:
+            scored.append((score, section, text))
+    scored.sort(key=lambda s: -s[0])
+    return [{"section": s, "text": t, "score": round(sc, 2)} for sc, s, t in scored[:limit]]

@@ -38,7 +38,7 @@ ewald itself shows the chat, does not write a cell.
 
 | What | Effect outside the notebook |
 | --- | --- |
-| The read-only tools (table above, `python_api`, `check_run`, `describe_workflow`, `list_workflows`, `read_plumed_output`, `compute_plumed_cvs` with `keep=false`) | none on your data; they compute on the pipeline or on a copy and return text, tables or images |
+| The read-only tools (table above, `python_api`, `search_api`, `check_run`, `describe_workflow`, `list_workflows`, `read_plumed_output`, `compute_plumed_cvs` with `keep=false`) | none on your data; they compute on the pipeline or on a copy and return text, tables or images |
 | `set_frame` | sets the frame the next tools look at, kept in the toolset only; the view's frame is `set_view frame` (a cell) |
 | `render_image`, `read_plumed_output`, the selection close-up | write PNGs into the AI's work dir, a temporary `ewald-llm-*` folder |
 | Remote paths the AI opens (`host:/path`) | connect over SSH (after you agree, `llm.confirm_hosts`) and may download into ewald's remote cache |
@@ -100,6 +100,7 @@ the next tools look at).
 | `list_visuals`, `list_overlays`, `list_styles` | what can be drawn, and the themes and color maps |
 | `get_script` | the notebook as a script |
 | `python_api` | the API reference: `llms.txt` plus the modifier plugins installed here |
+| `search_api` | the entries of that reference that match a few words (a step for a job, before code is written) |
 | `list_cells`, `read_cell` | cell summaries; one cell's source and outputs (plots as images) |
 | `list_workflows`, `describe_workflow` | workflows of a workflow source; offered only when one is installed ([Workflows](workflows.md)) |
 

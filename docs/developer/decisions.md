@@ -1106,7 +1106,8 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** asking the user before assuming missing metadata; splitting python_api into
   sections; prompt changes only.
 - **Landed:** public PR #110 (`MeanSquaredDisplacement`/`IonicConductivity` `fit_time`, the fitted
-  window as attributes, FindRings without winding rings unless `periodic_rings=True`); the rest follows.
+  window as attributes, FindRings without winding rings unless `periodic_rings=True`); public PR #111
+  (the step-first paragraph in the system prompt and the `search_api` tool); the rest follows.
 
 ## Adding an entry
 
