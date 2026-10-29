@@ -108,7 +108,7 @@ def style(frame, data):
 show(pipe, histogram="Coordination")
 ```
 
-In the GUI the `pipe.add` cell is a step with a parameter form and the time it took, `show(...)` is a
+In the GUI the `pipe.add` cell is a step with its parameters, results and the time it took, `show(...)` is a
 live histogram (drag a range to select those atoms in the Structure view), and the style follows every
 frame of the trajectory. `python cu_void.py` runs the same file without the GUI and draws the plots
 with matplotlib. Every display setting of the Structure view (style, colors, radii, bonds, cell, background,

@@ -1079,6 +1079,19 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** the small fixes with new eval tasks only; a report and no code changes.
 - **Landed:** public PR #104 (the small fixes); the plot API follows.
 
+### D83. Step cells are edited in Python only; the step form is gone (2026-10-29)
+
+- **Decision:** a step cell's header keeps the on/off checkbox, the time, the results and
+  *Python*, and loses *Form* (the parameter form generated from the constructor with its Apply
+  button). Arguments are changed in the cell's code and the cell is run again. A new step
+  (**+ Step**, Insert › Step) and *Edit step* in the View tab's Bonds and Polyhedra cards open the
+  cell's code. `ParameterForm` stays for visual element plugins and overlays.
+- **Why:** asked whether the form was needed beside the Python view, the owner saw a mockup of
+  folding the form under the parameter line and answered "아니 python만으로 가자. 필요없이 복잡해."
+- **Considered:** keeping both buttons; merging them (the parameter line unfolds the form, with or
+  without a shaded background).
+- **Landed:** public PR #107.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

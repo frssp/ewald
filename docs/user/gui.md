@@ -218,8 +218,8 @@ and the status bar says what is missing ([details](formats.md#calculations-that-
 under the cells and the command palette add a
 modifier as a step cell. The cell's checkbox disables it without removing it, Move cell up/down
 reorders it, and its header shows the time it took and, if it failed, its error. A failing step
-is skipped so the view never goes blank. The step's parameter form is generated from the
-modifier's constructor, so every argument you can pass in Python can be edited there. See
+is skipped so the view never goes blank. *Python* shows the step's code, where every argument
+of the modifier is edited; a new step opens with its code shown. See
 [Notebooks](notebooks.md).
 
 **View tab (display settings).** The View tab, next to the Python console below the Structure view
@@ -231,8 +231,8 @@ or painted condition with its count; see [What colors the atoms](rendering.md#wh
 **Types** (color, radius, transparency and count per type, VESTA
 elements.ini import), **Bonds** (sticks, the bond rules A-B / A-* / *-* with a *PBC* choice per rule: on, off, + atoms, *As step* for a Create bonds step; removing the last rule turns bonds off, since an empty table means the automatic one; bonds a Create bonds step made are drawn instead of the rules, so the table is greyed out and *Edit step* opens that step),
 **Polyhedra** (coordination polyhedra: without a step, the center types and *Add polyhedra*, which
-adds a Coordination polyhedra step to the notebook; with one, its centers, *Edit step* to open its
-form, and the look: shown, one color for all, transparency, edges, as
+adds a Coordination polyhedra step to the notebook; with one, its centers, *Edit step* to show its
+cell, and the look: shown, one color for all, transparency, edges, as
 `view(pipe, surfaces={"coordination-polyhedra": {...}})`),
 **Surfaces** (isosurfaces and slices that steps made, by name: shown, color,
 transparency, edges; *Reset* gives back the step's look), **Cell** (line width, *Replicate cell* and
