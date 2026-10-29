@@ -1105,7 +1105,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   full API reference stays one read (D31).
 - **Considered:** asking the user before assuming missing metadata; splitting python_api into
   sections; prompt changes only.
-- **Landed:** public PR #NNN (`MeanSquaredDisplacement`/`IonicConductivity` `fit_time`, the fitted
+- **Landed:** public PR #110 (`MeanSquaredDisplacement`/`IonicConductivity` `fit_time`, the fitted
   window as attributes, FindRings without winding rings unless `periodic_rings=True`); the rest follows.
 
 ## Adding an entry
