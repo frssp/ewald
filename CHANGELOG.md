@@ -28,6 +28,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
   docstring; the system prompt asks for steps before hand-written code and for how much a number
   moves with each analysis choice. Plugins offer functions to cells and to the AI with
   `@api_function`. (D84, #111, #112)
+- `sensitivity(pipe, step, parameter, values, attributes)` tries each value of a step's parameter
+  (a fit window, a cutoff) and returns the step's results per value with their relative spread;
+  Ask AI is told to use it when it reports how a number depends on a choice. (D84, #113)
 
 ### Changed
 

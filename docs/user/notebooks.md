@@ -337,6 +337,17 @@ wrote: after `pipe.add(CoordinationAnalysis(cutoff=3.0))`, `rdf(pipe, cutoff=6)`
 `coordination-rdf (rdf)`. `show(pipe, table="coordination-rdf")` puts the same table
 in a live view cell.
 
+`sensitivity` shows how much a result moves with an analysis choice: it tries each value of one
+parameter of a step, puts the step back as it was, and returns a table of the step's results
+per value, drawn as bars, with the relative spread of each result in its `attributes`:
+
+```python
+from ewald import sensitivity
+s = sensitivity(pipe, "MeanSquaredDisplacement", "fit_time", [(1, 5), (2, 8), (4, 12)],
+                "MeanSquaredDisplacement.diffusion_coefficient.Li")
+s.attributes["sensitivity.spread.MeanSquaredDisplacement.diffusion_coefficient.Li"]   # 0.12: 12 %
+```
+
 **Text cells** are Markdown. Double-click one (or select it and press Enter) to edit it; Esc
 shows it rendered again. Under the cells, **+ Code**, **+ Text**, **+ Step** and **+ Plot** add a
 cell after the current one, in Jupyter's order.

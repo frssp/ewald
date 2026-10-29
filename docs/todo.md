@@ -41,7 +41,8 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   hysteresis, because the reference cut the paragraph that explains it) and plugin functions
   marked `@api_function`. Next (review against related work, 2026-10-29): the steps that match
   the question put into the question itself; research eval graded by subtask, reported analysis
-  choices and cost; analysis choices recorded by steps and a `sensitivity` verb; Li sites from the
+  choices and cost; `sensitivity` is in (more steps could record the choices they make, as the MSD
+  records its fit window); Li sites from the
   time-averaged density and a minimum stay for `SiteHopping`; `@api_function` on the PLUMED
   plugin's functions; whether to keep reading the whole reference first (D31) or load tools
   and reference on demand, decided from an A/B run; analysis metadata (temperature,
