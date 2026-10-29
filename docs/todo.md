@@ -391,10 +391,6 @@ GUI
 - Bond rules: VESTA's recursive molecule search per rule (now "+ atoms" adds one shell of
   partners); rules by atom label or a selection, not only by type; the bond count per rule in
   the Bonds card.
-- One display style per notebook tab: the window keeps a single `ViewStyle`, and a notebook whose
-  view nothing set yet is seeded from it (the previous tab's style). Settings for elements the new
-  structure lacks are dropped now (MgB2's Mg-B bonds no longer reach TiOF2), but theme, radius scale
-  and the rest still carry over between tabs.
 - Replicated cell display: a quick replicate control in the 3D view toolbar or the redesigned
   View tab (now Display panel, View menu, right-click menu and Ctrl+K).
 - Boundary (VESTA): repeat isosurfaces and grid slices over the boundary range too (now only
