@@ -240,7 +240,6 @@ class SelfIntermediateScattering(_TrajectoryModifier):
         self.step = step
         self.unwrapped = unwrapped
         self.only_selected = only_selected
-        self.fit_time = fit_time
 
     def modify(self, data, ctx):
         table, attrs = self._cached(ctx, lambda: self._compute(ctx))
@@ -292,7 +291,6 @@ class NonGaussianParameter(_TrajectoryModifier):
         self.max_origins = max_origins
         self.unwrapped = unwrapped
         self.only_selected = only_selected
-        self.fit_time = fit_time
 
     def modify(self, data, ctx):
         table, attrs = self._cached(ctx, lambda: self._compute(ctx))
