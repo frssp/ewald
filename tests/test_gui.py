@@ -4408,6 +4408,78 @@ def test_notebook_cells_sit_at_the_top(app):
     w.close()
 
 
+def test_notebook_drag_moves_the_selection_and_scrolls(app, monkeypatch):
+    """Dragging a cell's grip moves the whole selection as one block (one undo step), pressing the
+    grip keeps the selection, the drag picture is capped and counts the cells, and holding the drag
+    near the top or bottom edge scrolls the cells."""
+    from PySide6.QtTest import QTest
+
+    from ewald.gui.app import MainWindow
+    from ewald.gui.cell_widget import CELL_MIME, drag_pixmap
+
+    w = MainWindow()
+    w.panel.new_notebook()
+    w.resize(1200, 700)
+    w.show()
+    app.processEvents()
+    view = w.panel.view
+    for k in range(12):
+        view.add_cell("code", "\n".join(f"x{k} = {j}" for j in range(6)))
+    app.processEvents()
+    cells = view.notebook.cells
+    a, b = cells[2], cells[3]
+    view.select(a)
+    view.select(b, extend=True)
+    assert view.selected_cells == [a, b] and view.drag_group(b) == [a, b] and view.drag_group(cells[0]) == [cells[0]]
+
+    started = []                                       # a real press and move on the grip starts a drag
+    monkeypatch.setattr(QtGui.QDrag, "exec", lambda self, *args: started.append(self.mimeData()) or 0)
+    grip = view.widget_for(b).drag_handle
+    view.scroll.ensureWidgetVisible(grip)
+    app.processEvents()
+    p = grip.mapTo(w, grip.rect().center())
+    QTest.mousePress(w.windowHandle(), QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, p)
+    for d in range(2, 40, 4):
+        QTest.mouseMove(w.windowHandle(), p + QtCore.QPoint(0, d))
+        app.processEvents()
+    QTest.mouseRelease(w.windowHandle(), QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, p + QtCore.QPoint(0, 40))
+    assert started and bytes(started[0].data(CELL_MIME)).decode() == b.id
+    assert view.selected_cells == [a, b]               # the press did not collapse the selection
+
+    pix = drag_pixmap(view.widget_for(b).grab(), 2)
+    assert pix.width() / pix.devicePixelRatio() <= 360 and pix.height() / pix.devicePixelRatio() <= 160
+
+    order = list(cells)
+    mime = QtCore.QMimeData()
+    mime.setData(CELL_MIME, b.id.encode())
+    y = view.widgets[-1].geometry().bottom() + 5       # dropped below the last cell
+    drop = QtGui.QDropEvent(QtCore.QPointF(20, y), QtCore.Qt.MoveAction, mime, QtCore.Qt.LeftButton,
+                            QtCore.Qt.NoModifier)
+    assert view.eventFilter(view.container, drop)
+    app.processEvents()
+    assert view.notebook.cells[-2:] == [a, b] and view.notebook.cells[:-2] == [c for c in order if c not in (a, b)]
+    assert [x.cell for x in view.widgets] == view.notebook.cells and view.selected_cells == [a, b]
+    assert view.undo() == "Move cells"
+    app.processEvents()
+    assert [c.source for c in view.notebook.cells] == [c.source for c in order]   # one undo puts both back
+
+    bar = view.scroll.verticalScrollBar()
+    assert bar.maximum() > 0
+    bar.setValue(0)
+    vp = view.scroll.viewport()
+    bottom = view.container.mapFrom(vp, QtCore.QPoint(0, vp.height() - 4)).y()
+    middle = view.container.mapFrom(vp, QtCore.QPoint(0, vp.height() // 2)).y()
+    assert view._drag_scroll_step(middle) == 0 and view._drag_scroll_step(bottom) > 0
+    move = QtGui.QDragMoveEvent(QtCore.QPoint(20, bottom), QtCore.Qt.MoveAction, mime, QtCore.Qt.LeftButton,
+                                QtCore.Qt.NoModifier)
+    assert view.eventFilter(view.container, move) and view._drag_timer.isActive()
+    view._drag_scroll_tick()
+    assert bar.value() > 0 and view.drop_line.isVisible()
+    view.eventFilter(view.container, QtGui.QDragLeaveEvent())
+    assert not view._drag_timer.isActive() and not view.drop_line.isVisible()
+    w.close()
+
+
 def test_notebook_cell_controls_add_bar_and_running_mark(app):
     """Grip and fold show on hover or on the current cell, the add-cell buttons wrap instead of
     clipping at a narrow width, and a cell shows ``*`` while it runs."""

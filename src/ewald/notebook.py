@@ -699,6 +699,24 @@ class Notebook:
         self._reorder()
         self.dirty = True
 
+    def move_cells(self, cells, before: int) -> bool:
+        """Move ``cells`` together, in notebook order, in front of the cell now at ``before``
+        (``len(cells)``: to the end), like a dragged selection; False when nothing moves (a drop
+        inside or next to the block itself)."""
+        block = [c for c in self.cells if any(c is x for x in cells)]
+        if not block:
+            return False
+        before = max(0, min(before, len(self.cells)))
+        rest = [c for c in self.cells if not any(c is b for b in block)]
+        k = sum(1 for c in self.cells[:before] if not any(c is b for b in block))
+        order = rest[:k] + block + rest[k:]
+        if all(a is b for a, b in zip(order, self.cells)):
+            return False
+        self.cells[:] = order
+        self._reorder()
+        self.dirty = True
+        return True
+
     def _reorder(self):
         pipe = self.pipeline
         if pipe is None:
