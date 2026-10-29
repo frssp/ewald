@@ -543,6 +543,8 @@ class _DragHandle(QtWidgets.QLabel):
     def mousePressEvent(self, event):
         if event.button() == QtCore.Qt.LeftButton:
             self._start = event.position().toPoint()
+            event.accept()   # kept here: the cell would take it as a click and drop a selection
+            return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
@@ -558,9 +560,45 @@ class _DragHandle(QtWidgets.QLabel):
         while cell is not None and not isinstance(cell, CellWidget):
             cell = cell.parent()
         if cell is not None:
-            pix = cell.grab()
-            drag.setPixmap(pix.scaledToWidth(min(pix.width(), 360), QtCore.Qt.SmoothTransformation))
+            view = cell.parent()
+            while view is not None and not hasattr(view, "drag_group"):
+                view = view.parent()
+            count = len(view.drag_group(cell.cell)) if view is not None else 1
+            drag.setPixmap(drag_pixmap(cell.grab(), count))
+            drag.setHotSpot(QtCore.QPoint(12, 12))
         drag.exec(QtCore.Qt.MoveAction)
+
+
+def drag_pixmap(pix: QtGui.QPixmap, count: int = 1, width: int = 360, height: int = 160) -> QtGui.QPixmap:
+    """What a dragged cell shows under the pointer: its top, at most ``width`` x ``height`` px,
+    with a badge when ``count`` selected cells move together."""
+    ratio = pix.devicePixelRatio() or 1.0
+    w = min(pix.width(), round(width * ratio))
+    pix = pix.scaledToWidth(w, QtCore.Qt.SmoothTransformation) if pix.width() > w else pix
+    pix = pix.copy(0, 0, pix.width(), min(pix.height(), round(height * ratio)))
+    pix.setDevicePixelRatio(ratio)
+    out = QtGui.QPixmap(pix.size())
+    out.setDevicePixelRatio(ratio)
+    out.fill(QtCore.Qt.transparent)
+    p = QtGui.QPainter(out)
+    p.setOpacity(0.85)
+    p.drawPixmap(0, 0, pix)
+    if count > 1:
+        p.setOpacity(1.0)
+        p.setRenderHint(QtGui.QPainter.Antialiasing)
+        text = f"{count} cells"
+        font = p.font()
+        font.setBold(True)
+        p.setFont(font)
+        box = QtCore.QRectF(p.fontMetrics().boundingRect(text)).adjusted(-8, -3, 8, 3)
+        box.moveTopRight(QtCore.QPointF(pix.width() / ratio - 6, 6))
+        p.setPen(QtCore.Qt.NoPen)
+        p.setBrush(QtGui.QColor(TOKENS["accent"]))
+        p.drawRoundedRect(box, box.height() / 2, box.height() / 2)
+        p.setPen(QtGui.QColor(TOKENS["on_accent"]))
+        p.drawText(box, QtCore.Qt.AlignCenter, text)
+    p.end()
+    return out
 
 
 LIVE_PLOT_HEIGHT = (220, 320)   # px of a live plot under a cell

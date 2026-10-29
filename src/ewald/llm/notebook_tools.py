@@ -474,15 +474,20 @@ def register(ts, access: NotebookAccess):
 
         return access.call(op)
 
-    @T("move_cell", "Move a notebook cell to position 'to' (0-based); the pipeline follows the new order.",
-       _obj({**where, "to": {"type": "integer"}}, ["to"]))
-    def move_cell(to, index=None, id=None):
+    @T("move_cell", "Move a notebook cell to position 'to' (0-based); the pipeline follows the new order. "
+       "With 'count', that many cells from this one on move together, like a dragged selection.",
+       _obj({**where, "to": {"type": "integer"},
+             "count": {"type": "integer", "description": "cells moved as one block (default 1)"}}, ["to"]))
+    def move_cell(to, index=None, id=None, count=1):
         def op():
             nb = need()
             k = find(nb, index, id)
-            cell = nb.cells[k]
-            nb.move(k, int(to))
-            access.changed(nb, "AI: move cell", cell, pipeline=bool(cell.added))
+            block = nb.cells[k:k + max(1, int(count))]
+            to_ = max(0, min(int(to), len(nb.cells) - len(block)))
+            rest = [c for c in nb.cells if not any(c is b for b in block)]
+            nb.move_cells(block, nb.cells.index(rest[to_]) if to_ < len(rest) else len(nb.cells))
+            access.changed(nb, "AI: move cells" if len(block) > 1 else "AI: move cell", block[0],
+                           pipeline=any(c.added for c in block))
             return listing(nb)
 
         return access.call(op)

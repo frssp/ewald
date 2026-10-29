@@ -807,6 +807,11 @@ def test_notebook_tools_read_insert_edit_move_delete(tmp_path):
 
     ts.call("move_cell", {"index": 3, "to": 1})
     assert nb.cells[1].source == "print('hi')"
+    before = [c.source for c in nb.cells]
+    ts.call("move_cell", {"index": 1, "count": 2, "to": 99})            # a block, like a dragged selection
+    assert [c.source for c in nb.cells] == before[:1] + before[3:] + before[1:3]
+    ts.call("move_cell", {"index": len(nb.cells) - 2, "count": 2, "to": 1})
+    assert [c.source for c in nb.cells] == before
     ts.call("delete_cell", {"index": 1})
     assert len(nb.cells) == 3 and ts.call("read_cell", {"index": 9}).is_error
     ts.call("insert_cell", {"source": "# Notes", "kind": "markdown"})
