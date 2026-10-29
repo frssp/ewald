@@ -1057,6 +1057,18 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   keeping both builds as they were.
 - **Landed:** public PR #102.
 
+### D81. Display settings belong to their notebook; a new one starts from the defaults (2026-10-29)
+
+- **Decision:** a notebook whose view nothing set yet starts from the Preferences defaults
+  (Default style, bond radius, bond length factor, radius preset), not from the display style of
+  the tab shown before. Radius scale, theme, colors and the other view settings stay with the
+  notebook they were set in.
+- **Why:** the owner reported "노트북을 새로 여는데 이전 세팅이 적용되서 보임. 기본 세팅이 아니라.
+  예를 들면 atom>radius scale".
+- **Considered:** the earlier behavior, one window style carried into every untouched notebook
+  (only settings for elements the new structure lacks were dropped).
+- **Landed:** public PR #103.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
