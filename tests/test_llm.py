@@ -672,6 +672,23 @@ def test_code_modifiers_need_allow_code(cu_fcc):
     assert "Differences from OVITO" in ref and "`CommonNeighborAnalysis(" in ref
 
 
+def test_search_api_finds_the_step_for_a_job():
+    import json
+
+    from ewald.llm.reference import reference_chunks, search_reference
+
+    first = lambda q: search_reference(q, 1)[0]["text"]
+    assert first("Li site occupancy, hops between sites and residence times").startswith("- `SiteHopping(")
+    assert first("ring statistics of an amorphous network").startswith("- `FindRings(")
+    assert first("isosurface of a charge density grid").startswith("- `CreateIsosurface(")
+    assert search_reference("zzzz qqqq") == []
+    # every reference line is in some piece, and a recipe keeps its title with its cells
+    chunks = reference_chunks()
+    assert any(t.startswith("MD trajectory: diffusion coefficient:") and "```python" in t for _, t in chunks)
+    out = Toolset().call("search_api", {"query": "residence time of hopping ions"}).content
+    assert out["results"][0]["text"].startswith("- `SiteHopping(")
+
+
 def test_python_api_cells_run_as_documented(tmp_path, monkeypatch):
     """The notebook section of the API reference the AI reads: its cell kinds run on the default
     imports and the GUI recognizes them (step and view cells)."""
@@ -927,7 +944,7 @@ def test_failed_cells_lists_errors():
 READ_ONLY_TOOLS = {"describe_frame", "describe_selection", "describe_trajectory", "event_details", "list_modifiers",
                    "show_pipeline", "set_frame", "evaluate_expression", "compute_rdf", "analyze_symmetry",
                    "compute_diffraction", "compute_msd", "check_run", "render_image", "get_view", "list_visuals",
-                   "list_overlays", "list_styles", "get_script", "python_api", "list_cells", "read_cell"}
+                   "list_overlays", "list_styles", "get_script", "python_api", "search_api", "list_cells", "read_cell"}
 WORKFLOW_TOOLS = {"list_workflows", "describe_workflow"}   # read-only; offered with a workflow source (test_workflow.py)
 CELL_WRITING_TOOLS = set(tools_mod.CELL_WRITERS)
 CELL_EDITING_TOOLS = {"insert_cell", "edit_cell", "move_cell", "delete_cell", "run_cell"}
@@ -966,7 +983,7 @@ def test_read_only_tools_change_nothing(cu_file, fake_render):
     calls = {"describe_selection": {"indices": [0], "image": False}, "event_details": {"frame": 1},
              "evaluate_expression": {"expression": "Coordination > 0"}, "compute_rdf": {"cutoff": 4.0},
              "set_frame": {"frame": 2}, "render_image": {"theme": "VESTA", "direction": "x"},
-             "read_cell": {"index": 0}}
+             "read_cell": {"index": 0}, "search_api": {"query": "coordination"}}
     for name in sorted(READ_ONLY_TOOLS):
         r = ts.call(name, calls.get(name, {}))
         assert not r.is_error, (name, r.content)

@@ -1019,6 +1019,20 @@ class Toolset:
 
             return api_reference(with_plugins=True)
 
+        @T("search_api",
+           "Search the ewald API reference (steps, verbs, functions, recipes and the modifier plugins installed "
+           "here) for what does a job, e.g. 'Li site hops residence time' or 'ring statistics'. Returns the best "
+           "matching entries with their signatures and outputs. Call it before you write a Python step or "
+           "hand-written numpy/matplotlib for an analysis, and use the step it finds instead.",
+           _obj({"query": {"type": "string", "description": "what you want to compute or draw, in English words"},
+                 "limit": {"type": "integer", "description": "entries to return (default 6)"}}, ["query"]))
+        def search_api(query, limit=6):
+            from .reference import search_reference
+
+            hits = search_reference(str(query), max(1, min(int(limit), 15)), with_plugins=True)
+            return {"query": query, "results": [{"section": h["section"], "text": h["text"][:1500]} for h in hits],
+                    **({} if hits else {"note": "nothing matched; python_api has the whole reference"})}
+
         @T("list_workflows",
            "Recent workflows (calculations that ran in steps, e.g. AiiDA WorkGraphs, or folders of VASP/LAMMPS/"
            "NEB/phonopy calculations: source 'folders') of a workflow source, newest first: id, kind, formula, "

@@ -34,8 +34,13 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   found notebooks of 80-170 hand-written lines where steps exist (`SiteHopping`, `fes_from_hills`)
   or are missing (time-averaged density grid, polyhedron rotation and tilt, run-label-vs-value
   plots, 2D free energy surfaces). Done: MSD/conductivity `fit_time`, FindRings without rings that
-  wind around the cell. Next: a step-first paragraph in the system prompt and a read-only tool
-  that finds existing steps, re-run against the 16 tasks; analysis metadata (temperature,
+  wind around the cell; a step-first paragraph in the system prompt and `search_api` (Sonnet on
+  15 of the tasks: it searched in 9, found the right entry each time, and the answers that report
+  how a number moves with an analysis choice went from 6 to 9). Found by that run: `SiteHopping`
+  counts every rattle across a site boundary (1942 hops where a 0.7 A core and a 0.2 ps minimum
+  stay give 437), so the model wrote its own; it needs a minimum stay or hysteresis, and Li sites
+  found from the time-averaged density. Plugin functions (`fes_from_hills`) are not in
+  python_api, so neither tool can find them. Next: analysis metadata (temperature,
   timestep, composition) as variables at the top of the notebook; sources without a structure
   (PLUMED HILLS, thermo logs, a table of runs). `StructureFactor` needs a memory bound (100k atoms
   took 325 s and 6.6 GB).
