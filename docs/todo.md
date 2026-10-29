@@ -30,6 +30,16 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   y=[...], layout=...)` drawn by the Plots panel too, shown to the owner as images first, then
   eval tasks that grade "a show() plot cell" rather than a figure.
 
+- Ask AI analysis design (D84): a second probe (16 whole research analyses, Opus and Sonnet 5.5)
+  found notebooks of 80-170 hand-written lines where steps exist (`SiteHopping`, `fes_from_hills`)
+  or are missing (time-averaged density grid, polyhedron rotation and tilt, run-label-vs-value
+  plots, 2D free energy surfaces). Done: MSD/conductivity `fit_time`, FindRings without rings that
+  wind around the cell. Next: a step-first paragraph in the system prompt and a read-only tool
+  that finds existing steps, re-run against the 16 tasks; analysis metadata (temperature,
+  timestep, composition) as variables at the top of the notebook; sources without a structure
+  (PLUMED HILLS, thermo logs, a table of runs). `StructureFactor` needs a memory bound (100k atoms
+  took 325 s and 6.6 GB).
+
 ## Next
 
 - Left from the 2026-10-29 Ask AI probe: atoms hidden with `hide`/`isolate` keep the half-bonds of

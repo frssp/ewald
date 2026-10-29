@@ -182,17 +182,20 @@ class FindRings(Modifier):
 
     A ring counts when it is a shortest-path ring (Franzblau, Phys. Rev. B 44, 4925 (1991)):
     between any two of its atoms, the shorter way around the ring is a shortest path in the
-    whole network. Bonds are taken as a graph, so a chain closing on itself through the periodic
-    boundary counts too. Writes ``tables['ring-size-histogram']`` ('Ring Size', 'Count'),
+    whole network. A chain that closes on itself only through the periodic boundary (its bonds'
+    periodic images do not add up to zero, so it winds around the cell instead of enclosing a
+    region) is not a ring and is left out; ``periodic_rings=True`` keeps it, as OVITO does, and
+    ``FindRings.periodic_rings`` counts how many were left out. Writes ``tables['ring-size-histogram']`` ('Ring Size', 'Count'),
     ``tables['<N>-rings']`` with 'Particle Indices' (one ring per row, starting at its smallest
     index), the per-particle 'Ring Count' and ``FindRings.count.<N>``. OVITO's Find Rings modifier
     finds the same rings, except that it keeps fewer of the near-maximum-size rings that
     differ from another ring of the same size by a smaller ring.
     """
 
-    def __init__(self, minimum_ring_size: int = 4, maximum_ring_size: int = 8):
+    def __init__(self, minimum_ring_size: int = 4, maximum_ring_size: int = 8, periodic_rings: bool = False):
         self.minimum_ring_size = minimum_ring_size
         self.maximum_ring_size = maximum_ring_size
+        self.periodic_rings = periodic_rings
 
     def modify(self, data, ctx):
         bonds = _require_bonds(data, "FindRings")
@@ -200,6 +203,13 @@ class FindRings(Modifier):
         if lo < 3 or hi < lo:
             raise ValueError("ring sizes must satisfy 3 <= minimum_ring_size <= maximum_ring_size")
         rings = shortest_path_rings(bonds.topology, data.count, hi)
+        if getattr(self, "periodic_rings", False):
+            wrapping = set()
+        else:
+            images = bond_images(bonds)
+            wrapping = {r for r in rings if lo <= len(r) and winds_around_cell(r, images)}
+        rings = rings - wrapping
+        data.attributes["FindRings.periodic_rings"] = len(wrapping)
         sizes = np.arange(lo, hi + 1)
         by_size = {n: sorted(r for r in rings if len(r) == n) for n in sizes}
         data.tables["ring-size-histogram"] = {"Ring Size": sizes,
@@ -211,6 +221,25 @@ class FindRings(Modifier):
             data.attributes[f"FindRings.count.{n}"] = len(arr)
             np.add.at(count, arr.ravel(), 1)
         data.particles["Ring Count"] = count
+
+
+def bond_images(bonds) -> dict:
+    """``{(i, j): periodic image of j seen from i}`` for both directions of every bond."""
+    images = {}
+    for (i, j), img in zip(bonds.topology.tolist(), bonds.pbc_images.tolist()):
+        images.setdefault((i, j), img)
+        images.setdefault((j, i), [-v for v in img])
+    return images
+
+
+def winds_around_cell(ring, images) -> bool:
+    """Whether the closed bond path ``ring`` winds around the periodic cell: the periodic images
+    of its bonds (``images`` from :func:`bond_images`), taken in walking order, do not add up to zero."""
+    total = [0, 0, 0]
+    for a, b in zip(ring, ring[1:] + ring[:1]):
+        img = images.get((a, b), (0, 0, 0))
+        total = [t + v for t, v in zip(total, img)]
+    return any(total)
 
 
 def _adjacency(topology, n):
