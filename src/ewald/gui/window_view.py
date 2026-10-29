@@ -2,6 +2,8 @@
 the console) and writes what the user changes in the viewport back into the notebook's view cell."""
 from __future__ import annotations
 
+import weakref
+
 from ..render import apply_camera_state, camera_state, setup_camera
 from ..view3d import SETTINGS, View
 
@@ -13,13 +15,15 @@ _PAGE = {"renderer": "renderer_name", "legend": "legend", "type_legend": "type_l
 
 class ViewSyncMixin:
     _view_seen = None          # (id(view), version) the window applied or wrote last
+    _view_notebook = None      # weak reference to the notebook (or pipeline) whose view that was
     _view_camera = None        # camera settings applied last
     _view_frame = None         # frame setting applied last
     _writing_view = False
 
     def _pending_view(self, data) -> View | None:
         """The pipeline's view when code changed it since the window last looked. A view nothing set
-        yet takes the window's style instead (the Preferences' default style, the last file's colors)."""
+        yet takes the window's style instead; in another notebook that style starts from the defaults
+        (Preferences), so a new notebook never shows the previous one's radius scale or colors."""
         pipe = self.pipeline
         if pipe is None:
             return None
@@ -29,12 +33,35 @@ class ViewSyncMixin:
             self._view_camera = self._view_frame = None
         if key == self._view_seen:
             return None
+        owner = self._view_owner(pipe)
         if not v.version:
-            v.update(**self.style.view_settings(data.types if data is not None else ()))
+            types = data.types if data is not None else ()
+            if owner is not self._last_owner() and not self.__dict__.pop("_keep_style", False):
+                self.style.apply_view(self.default_view(), types)
+            self._view_notebook = weakref.ref(owner)
+            v.update(**self.style.view_settings(types))
             self._view_seen = (id(v), v.version)
             return None
-        self._view_seen = key
+        self._view_seen, self._view_notebook = key, weakref.ref(owner)
         return v
+
+    def _last_owner(self):
+        return None if self._view_notebook is None else self._view_notebook()
+
+    def _view_owner(self, pipe):
+        """The notebook that holds ``pipe`` (the pipeline itself when none does): whose view this is."""
+        panel = getattr(self, "panel", None)
+        for view in (panel.views() if panel is not None and hasattr(panel, "views") else ()):
+            if view.notebook.pipeline is pipe:
+                return view.notebook
+        return pipe
+
+    def default_view(self) -> View:
+        """The view a new notebook starts from: Preferences' Default style, bond radius and length
+        factor and radius preset, everything else at the :mod:`ewald.view3d` defaults."""
+        s = self.settings
+        return View(style=s["viewport.style_preset"], bond_radius=s["bonds.radius"],
+                    bond_factor=s["bonds.length_factor"], radius_preset=s["elements.radius_source"])
 
     def follow_view(self, data) -> bool:
         """Before drawing ``data``: take the display settings of a changed ``pipe.view``. True if it changed."""
@@ -130,6 +157,7 @@ class ViewSyncMixin:
                 self._view_camera = tuple(repr(getattr(v, k)) for k in _CAMERA)
                 self._view_frame = v.frame
         self._view_seen = (id(v), v.version)
+        self._view_notebook = weakref.ref(self._view_owner(self.pipeline))
         view = self.panel.view
         if view is None or view.notebook.pipeline is not self.pipeline:
             return
