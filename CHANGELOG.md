@@ -21,6 +21,8 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- Step cells are edited in Python only: the *Form* button and its generated parameter form are
+  gone; a new step and View › Edit step open the cell's code. (D82, #107)
 - The Windows standalone app is one build, `ewald-X.Y.Z-win64-setup.exe` / `-portable.zip`; the
   separate GPU build (about 1.8 GB per file) is gone, since GPU compute now installs from the app.
   The app bundles the whole standard library, so packages pip installs later find what they

@@ -1080,7 +1080,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   folding the form under the parameter line and answered "아니 python만으로 가자. 필요없이 복잡해."
 - **Considered:** keeping both buttons; merging them (the parameter line unfolds the form, with or
   without a shaded background).
-- **Landed:** public PR #PRNUM.
+- **Landed:** public PR #107.
 
 ## Adding an entry
 
