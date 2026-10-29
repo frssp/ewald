@@ -253,6 +253,11 @@ GUI
   first frame with close contacts; `show(pipe, table="time-series")` also plots the Timestep column,
   so the model drew its own matplotlib plot; it adds a second `GenerateTrajectoryLines` instead of
   editing the first; it ignores "keep the answer short" (answers of 300-500 words with tables).
+- Ranking atoms: "the 5 Li with the largest MSD" is now three steps (per-atom `MSD` from
+  `MeanSquaredDisplacement`, `ExpressionSelection(top=, by=)`, `GenerateTrajectoryLines`; eval task
+  `li-top-msd-paths`). Other rankings an analyst asks for (largest displacement in a time window,
+  per-atom VACF or non-Gaussian parameter, longest residence at a site) have no per-atom property
+  yet, so the model still writes its own code for them.
 - `PythonScript` step cells: `Modifier.__repr__` uses `name`, which PythonScript sets to its title,
   so `step_source` writes `pipe.add(Python script(...))`, which does not parse.
 - UI style (flat buttons, fields, checkboxes and tab close icons in `gui/theme.py`): a few widgets
