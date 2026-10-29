@@ -229,3 +229,14 @@ def test_combine_datasets_merges_particles_and_bonds(topology_and_dump, tmp_path
     piped = Pipeline(StaticSource([extra, extra]), [CombineDatasets(str(path), type_map={1: "H", 2: "O"})])
     merged = piped.compute(1)
     assert merged.count == 8 and sorted(set(merged.types)) == ["Cl", "H", "Na", "O"]
+
+
+def test_particles_answer_ovito_count_and_positions():
+    """Code written the OVITO way (data.particles.count / .positions) reads the same numbers; any
+    dict assigned to particles keeps the shortcuts (the AI writes OVITO code first)."""
+    data = DataCollection(np.zeros((3, 3)), ["Si"] * 3)
+    assert data.particles.count == data.count == 3 and data.particles.positions is data.positions
+    new = data.copy()
+    new.particles = {k: v[:2] for k, v in data.particles.items()}
+    assert new.particles.count == 2 and isinstance(new.particles, dict) and data.count == 3
+    assert DataCollection().particles.count == 0

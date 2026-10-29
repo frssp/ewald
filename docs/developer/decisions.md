@@ -1109,7 +1109,8 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   window as attributes, FindRings without winding rings unless `periodic_rings=True`); public PR #111
   (the step-first paragraph in the system prompt and the `search_api` tool); public PR #112 (whole
   docstrings in `search_api`, plugin functions in the reference); public PR #113 (`sensitivity()`);
-  public PR #114 (the matching steps carried in each question); the rest follows.
+  public PR #114 (the matching steps carried in each question); public PR #116
+  (OVITO's `data.particles.count`/`.positions`); the rest follows.
 
 ## Adding an entry
 

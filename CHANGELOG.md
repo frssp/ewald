@@ -10,6 +10,8 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- `data.particles.count` and `data.particles.positions` work as in OVITO (read-only shortcuts for
+  `data.count` and `data.positions`): the AI wrote them in 11 of 69 eval tasks. (D84, #116)
 - NumPy `.npz` trajectories are read and written built in (`positions`, `types`/`numbers`, `cell`,
   per-atom and per-frame arrays such as `forces` and `energies`; group "npz"). (D78, #100)
 - Windows online installer `ewald-X.Y.Z-win64-online-setup.exe`: a private Python into which setup
