@@ -48,7 +48,7 @@ _NAMES = {
     "modifier": "ewald.plugins", "reader": "ewald.plugins", "writer": "ewald.plugins",
     "visual": "ewald.plugins", "overlay": "ewald.plugins", "colormap": "ewald.plugins",
     "theme": "ewald.plugins", "ui_theme": "ewald.plugins", "ai_tool": "ewald.plugins",
-    "claude_tool": "ewald.plugins", "ai_provider": "ewald.plugins",
+    "claude_tool": "ewald.plugins", "ai_provider": "ewald.plugins", "api_function": "ewald.plugins",
     "panel": "ewald.plugins", "menu_item": "ewald.plugins", "PlotTarget": "ewald.plugins",
     # settings pages
     "settings_page": "ewald.plugins", "SettingsField": "ewald.plugins", "plugin_settings": "ewald.plugins",

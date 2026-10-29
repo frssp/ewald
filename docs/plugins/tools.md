@@ -58,6 +58,23 @@ count_short_contacts = "my_plugin.tools:count_short_contacts"
 
 `ewald plugins` lists the tools of each plugin, and switching a plugin off removes them.
 
+## Functions for notebook cells
+
+Most of what a plugin offers is a modifier (a step) or a tool. A plain function that cells call,
+such as a free energy surface from PLUMED hills, is invisible to the AI unless the plugin says
+so: mark it with `@api_function`, and Ask AI's API reference (`python_api`) lists it with its
+signature, the first paragraph of its docstring and its import line, and `search_api` finds it
+with its whole docstring. The model then calls it in a cell instead of writing its own.
+
+```python
+from ewald.plugin_api import api_function
+
+
+@api_function
+def fes_from_hills(hills, bins=None, *, kt: float = 2.5):
+    """Free energy surface from metadynamics hills, like ``plumed sum_hills``."""
+```
+
 ## AI providers
 
 An AI provider plugin adds a service to Preferences › AI › Provider (and to `--provider`,

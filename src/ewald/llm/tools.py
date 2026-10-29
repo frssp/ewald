@@ -1030,7 +1030,7 @@ class Toolset:
             from .reference import search_reference
 
             hits = search_reference(str(query), max(1, min(int(limit), 15)), with_plugins=True)
-            return {"query": query, "results": [{"section": h["section"], "text": h["text"][:1500]} for h in hits],
+            return {"query": query, "results": [{"section": h["section"], "text": h["text"][:4000]} for h in hits],
                     **({} if hits else {"note": "nothing matched; python_api has the whole reference"})}
 
         @T("list_workflows",
