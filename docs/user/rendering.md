@@ -40,7 +40,7 @@ View tabs are more views of the same pipeline, each the main view with its own c
 `snapshot(pipe, tab="Top")` draws it.
 
 Every color, in view settings (`colors`, `background`, `cell_color`, `selection`, `labels`,
-`surfaces`), in steps (`AssignColor`, `VectorVis`, `paint`, ...) and in the GUI's step forms, takes
+`surfaces`), in steps (`AssignColor`, `VectorVis`, `paint`, ...), takes
 the same forms (`ewald.colors`): a matplotlib or CSS name in any case (`"red"`, `"Crimson"`,
 `"tab:blue"`), hex with or without `#` (`"#ff8800"`, `"#f80"`, `"ff8800"`), `"rgb(255, 128, 0)"`,
 a grey level `"0.5"`, or three numbers in 0..1 or 0..255 (`(1, 0.5, 0)`, `(255, 128, 0)`, also as

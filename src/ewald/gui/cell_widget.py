@@ -1,4 +1,4 @@
-"""One notebook cell in the window: :class:`CellWidget` (gutter, editor, step form, outputs)
+"""One notebook cell in the window: :class:`CellWidget` (gutter, editor, step header, outputs)
 with its :class:`OutputArea`, result chips and mini plots."""
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ from . import header
 from .code_editor import CodeEditor, OutputText, mono_font
 from .icons import icon
 from .palette import native_text
-from .params import ParameterForm
 from .theme import TOKENS
 
 
@@ -860,7 +859,7 @@ class CellWidget(QtWidgets.QFrame):
 
     runRequested = QtCore.Signal(object, bool)   # cell, advance
     selected = QtCore.Signal(object)
-    edited = QtCore.Signal(object)               # a step's form changed its modifier
+    edited = QtCore.Signal(object)               # a step's checkbox or a view's plot rewrote the cell
     # cell, 'up' | 'down' | 'delete' | 'code' | 'below' | 'clear' | 'kind:code' | 'kind:markdown' |
     # 'above' | 'after' (insert a code cell) | 'ask' | 'frames:...'
     actionRequested = QtCore.Signal(object, str)
@@ -871,7 +870,6 @@ class CellWidget(QtWidgets.QFrame):
         self.notebook = notebook
         self.cell = cell
         self.editor = None
-        self.form = None
         self.plot_panel = None
         self.built_for = _shape(cell)
         self.setObjectName("cell")
@@ -1235,34 +1233,14 @@ class CellWidget(QtWidgets.QFrame):
         head.addStretch()
         self.timing = QtWidgets.QLabel(objectName="muted")
         head.addWidget(self.timing)
-        self.form_button = QtWidgets.QToolButton(text="Form", checkable=True, objectName="segment")
         self.code_button = QtWidgets.QToolButton(text="Python", checkable=True, objectName="segment")
-        group = QtWidgets.QButtonGroup(self)
-        group.setExclusive(False)
-        self.form_button.toggled.connect(lambda on: self._show_page("form" if on else None))
-        self.code_button.toggled.connect(lambda on: self._show_page("code" if on else None))
-        head.addWidget(self.form_button)
+        self.code_button.toggled.connect(self.show_code)
         head.addWidget(self.code_button)
         self.body.addLayout(head)
         self.summary = QtWidgets.QLabel(objectName="stepSummary")
         self.summary.setFont(mono_font())
         self.summary.setWordWrap(True)
         self.body.addWidget(self.summary)
-        self.form_page = QtWidgets.QWidget()
-        fl = QtWidgets.QVBoxLayout(self.form_page)
-        fl.setContentsMargins(0, 0, 0, 0)
-        if mod is not None:
-            doc = (type(mod).__doc__ or "").strip().split("\n\n")[0]
-            if doc:
-                fl.addWidget(QtWidgets.QLabel(" ".join(doc.replace("``", "").split()), wordWrap=True, objectName="muted"))
-            self.form = ParameterForm(mod)
-            fl.addWidget(self.form)
-            apply = QtWidgets.QPushButton(native_text("Apply  (Ctrl+Enter)"), objectName="primary")
-            apply.clicked.connect(self._apply_form)
-            QtGui.QShortcut(QtGui.QKeySequence("Ctrl+Return"), self.form_page, activated=self._apply_form)
-            fl.addWidget(apply, 0, QtCore.Qt.AlignLeft)
-        self.form_page.setVisible(False)
-        self.body.addWidget(self.form_page)
         self.editor = CodeEditor(self.cell.source)
         self.editor.escaped.connect(self.leave_editor)
         self.editor.setVisible(False)
@@ -1377,16 +1355,14 @@ class CellWidget(QtWidgets.QFrame):
             self.editor.blockSignals(False)
         self.edited.emit(self.cell)
 
-    def _show_page(self, page):
-        for b, name in ((self.form_button, "form"), (self.code_button, "code")):
-            b.blockSignals(True)
-            b.setChecked(page == name)
-            b.blockSignals(False)
-        self.form_page.setVisible(page == "form")
-        self.editor.setVisible(page == "code")
-        if page == "code":
+    def show_code(self, on: bool = True):
+        """Show or hide a step cell's Python (+ Step and View › Edit step open it)."""
+        self.code_button.blockSignals(True)
+        self.code_button.setChecked(on)
+        self.code_button.blockSignals(False)
+        if on and not self.editor.isVisible():
             self.editor.setPlainText(self.cell.source)
-        self.summary.setVisible(page != "form")
+        self.editor.setVisible(on)
 
     def _toggle_enabled(self, on):
         mod = self.cell.modifier
@@ -1394,13 +1370,6 @@ class CellWidget(QtWidgets.QFrame):
             mod.enabled = on
             self.notebook.update_step(self.cell)
             self.edited.emit(self.cell)
-
-    def _apply_form(self):
-        if self.form is None:
-            return
-        self.form.apply()
-        self.notebook.update_step(self.cell)
-        self.edited.emit(self.cell)
 
     # ----------------------------------------------------------- state
     def update_state(self, data=None):
@@ -1470,7 +1439,7 @@ class CellWidget(QtWidgets.QFrame):
 
     def show_live_outputs(self):
         """The outputs of this cell while it runs: everything for a code cell; for a step or a
-        view cell what it printed, its errors and progress bars (its form or plot is the rest)."""
+        view cell what it printed, its errors and progress bars (its header or plot is the rest)."""
         c = self.cell
         outs = list(c.outputs)
         if c.is_step or c.is_view:
