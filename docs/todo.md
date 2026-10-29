@@ -24,6 +24,11 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 
 ## Next
 
+- ASE/pymatgen as the main tools inside steps (owner, 2026-10-29: record only): keep the pipeline
+  and OVITO names, but teach the AI (llms.txt recipes) to do structure changes and crystallography
+  (primitive cell, supercell, symmetry) with `to_pymatgen()`/`to_ase()` inside `@pipe.add` steps,
+  add eval tasks that check such cells stay reproducible steps, and lead the README with "a pipeline
+  you mix with ASE and pymatgen" rather than OVITO compatibility.
 - Comparison plots in the GUI's Plots panel (D82): `show(..., frame=[...], y=[...], layout=...)`
   draws several frames or columns, but in the GUI it stays a fixed image under the cell. Drawing
   it as a live plot there (zoom written back into the cell, a range selecting atoms in the frames
