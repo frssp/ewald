@@ -22,16 +22,12 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   (llvmlite 115 MB, ffmpeg 84 MB, VTK 230 MB, Qt 105 MB). Next candidates: Qt Quick/QML, which
   nothing uses, and making movie export's ffmpeg an installable component like GPU compute.
 
-- Comparison plots for Ask AI (D82): a researcher-style probe of Ask AI (2026-10-29, 28 tasks plus
-  8 whole analyses with Opus and Sonnet 5.5) found no wrong numbers, but about half the plots were
-  hand-written matplotlib because `show()` draws one table of one frame on one axis: several frames
-  over each other (g(r) of the first and last frame) and one panel per column (partial g(r)) are
-  missing, and such plots lose the GUI's live, linked plot. Next: `show(..., frame=[...],
-  y=[...], layout=...)` drawn by the Plots panel too, shown to the owner as images first, then
-  eval tasks that grade "a show() plot cell" rather than a figure.
-
 ## Next
 
+- Comparison plots in the GUI's Plots panel (D82): `show(..., frame=[...], y=[...], layout=...)`
+  draws several frames or columns, but in the GUI it stays a fixed image under the cell. Drawing
+  it as a live plot there (zoom written back into the cell, a range selecting atoms in the frames
+  it shows) needs the panel to hold several series and panels.
 - Left from the 2026-10-29 Ask AI probe: atoms hidden with `hide`/`isolate` keep the half-bonds of
   their visible neighbours (stubs pointing at nothing) and their type stays in the legend, a
   render change to show the owner as images; no primitive/standardized cell step (both models

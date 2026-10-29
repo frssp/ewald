@@ -154,12 +154,16 @@ check_run, run_info, arrhenius` (from `ewald`); import anything else in the cell
   (body sees `frame`, `data`) or `[all frames]` (`frames`, `data`), or a function under
   `@pipe.add` and `@each_frame` / `@all_frames` (also runs as a plain script).
 - view cell: exactly one `view(pipe, ...)` call (the 3D view, see below) or one `show(...)` call (a plot).
-- `show(pipe, table=None, y=None, histogram=None, frame=0, bins=50, xlim=None, ylim=None, panel=None, save=None)` plots any
+- `show(pipe, table=None, y=None, histogram=None, frame=0, bins=50, xlim=None, ylim=None, layout=None, panel=None, save=None)` plots any
   `data.tables` key (`"coordination-rdf"`, `"structure-factor"`, `"diffraction"`, `"msd"`, `"DOS"`, `"Bands"`, `"Steps"`
   (thermo), ...; `y=` one column) or a histogram of a particle property (`histogram="Coordination"`). In the GUI it is a
   live plot linked to the 3D view; `panel=True`/`False` puts it in the Plots panel or under the cell. `xlim`/`ylim` set
   the range (`xlim=(-3, 3)` for a DOS window); `save="rdf.pdf"` writes it. `show(pipe)` with no table or histogram is a
   picture of the structure, not a plot. `ewald.views.figure(...)` returns the matplotlib Figure instead.
+- Comparisons go through `show` too, not hand-written matplotlib: `frame=[0, 5, -1]` draws a table (one column, pick it
+  with `y=`) or a histogram of each frame (shared bins), `y=["Cu-Cu", "Cu-Zr"]` several columns of one frame (column
+  names or their legend labels); `layout="overlay"` (default, one axis), `"offset"` (waterfall) or `"stack"` (panels
+  sharing x). A comparison is a fixed figure in the GUI (not linked, does not follow the frame).
 - `snapshot(pipe, frame=None, **render_kwargs)` (`from ewald.views import snapshot`) as a cell's last line shows a
   picture of the 3D view.
 - `paint(data, where, color)`, `hide(data, where)`, `isolate(data, where)`, `fade(data, where, transparency=0.7)`,

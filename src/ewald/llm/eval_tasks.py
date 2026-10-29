@@ -203,6 +203,51 @@ def _shows(table):
     return lambda nb: any(c.kind == "code" and "show(" in c.source and table in c.source for c in nb.cells)
 
 
+
+def _show_kwargs(nb) -> list[dict]:
+    """The literal keyword arguments of every ``show(...)`` call in ``nb``'s code cells."""
+    import ast
+
+    out = []
+    for c in nb.cells:
+        if c.kind != "code":
+            continue
+        try:
+            tree = ast.parse(c.source)
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", None) == "show":
+                kw = {}
+                for k in node.keywords:
+                    try:
+                        kw[k.arg] = ast.literal_eval(k.value)
+                    except ValueError:
+                        kw[k.arg] = None
+                out.append(kw)
+    return out
+
+
+def _compares(frames=None, columns=None, layout=None):
+    """A ``show(...)`` call compares ``frames`` (each a set of accepted indices, e.g. {9, -1}) or
+    ``columns`` (count) with ``layout``, through show() rather than hand-written matplotlib."""
+    def check(nb):
+        if any("plt." in c.source or "matplotlib.pyplot" in c.source for c in nb.cells if c.kind == "code"):
+            return False
+        for kw in _show_kwargs(nb):
+            got = kw.get("frame")
+            if frames is not None and not (isinstance(got, (list, tuple)) and len(got) == len(frames)
+                                           and all(g in ok for g, ok in zip(got, frames))):
+                continue
+            y = kw.get("y")
+            if columns is not None and not (isinstance(y, (list, tuple)) and len(y) == columns):
+                continue
+            if layout is not None and kw.get("layout") != layout:
+                continue
+            return True
+        return False
+    return check
+
 def _cell_count(nb) -> int:
     return len(nb.cells)
 
@@ -534,6 +579,20 @@ TASKS: list[Task] = [
          solution=[("add_modifier", {"name": "CommonNeighborAnalysis"}),
                    ("insert_cell", {"source": "# %% hide fcc [each frame]\nhide(data, 'StructureType == 1')"})],
          answer="Done."),
+    Task("recipe-compare-frames", "Compare the g(r) of the first and the last frame on one plot.", CU,
+         [Cells(_compares(frames=[{0}, {9, -1}]), name="show(frame=[0, -1])"), Cells(error_cells, 0, name="cells with errors")],
+         category="recipe", allow_code=True, setup=_RDF_CELLS,
+         solution=[("insert_cell", {"source": "show(pipe, table='coordination-rdf', frame=[0, -1])"}),
+                   ("run_cell", {"index": -1})], answer="Done."),
+    Task("recipe-partials-stack", "Plot the Cu-Cu, Cu-Zr and Zr-Zr partial g(r) in separate panels, one above the "
+         "other.", CUZR,
+         [Cells(_compares(columns=3, layout="stack"), name="show(y=[3 partials], layout='stack')"),
+          Cells(error_cells, 0, name="cells with errors")],
+         category="recipe", allow_code=True,
+         solution=[("add_modifier", {"name": "CoordinationAnalysis", "params": {"cutoff": 6.0, "partial": True}}),
+                   ("insert_cell", {"source": "show(pipe, table='coordination-rdf', y=['Cu-Cu', 'Cu-Zr', 'Zr-Zr'], "
+                                              "layout='stack')"}),
+                   ("run_cell", {"index": -1})], answer="Done."),
 
     # ---------------------------------------------------------- plugins (examples/plugins)
     Task("plugin-modifier", "A local composition plugin is installed. Use it to find the average fraction of Zr "

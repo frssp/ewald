@@ -239,6 +239,52 @@ def test_show_of_the_pipeline_is_marked_for_a_live_plot(tmp_path):
     assert again.cells[1].outputs[1].view == live.view and again.cells[1].outputs[1].data == live.data
 
 
+
+def test_show_compares_frames_and_columns_as_a_fixed_figure():
+    pytest.importorskip("matplotlib")
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    from ewald import examples, load
+    from ewald.modifiers import CoordinationAnalysis
+    from ewald.views import compare_data, figure, show, view_args
+
+    pipe = load(examples.path("Cu_md.extxyz"))
+    pipe.add(CoordinationAnalysis(cutoff=3.0))
+    title, x, series = compare_data(pipe, "coordination-rdf", frame=[0, -1])
+    assert title == "coordination-rdf" and x == "r" and [s[0] for s in series] == ["frame 0", "frame 9"]
+    assert np.allclose(series[1][2], pipe.compute(9).tables["coordination-rdf"]["g(r)"])
+    _, _, hist = compare_data(pipe, histogram="Coordination", frame=[0, 9])
+    assert np.array_equal(hist[0][1], hist[1][1])                         # the same bins for both
+    assert hist[0][2].sum() == pipe.compute(0).count
+    for layout, axes in (("overlay", 1), ("offset", 1), ("stack", 2)):
+        plot = show(pipe, table="coordination-rdf", frame=[0, 9], layout=layout)
+        assert len(plot.figure.axes) == axes
+    assert len(plot.figure.axes[0].get_lines()) == 1
+    assert len(figure(pipe, histogram="Coordination", frame=[0, 5, 9]).axes[0].get_lines()) == 3
+
+    cz = load(examples.path("CuZr.data"))
+    cz.add(CoordinationAnalysis(cutoff=4.0, partial=True))
+    _, _, cols = compare_data(cz, "coordination-rdf", y=["Cu-Cu", "g(r) Cu-Zr"])   # legend label or name
+    assert [s[3] for s in cols] == ["g(r) Cu-Cu", "g(r) Cu-Zr"]
+    with pytest.raises(KeyError, match="this table has"):
+        compare_data(cz, "coordination-rdf", y=["Cu-Al"])
+    with pytest.raises(ValueError, match="give y="):
+        compare_data(cz, "coordination-rdf", frame=[0, 0])
+    with pytest.raises(ValueError, match="not both"):
+        compare_data(pipe, "coordination-rdf", y=["g(r)", "g(r)"], frame=[0, 1])
+    with pytest.raises(IndexError, match="10 frames"):
+        compare_data(pipe, "coordination-rdf", frame=[0, 10])
+    with pytest.raises(ValueError, match="unknown layout"):
+        show(pipe, table="coordination-rdf", frame=[0, 1], layout="grid")
+    # a comparison is not a live plot cell of the GUI
+    assert view_args("show(pipe, table='coordination-rdf', frame=[0, -1])") is None
+    assert view_args("show(pipe, table='DOS', y=['Ga s', 'Ga p'])") is None
+    assert view_args("show(pipe, table='coordination-rdf', layout='stack')") is None
+    plt.close("all")
+
 def test_plots_go_to_the_plots_panel_when_they_change_with_the_frame_or_are_linked():
     from ewald import examples, load
     from ewald.data import DataCollection
