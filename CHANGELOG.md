@@ -28,6 +28,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
   docstring; the system prompt asks for steps before hand-written code and for how much a number
   moves with each analysis choice. Plugins offer functions to cells and to the AI with
   `@api_function`. (D84, #111, #112)
+- Ask AI's questions carry the steps and functions of ewald that match their words (signature and
+  first sentence, paths and file names left out), so the model starts from them rather than from
+  its own code; Preferences › Notebook › Show the AI related steps (`llm.related_steps`). (D84, #114)
 - `sensitivity(pipe, step, parameter, values, attributes)` tries each value of a step's parameter
   (a fit window, a cutoff) and returns the step's results per value with their relative spread;
   Ask AI is told to use it when it reports how a number depends on a choice. (D84, #113)

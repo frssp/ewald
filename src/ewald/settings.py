@@ -282,6 +282,10 @@ OPTIONS = (
            "insert: each Python block the AI chat writes becomes a new notebook cell right away (not run; "
            "Ctrl+Z removes it). button: the block gets a + Insert as cell button instead.",
            choices=("insert", "button")),
+    Option("llm.related_steps", True, "Show the AI related steps",
+           "Each question goes to the AI with the steps and functions of ewald's API reference that match "
+           "its words (names, signatures, first sentences), so the AI uses them instead of writing its own "
+           "code."),
     Option("llm.run_cells", False, "Let the AI run cells",
            "The AI chat can read, insert and edit notebook cells; with this on it can also run them (any "
            "Python, like Shift+Enter). Off: cells it writes wait until you run them."),

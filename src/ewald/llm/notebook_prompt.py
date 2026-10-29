@@ -87,10 +87,43 @@ def view_part(view: str) -> str:
     return f"The 3D view now shows: {view}"
 
 
+_PATHISH = re.compile(r"\S*[/\\]\S*|\S+\.(?:gz|xyz|extxyz|cif|dat|yaml|csv|lammpstrj|h5)\b", re.I)
+
+
+def related_part(question: str, limit: int = 4) -> str:
+    """The steps and functions of the API reference that match ``question``'s words (paths and file
+    names left out), one line each, as a question carries them ('' when nothing matches)."""
+    from .reference import FUNCTIONS, _documented, _first_sentence, _doc, _signature, search_reference
+
+    from .. import modifiers
+    from ..notebook import IMPORTS
+
+    imported = set(re.findall(r"\w+", IMPORTS)) | set(modifiers.__all__)
+    home = {name: module for module, names in FUNCTIONS for name in names}
+    lines = []
+    hits = search_reference(_PATHISH.sub(" ", question), 3 * limit, with_plugins=True)
+    for hit in hits:
+        if hit["score"] < max(6.0, 0.5 * hits[0]["score"]):   # weak matches are noise ("again")
+            break
+        m = re.match(r"- `(\w+)\(", hit["text"])
+        obj = _documented(m.group(1)) if m else None
+        if obj is None:
+            continue
+        doc = _first_sentence(_doc(obj))
+        where = "" if m.group(1) in imported else f" (from {home.get(m.group(1), obj.__module__)} import {m.group(1)})"
+        lines.append(f"- `{m.group(1)}{_signature(obj)}`{where}" + (f": {doc}" if doc else ""))
+        if len(lines) == limit:
+            break
+    if not lines:
+        return ""
+    return ("Steps and functions of ewald that may do this (search_api returns their whole docstrings; use "
+            "them rather than your own code where they fit):\n" + "\n".join(lines))
+
+
 def code_blocks(text: str) -> list[str]:
     """The Python code blocks of a Markdown answer (fenced as python, py or untagged)."""
     return [m.group(1).rstrip() + "\n" for m in _CODE_BLOCK.finditer(text) if m.group(1).strip()]
 
 
 __all__ = ["CODE_CELLS_NOTE", "MAX_NOTEBOOK", "NOTEBOOK_NOTE", "RUN_CELLS_NOTE", "code_blocks", "errors_part",
-           "notebook_part", "notebook_system", "view_part"]
+           "notebook_part", "notebook_system", "related_part", "view_part"]

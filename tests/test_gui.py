@@ -2037,6 +2037,10 @@ def test_ask_panel_sends_the_color_rule(app, pipe):
     assert panel._notebook_prompt("again") == "again"            # unchanged: not sent twice
     shown["text"] = "Atoms have their particle type colors: Cu #c88033."
     assert "particle type colors" in panel._notebook_prompt("and now?")
+    # with Show the AI related steps on, each question also carries the steps matching its words
+    panel.related = lambda: True
+    asked = panel._notebook_prompt("count the Li hops between sites")
+    assert "- `SiteHopping(" in asked and asked.endswith("count the Li hops between sites")
 
 
 def test_display_panel_colors_card(app, pipe):

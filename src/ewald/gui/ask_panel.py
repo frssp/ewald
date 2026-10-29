@@ -33,7 +33,8 @@ from .pipeline_panel import FitWidthScrollArea as _FitWidthScrollArea
 from . import workers
 from .theme import TOKENS
 from ..llm.notebook_prompt import (CODE_CELLS_NOTE, NOTEBOOK_NOTE, RUN_CELLS_NOTE, code_blocks,  # noqa: F401
-                                    errors_part, notebook_part, notebook_system, view_part)
+                                    errors_part, notebook_part, notebook_system, related_part,
+                                    view_part)
 
 _SETUP_HINT = "Choose the AI provider and enter its API key under Edit › Preferences › AI."
 
@@ -120,6 +121,14 @@ def run_cells(settings) -> bool:
         return bool(settings["llm.run_cells"])
     except Exception:
         return False
+
+
+def related_steps(settings) -> bool:
+    """Preferences › AI › Show the AI related steps."""
+    try:
+        return bool(settings["llm.related_steps"])
+    except Exception:
+        return True
 
 
 def code_cells_mode(settings) -> str:
@@ -559,7 +568,7 @@ class AskPanel(QtWidgets.QWidget):
                  notebook: Callable[[], str | None] | None = None, notebook_access=None,
                  auto_insert: Callable[[], bool] | None = None, errors: Callable[[], str | None] | None = None,
                  view: Callable[[], str | None] | None = None, current: Callable[[], object] | None = None,
-                 run_inserted: Callable[[], bool] | None = None):
+                 run_inserted: Callable[[], bool] | None = None, related: Callable[[], bool] | None = None):
         super().__init__(parent, objectName="chatPanel")
         self.context = context
         self.agent_factory = agent_factory
@@ -567,6 +576,7 @@ class AskPanel(QtWidgets.QWidget):
         self.notebook_access = notebook_access
         self.auto_insert = auto_insert
         self.run_inserted = run_inserted
+        self.related = related
         self.errors = errors
         self.view = view
         self.current = current
@@ -829,6 +839,10 @@ class AskPanel(QtWidgets.QWidget):
         if view and view != conv.sent_view:
             conv.sent_view = view
             parts.append(view_part(view))
+        if self.related is not None and _safe(self.related):
+            related = related_part(question)
+            if related:
+                parts.append(related)
         return "\n\n".join(parts + [question])
 
     def _access(self, key):

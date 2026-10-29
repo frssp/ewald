@@ -39,12 +39,11 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   how a number moves with an analysis choice went from 6 to 9); `search_api` returns whole
   docstrings (the model found `SiteHopping`, got 1942 hops without `site_radius` and wrote its own
   hysteresis, because the reference cut the paragraph that explains it) and plugin functions
-  marked `@api_function`. Next (review against related work, 2026-10-29): the steps that match
-  the question put into the question itself; research eval graded by subtask, reported analysis
+  marked `@api_function`. The steps and functions that match a question's words go into the
+  question itself (`llm.related_steps`). Next (review against related work, 2026-10-29): research eval graded by subtask, reported analysis
   choices and cost; `sensitivity` is in (more steps could record the choices they make, as the MSD
   records its fit window); Li sites from the
-  time-averaged density and a minimum stay for `SiteHopping`; `@api_function` on the PLUMED
-  plugin's functions; whether to keep reading the whole reference first (D31) or load tools
+  time-averaged density and a minimum stay for `SiteHopping`; whether to keep reading the whole reference first (D31) or load tools
   and reference on demand, decided from an A/B run; analysis metadata (temperature,
   timestep, composition) as variables at the top of the notebook; sources without a structure
   (PLUMED HILLS, thermo logs, a table of runs). `StructureFactor` needs a memory bound (100k atoms
