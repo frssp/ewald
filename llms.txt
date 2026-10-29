@@ -132,7 +132,7 @@ curve); `ewald.display.options` sets size/renderer/quality, `options["enabled"] 
 A notebook is a percent-format `.py` file (`# %%` cells, one namespace). New notebooks import
 `numpy as np`, `all_frames, each_frame, import_file, load` (from `ewald`), every modifier (`from ewald.modifiers import *`), `show, view`
 (from `ewald.views`), `paint, hide, isolate, fade, resize` (from `ewald.paint`) and `rdf, msd, vacf, sq, xrd, load_runs,
-check_run, run_info, arrhenius` (from `ewald`); import anything else in the cell.
+check_run, run_info, arrhenius, sensitivity` (from `ewald`); import anything else in the cell.
 `pipe` is the pipeline. Write each change as its own cell, in the kinds the GUI recognizes:
 
 - load cell: `pipe = load("XDATCAR")`.
@@ -174,7 +174,8 @@ from each run's thermostat (`attribute="MeanSquaredDisplacement.diffusion_coeffi
 `arrhenius(temperatures, values)` / `arrhenius({T: D})`: `.Ea`, `.Ea_error`, `.A`, `.r2`, `.plot()`, `.savefig(path)`.
 A study over several runs (D(T), Ea, a comparison): `check_run` every run first and trim (`msd(pipe, start=check.equilibrated)`)
 or leave out the runs it flags, saying which and why; runs of different length fit the same time window only with
-`fit_time=(t0, t1)` (`fit_range` is a fraction of each run's lags; `.fit_start`/`.fit_end` say what was fitted); take temperatures from the input files and say where a folder
+`fit_time=(t0, t1)` (`fit_range` is a fraction of each run's lags; `.fit_start`/`.fit_end` say what was fitted);
+`sensitivity(pipe, step, "fit_time", [(1, 5), (2, 8)], attribute)` shows how much a result moves with a choice; take temperatures from the input files and say where a folder
 name disagrees; finish with a cell that prints every number the answer quotes.
 Workflows (a folder of calculations, `aiida:...`): `workflow_table(path, ...)` (`from ewald import workflow_table`)
 is a row per step and a column per number (energy, energy/atom, barrier, gap, max force, atoms, ...); several paths
@@ -375,7 +376,7 @@ print(int((data["Moved"] >= 0.3).sum()), "atoms moved more than 0.3 A by the las
 
 ## Functions
 
-`from ewald import load, import_file, export_file, each_frame, all_frames, view, rdf, msd, vacf, sq, xrd, bond_angles, cna, ptm, voronoi, clusters, run_info, check_run, load_runs, arrhenius, workflow_table`:
+`from ewald import load, import_file, export_file, each_frame, all_frames, view, rdf, msd, vacf, sq, xrd, bond_angles, cna, ptm, voronoi, clusters, run_info, check_run, load_runs, arrhenius, sensitivity, workflow_table`:
 
 - `load(path, *args, **kwargs) -> Pipeline`: `import_file` under the short name notebooks use (`pipe = load("XDATCAR")`).
 - `import_file(path, format: str | None = None, **kwargs)`: Create a Pipeline reading `path` (wildcards allowed: `dump.*.lammpstrj`).
@@ -397,6 +398,7 @@ print(int((data["Moved"] >= 0.3).sum()), "atoms moved more than 0.3 A by the las
 - `check_run(pipe, close_contact: float = 0.5) -> RunCheck`: Check a run (a `Pipeline` from `load`) for the usual problems: files still being written, SCF steps that hit NELM, a relaxation that did not reach EDIFFG, MD that is not equilibrated (Chodera's method on the potential energy), temperature off the thermostat target, energy drift where energy is conserved, LAMMPS warnings and errors, and atoms closer than `close_contact` times the sum of their covalent radii in the first and last frame.
 - `load_runs(paths, label=None, sort: bool = True, **kwargs) -> Runs`: Open several runs at once: `paths` is a wildcard (`"T*/XDATCAR"`, `"cluster:/scratch/*/OUTCAR"`) or a list of files, each opened with `load` (`kwargs` such as `type_map=` go to it).
 - `arrhenius(data, values=None, attribute: str = ...) -> Arrhenius`: Activation energy from runs at several temperatures.
+- `sensitivity(pipe, step, parameter: str, values, attributes=None, frame: int = 0) -> Table`: How much the results of `step` move when its `parameter` takes each of `values`: an analysis choice (a fit window, a cutoff, where equilibration ends) shown next to its effect.
 - `workflow_table(*workflows, labels=None, columns=None, align: str = 'name') -> WorkflowTable`: The steps of one or more workflows with their numbers (see the module docstring).
 
 `from ewald.views import show, snapshot, figure`:

@@ -145,7 +145,7 @@ curve); `ewald.display.options` sets size/renderer/quality, `options["enabled"] 
 A notebook is a percent-format `.py` file (`# %%` cells, one namespace). New notebooks import
 `numpy as np`, `all_frames, each_frame, import_file, load` (from `ewald`), every modifier (`from ewald.modifiers import *`), `show, view`
 (from `ewald.views`), `paint, hide, isolate, fade, resize` (from `ewald.paint`) and `rdf, msd, vacf, sq, xrd, load_runs,
-check_run, run_info, arrhenius` (from `ewald`); import anything else in the cell.
+check_run, run_info, arrhenius, sensitivity` (from `ewald`); import anything else in the cell.
 `pipe` is the pipeline. Write each change as its own cell, in the kinds the GUI recognizes:
 
 - load cell: `pipe = load("XDATCAR")`.
@@ -187,7 +187,8 @@ from each run's thermostat (`attribute="MeanSquaredDisplacement.diffusion_coeffi
 `arrhenius(temperatures, values)` / `arrhenius({T: D})`: `.Ea`, `.Ea_error`, `.A`, `.r2`, `.plot()`, `.savefig(path)`.
 A study over several runs (D(T), Ea, a comparison): `check_run` every run first and trim (`msd(pipe, start=check.equilibrated)`)
 or leave out the runs it flags, saying which and why; runs of different length fit the same time window only with
-`fit_time=(t0, t1)` (`fit_range` is a fraction of each run's lags; `.fit_start`/`.fit_end` say what was fitted); take temperatures from the input files and say where a folder
+`fit_time=(t0, t1)` (`fit_range` is a fraction of each run's lags; `.fit_start`/`.fit_end` say what was fitted);
+`sensitivity(pipe, step, "fit_time", [(1, 5), (2, 8)], attribute)` shows how much a result moves with a choice; take temperatures from the input files and say where a folder
 name disagrees; finish with a cell that prints every number the answer quotes.
 Workflows (a folder of calculations, `aiida:...`): `workflow_table(path, ...)` (`from ewald import workflow_table`)
 is a row per step and a column per number (energy, energy/atom, barrier, gap, max force, atoms, ...); several paths
@@ -388,7 +389,7 @@ FAMILIES = [
 FUNCTIONS = [
     ("ewald", ("load", "import_file", "export_file", "each_frame", "all_frames", "view", "rdf", "msd", "vacf", "sq",
                "xrd", "bond_angles", "cna", "ptm", "voronoi", "clusters", "run_info", "check_run", "load_runs",
-               "arrhenius", "workflow_table")),
+               "arrhenius", "sensitivity", "workflow_table")),
     ("ewald.views", ("show", "snapshot", "figure")),
     ("ewald.paint", ("paint", "hide", "isolate", "fade", "resize")),
 ]

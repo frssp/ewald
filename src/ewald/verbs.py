@@ -49,7 +49,8 @@ def verb_cell(verb: str, data=None) -> str:
     return f"from ewald import {verb}\n{code}"
 
 
-__all__ = ["Table", "bond_angles", "clusters", "cna", "msd", "ptm", "rdf", "sq", "vacf", "voronoi", "xrd"]
+__all__ = ["Table", "bond_angles", "clusters", "cna", "msd", "ptm", "rdf", "sensitivity", "sq", "vacf", "voronoi",
+           "xrd"]
 
 
 class Table(dict):
@@ -95,8 +96,10 @@ class Table(dict):
 
     def __repr__(self):
         n = len(self.x) if self else 0
-        if self.labels is not None:
+        if self.labels is not None and ("Count" in self or any(c.endswith("Size") for c in self)):
             return f"<Table {self.name!r}: {', '.join(f'{k} {v}' for k, v in self.counts.items())}>"
+        if self.labels is not None:
+            return f"<Table {self.name!r}: rows {', '.join(self.labels)}; {', '.join(self.columns[1:])}>"
         return f"<Table {self.name!r}: {n} rows; {', '.join(self.columns)}>"
 
 
@@ -243,3 +246,76 @@ def clusters(pipe, cutoff: float = 3.2, frame: int = 0, **kwargs) -> Table:
     kwargs.setdefault("sort_by_size", True)
     return _verb(pipe, ClusterAnalysis, "clusters", frame, cutoff=cutoff, **kwargs)
 
+
+def sensitivity(pipe, step, parameter: str, values, attributes=None, frame: int = 0) -> Table:
+    """How much the results of ``step`` move when its ``parameter`` takes each of ``values``: an
+    analysis choice (a fit window, a cutoff, where equilibration ends) shown next to its effect.
+
+    ``step`` is a step of ``pipe`` (the modifier, or its class name for the first step of that
+    class). Each value is tried on a copy of the step in its place, then the step is put back as
+    it was. ``attributes`` (a name or list) are the results to report, by default every attribute
+    the step writes (``MeanSquaredDisplacement.*``). Returns the ``sensitivity`` table: the
+    parameter's values (numbers, or rows named by ``labels`` for tuples and strings), one column
+    per attribute, and in ``attributes`` the step's own value of the parameter and the relative
+    spread ``(max - min) / |value at the step's setting|`` of each result (``.spread.<attribute>``)::
+
+        pipe.add(MeanSquaredDisplacement(time_per_frame=0.1, fit_time=(2, 8)))
+        sensitivity(pipe, "MeanSquaredDisplacement", "fit_time", [(1, 5), (2, 8), (4, 12)],
+                    "MeanSquaredDisplacement.diffusion_coefficient.Li")
+    """
+    import copy
+
+    index = _step_index(pipe, step)
+    original = pipe.modifiers[index]
+    if parameter not in original.parameters():
+        raise ValueError(f"{type(original).__name__} has no parameter {parameter!r}; it has "
+                         f"{', '.join(original.parameters())}")
+    prefix = type(original).__name__ + "."
+    wanted = [attributes] if isinstance(attributes, str) else (list(attributes) if attributes else None)
+    rows = []
+    try:
+        for value in values:
+            trial = copy.copy(original)
+            trial.__dict__.pop("_result", None)        # a trajectory step's cache belongs to the original
+            setattr(trial, parameter, value)
+            pipe.modifiers[index] = trial
+            data = pipe.compute(frame)
+            names = wanted or [k for k in data.attributes if k.startswith(prefix)]
+            missing = [n for n in names if n not in data.attributes]
+            if missing:
+                raise KeyError(f"no attribute {missing[0]!r} after {type(original).__name__}; it wrote "
+                               f"{', '.join(k for k in data.attributes if k.startswith(prefix)) or 'none'}")
+            rows.append({n: data.attributes[n] for n in names})
+    finally:
+        pipe.modifiers[index] = original
+    values = list(values)
+    numeric = all(isinstance(v, (int, float, np.integer, np.floating)) and not isinstance(v, bool) for v in values)
+    columns = {parameter: np.asarray(values, float) if numeric else np.arange(len(values))}
+    names = list(rows[0]) if rows else []
+    for n in names:
+        columns[n] = np.array([r.get(n, np.nan) for r in rows], dtype=float)
+    attrs = {"sensitivity.parameter": parameter, "sensitivity.setting": getattr(original, parameter)}
+    setting = getattr(original, parameter)
+    at = next((i for i, v in enumerate(values) if _same(v, setting)), None)
+    for n in names:
+        col = columns[n]
+        ref = col[at] if at is not None else np.nanmedian(col)
+        attrs[f"sensitivity.spread.{n}"] = float((np.nanmax(col) - np.nanmin(col)) / abs(ref)) if ref else float("nan")
+    return Table("sensitivity", columns, pipe, frame, None if numeric else [repr(v) for v in values], attrs)
+
+
+def _same(a, b) -> bool:
+    try:
+        return bool(np.all(np.asarray(a) == np.asarray(b))) and np.shape(a) == np.shape(b)
+    except Exception:
+        return a == b
+
+
+def _step_index(pipe, step) -> int:
+    """Where ``step`` (a modifier of ``pipe`` or a class name) sits in ``pipe.modifiers``."""
+    for i, m in enumerate(pipe.modifiers):
+        if m is step or (isinstance(step, str) and type(m).__name__ == step):
+            return i
+    have = ", ".join(type(m).__name__ for m in pipe.modifiers) or "none"
+    raise ValueError(f"{step if isinstance(step, str) else type(step).__name__} is not a step of this "
+                     f"pipeline (its steps: {have})")

@@ -48,7 +48,7 @@ it computes and use the step it finds; otherwise write a Python step (a cell hea
 property, and plot it with show(pipe, table=...). Plain code cells are for one-off reading and \
 printing. For each analysis choice that changes a number (a fit window, a cutoff, where \
 equilibration ends), say what you chose and why, and show how much the number moves when you vary \
-it. In the GUI the Structure tab shows \
+it (sensitivity(pipe, step, parameter, values) does that for a step's parameter in one cell). In the GUI the Structure tab shows \
 the result, and you answer in the AI chat side bar next to the notebook.
 
 A request that takes several steps (runs to compare, a fit, figures, a paragraph for a \
