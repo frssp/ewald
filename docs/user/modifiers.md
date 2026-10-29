@@ -36,7 +36,9 @@ evaluated with NumPy. Property names lose their spaces and other characters a na
 (`ParticleType`, `ParticleIdentifier`, `SqDispAverage` for "SqDisp (Average)"; `ParticleIndex` is the 0-based row), vector components get a suffix (`Position.Z`, `Velocity.X`,
 `Color.R`), and the globals `N`, `Frame`, `CellSize.X`, `CellOrigin.X` and every scalar
 attribute are available. Combine conditions with `&`, `|`, `~` and parentheses, not
-`and`/`or`/`not`; `^` is a power as in OVITO (`Force.X^2`, the same as `Force.X**2`):
+`and`/`or`/`not`; `^` is a power as in OVITO (`Force.X^2`, the same as `Force.X**2`), and
+OVITO's conditional `cond ? a : b` works too (`Coordination < 12 ? Position.Z : 0`). A name with
+spaces may also be written as it is, in backticks (`` `Displacement Magnitude` > 0.3 ``):
 
 ```python
 ExpressionSelection('(Position.Z > 10) & (ParticleType == "Cu")')

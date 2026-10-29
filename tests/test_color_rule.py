@@ -70,6 +70,20 @@ def test_color_coding_and_paint(cu_pipe):
     assert color_rule.legend_entries(r)[0][0] == "Position.X < 3"
 
 
+def test_paint_label_names_the_legend_row(cu_pipe):
+    """paint(..., label=) names its atoms in the legend ("corner"), not by the condition."""
+    from ewald.paint import paint
+
+    @cu_pipe.add
+    def sites(frame, data):
+        paint(data, "Position.X < 3", "red", label="corner")
+        paint(data, "Position.X > 6", "blue")
+
+    r = color_rule.rule(cu_pipe.compute(0))
+    assert [row[0] for row in color_rule.legend_entries(r)][-2:] == ["corner", "Position.X > 6"]
+    assert "('corner')" in color_rule.describe(r)
+
+
 def test_unrecorded_colors_are_custom(cu_pipe):
     cu_pipe.add(mods.CommonNeighborAnalysis())
 

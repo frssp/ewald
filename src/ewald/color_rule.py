@@ -67,11 +67,14 @@ def continuous(source: str, property: str, cmap: str, lo: float, hi: float, only
     return out
 
 
-def painted(base: dict, source: str, where: str, color, count: int) -> dict:
-    """``base`` with one more override: ``color`` on the ``count`` particles where ``where`` holds."""
+def painted(base: dict, source: str, where: str, color, count: int, label: str | None = None) -> dict:
+    """``base`` with one more override: ``color`` on the ``count`` particles where ``where`` holds,
+    named ``label`` in legends (default: ``where``)."""
     out = {k: copy.deepcopy(v) for k, v in base.items() if k != "fingerprint"}
-    out["painted"] = list(out.get("painted", [])) + [{"source": source, "where": str(where),
-                                                      "color": _hex(color), "count": int(count)}]
+    entry = {"source": source, "where": str(where), "color": _hex(color), "count": int(count)}
+    if label:
+        entry["label"] = str(label)
+    out["painted"] = list(out.get("painted", [])) + [entry]
     return out
 
 
@@ -145,7 +148,7 @@ def legend_entries(r: dict) -> list[tuple[str, np.ndarray]]:
         rows = []
     else:
         rows = [(label(e["name"]), _rgb(e["color"])) for e in r["entries"] if e.get("count", 1)]
-    rows += [(p["where"], _rgb(p["color"])) for p in r.get("painted", ()) if p.get("count", 1)]
+    rows += [(p.get("label") or p["where"], _rgb(p["color"])) for p in r.get("painted", ()) if p.get("count", 1)]
     return rows[:MAX_ENTRIES]
 
 
@@ -197,7 +200,8 @@ def describe(r_or_data, type_colors: dict | None = None) -> str:
     if r.get("note"):
         text += f" Note: {r['note']}."
     for p in r.get("painted", ()):
-        text += f" Then {p['source']} painted {p['count']} atoms where {p['where']} {p['color']}."
+        named = f" ('{p['label']}')" if p.get("label") else ""
+        text += f" Then {p['source']} painted {p['count']} atoms where {p['where']}{named} {p['color']}."
     return text
 
 

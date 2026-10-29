@@ -84,9 +84,11 @@ pipe = load("run.npz", format="npz-trajectory")                 # format= also n
 
 OVITO syntax evaluated with numpy: `Position.Z`, `ParticleType`, `ParticleIdentifier`, `Coordination`, `Velocity.X`,
 globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, not `and`/`or`/`not`:
-`(Position.Z > 10) & (ParticleType == "Cu")`. Powers: `**` or OVITO's `^` (`Force.X^2`). Functions: `abs sqrt exp log sin cos min max`, numpy ufuncs and array functions such as `np.where`, `np.isin`,
+`(Position.Z > 10) & (ParticleType == "Cu")`. Powers: `**` or OVITO's `^` (`Force.X^2`). OVITO's conditional
+`Coordination < 12 ? Position.Z : 0` works (np.where). Functions: `abs sqrt exp log sin cos min max`, numpy ufuncs and array functions such as `np.where`, `np.isin`,
 `np.linalg.norm` (no attribute access beyond those, no file or module access). A property's name drops the spaces and
-other characters a name cannot hold: "Particle Type" is `ParticleType`, "SqDisp (Average)" is `SqDispAverage`.
+other characters a name cannot hold: "Particle Type" is `ParticleType`, "SqDisp (Average)" is `SqDispAverage`; the full
+name in backticks also works.
 Ranking: `ExpressionSelection("ParticleType == 'Li'", top=5, by="MSD")` selects the 5 Li with the largest `MSD`
 (`top=-5`: the smallest; `by` is a property or an expression), e.g. the atoms whose paths `GenerateTrajectoryLines` draws.
 
@@ -347,6 +349,26 @@ view(pipe, cell=True, direction="x")
 # %%
 grid = pipe.compute(0).grids["charge-density"]
 print(grid.shape, grid.integrate("Charge Density"))
+# %% planar average along c [each frame]
+from ewald.potential import planar_average
+p = planar_average(data, grid="charge-density", property="Charge Density")   # LOCPOT: the defaults
+data.tables["planar-average"] = {"z": p.z, "Charge Density": p.values}      # a table, so show() plots it
+# %%
+show(pipe, table="planar-average")
+"""),
+    ("Atoms picked at one frame, followed through the trajectory", "XDATCAR", """\
+# %%
+pipe = load("XDATCAR")
+# %%
+pipe.add(CalculateDisplacements(reference_frame=0))
+# %%
+pipe.add(FreezeProperty("Displacement Magnitude", "Moved", freeze_at=-1))   # the last frame's value, on every frame
+# %% moved atoms [each frame]
+isolate(data, "Moved >= 0.3")                     # the same atoms on every frame
+paint(data, "Moved >= 0.3", "crimson", label="moved > 0.3 A")   # label: its name in the color legend
+# %%
+data = pipe.compute(0)
+print(int((data["Moved"] >= 0.3).sum()), "atoms moved more than 0.3 A by the last frame")
 """),
 ]
 
