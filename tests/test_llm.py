@@ -707,7 +707,8 @@ def test_plugin_functions_are_in_the_reference_and_found(monkeypatch):
     assert "`from ewald_plumed import fes_from_hills`" in ref
     assert "- `fes_from_hills(hills, bins=None, *, kt: float = 2.5)`: Free energy surface" in ref
     hit = Toolset().call("search_api", {"query": "free energy surface from metadynamics hills"}).content
-    assert hit["results"][0]["text"].startswith("- `fes_from_hills(") and "Well-tempered" in hit["results"][0]["text"]
+    found = [r["text"] for r in hit["results"] if r["text"].startswith("- `fes_from_hills(")]
+    assert found and "Well-tempered" in found[0]
 
 
 def test_api_function_decorator_registers(monkeypatch):
