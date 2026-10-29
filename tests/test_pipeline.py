@@ -67,12 +67,45 @@ def test_expression_takes_property_names_with_spaces(cu_fcc):
         Pipeline(StaticSource(cu_fcc), [ColorCoding("Charge Density")]).compute(0)
 
 
+def test_expression_names_drop_characters_a_name_cannot_hold(cu_fcc):
+    """TimeAveraging writes "<name> (Average)": an expression reaches it as SqDispAverage, and the
+    name as written also works on its own (the AI tried both and got NameErrors)."""
+    from ewald.modifiers.expression import evaluate
+
+    data = cu_fcc.copy()
+    data.particles["SqDisp (Average)"] = np.arange(cu_fcc.count, dtype=float)
+    assert (evaluate("SqDispAverage > 2", data)).sum() == cu_fcc.count - 3
+    np.testing.assert_array_equal(evaluate("SqDisp (Average)", data), data["SqDisp (Average)"])
+    data.particles["Net Displacement"] = np.arange(cu_fcc.count, dtype=float)
+    assert evaluate("(Net Displacement > 2) & (SqDisp (Average) < 5)", data).sum() == 2
+
+
 def test_expression_power_as_in_ovito(cu_fcc):
     from ewald.modifiers.expression import evaluate
 
     assert np.allclose(evaluate("Position.X^2", cu_fcc), cu_fcc.positions[:, 0] ** 2)
     assert np.allclose(evaluate("sqrt(Position.X^2 + Position.Y**2)", cu_fcc),
                        np.hypot(cu_fcc.positions[:, 0], cu_fcc.positions[:, 1]))
+
+
+def test_expression_conditional_and_backticks_as_in_ovito(cu_fcc):
+    """OVITO's ``cond ? a : b`` (nested, inside brackets) and a property name in backticks: models
+    trained on OVITO wrote both and got a bare SyntaxError three times in a row (2026-10-29 probe)."""
+    from ewald.modifiers.expression import evaluate
+
+    x, z = cu_fcc.positions[:, 0], cu_fcc.positions[:, 2]
+    assert np.allclose(evaluate("Position.Z > 2 ? Position.X : -1", cu_fcc), np.where(z > 2, x, -1))
+    assert np.allclose(evaluate("(Position.Z > 2 ? 1 : 0) + (Position.X > 2 ? 10 : 0)", cu_fcc),
+                       np.where(z > 2, 1, 0) + np.where(x > 2, 10, 0))
+    assert np.allclose(evaluate("Position.Z > 4 ? 2 : Position.Z > 2 ? 1 : 0", cu_fcc),
+                       np.where(z > 4, 2, np.where(z > 2, 1, 0)))
+    data = cu_fcc.copy()
+    data.particles["Displacement Magnitude"] = np.linspace(0, 1, cu_fcc.count)
+    assert evaluate("`Displacement Magnitude` >= 0.5", data).sum() == (data["Displacement Magnitude"] >= 0.5).sum()
+    data.particles["SqDisp (Average)"] = np.linspace(0, 1, cu_fcc.count)
+    assert evaluate("`SqDisp (Average)` * 2", data).max() == pytest.approx(2.0)
+    with pytest.raises(SyntaxError, match="cond \\? a : b"):
+        evaluate("Position.Z > 2 ? 1", cu_fcc)
 
 
 def test_expression_particle_type_numbers(cu_fcc):

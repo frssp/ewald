@@ -144,6 +144,34 @@ def ref_sto_ti_bvs(pipe):
     return float(np.exp((1.815 - d[d < 3.5]) / 0.37).sum() / np.sum(t == "Ti"))
 
 
+_TOP_MSD = {}
+
+
+def _top_msd_ids(n=5, species="Li"):
+    """The ids of the ``n`` ``species`` atoms of the Li6PS5Cl run with the largest MSD, under every
+    reading of "an atom's MSD" a careful analyst may take: its squared displacement first to
+    last frame, its time-averaged MSD over all lags, or over the lags of a diffusion fit window
+    (the default one and the paper's, from 3 ps on). A list of sets; cached."""
+    if (n, species) not in _TOP_MSD:
+        from .. import examples, import_file
+        from ..kernels import collect_trajectory, fit_lags, particle_msd, unwrap
+
+        pipe = import_file(str(examples.fetch("li6ps5cl-aimd", quiet=True) / "XDATCAR.gz"))
+        traj = collect_trajectory(pipe.source_frame(k) for k in range(pipe.num_frames))
+        x = np.asarray(unwrap(traj["Position"], traj["cells"], traj["pbc"]))
+        ids, mine = np.asarray(traj["Particle Identifier"]), np.asarray(traj["types"]).astype(str) == species
+        rankings = [((x[-1] - x[0]) ** 2).sum(-1), particle_msd(x)] + [
+            particle_msd(x, fit_lags(len(x), window)) for window in ((0.2, 0.8), (0.215, 1.0))]
+        _TOP_MSD[n, species] = [set(ids[mine][np.argsort(-r[mine], kind="stable")[:n]].tolist()) for r in rankings]
+    return _TOP_MSD[n, species]
+
+
+def _traces_top_msd(data):
+    """The trajectory lines are those of the five Li atoms with the largest MSD (any reading)."""
+    traced = set(np.unique(np.asarray(data.tables["trajectory-lines"]["Particle Identifier"])).tolist())
+    return traced in _top_msd_ids()
+
+
 # ------------------------------------------------------------------ file checks
 def _png(path, outcome):
     return path.read_bytes()[:4] == b"\x89PNG"
@@ -524,6 +552,14 @@ TASKS: list[Task] = [
          "Li tracer diffusion coefficient in cm^2/s, fitting the mean squared displacement from 3 ps on?",
          "paper:li6ps5cl-aimd/XDATCAR.gz", [Number(1.23e-5, rel=0.25)], category="paper",
          solution=[("compute_msd", {"timestep_fs": 100.0, "fit_range": [0.215, 1.0]})], answer="ANSWER: {0}"),
+    Task("li-top-msd-paths", "Draw the trajectories of the 5 Li atoms whose MSDs are largest.",
+         "paper:li6ps5cl-aimd/XDATCAR.gz",
+         [Step("GenerateTrajectoryLines"), Data(_traces_top_msd, name="traced Li are the 5 with the largest MSD")],
+         category="paper", setup=["pipe.add(MeanSquaredDisplacement(time_per_frame=0.1, fit_range=(0.215, 1.0)))"],
+         solution=[("add_modifier", {"name": "ExpressionSelection",
+                                     "params": {"expression": "ParticleType == 'Li'", "top": 5, "by": "MSD"}}),
+                   ("add_modifier", {"name": "GenerateTrajectoryLines"})],
+         answer="Done: the paths of the five Li atoms with the largest MSD."),
 
     # ---------------------------------------------------------- whole studies from one sentence
     Task("study-arrhenius", _SERIES_INTRO.format(n=5, folders="T500 to T900") +

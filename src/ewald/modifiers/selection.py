@@ -10,14 +10,33 @@ from .expression import evaluate
 
 
 class ExpressionSelection(Modifier):
-    """Select particles where ``expression`` is true (sets 'Selection')."""
+    """Select particles where ``expression`` is true (sets 'Selection').
 
-    def __init__(self, expression: str):
+    ``top=n`` with ``by`` (a property or an expression) keeps only the ``n`` of them with the
+    largest ``by`` (``top=-n``: the smallest), e.g. the five Li atoms that move most:
+    ``ExpressionSelection("ParticleType == 'Li'", top=5, by="MSD")`` after a
+    MeanSquaredDisplacement step (its per-atom 'MSD'), then ``GenerateTrajectoryLines()`` draws
+    their paths. ``expression="True"`` ranks every particle.
+    """
+
+    def __init__(self, expression: str, top: int = 0, by: str = ""):
         self.expression = expression
+        self.top = top
+        self.by = by
 
     def modify(self, data, ctx):
         sel = np.broadcast_to(np.asarray(evaluate(self.expression, data, ctx.frame), dtype=bool),
                               (data.count,))
+        top = int(getattr(self, "top", 0) or 0)
+        if top:
+            by = getattr(self, "by", "")
+            if not by:
+                raise ValueError("ExpressionSelection: top needs by, the property to rank by (e.g. by='MSD')")
+            values = np.broadcast_to(np.asarray(evaluate(by, data, ctx.frame), dtype=float), (data.count,))
+            candidates = np.nonzero(sel)[0]
+            order = np.argsort(-values[candidates] if top > 0 else values[candidates], kind="stable")
+            sel = np.zeros(data.count, dtype=bool)
+            sel[candidates[order[:abs(top)]]] = True
         data.particles["Selection"] = sel.astype(np.int8)
         data.attributes["SelectExpression.num_selected"] = int(sel.sum())
 

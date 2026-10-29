@@ -33,8 +33,9 @@ def _mask(data, where) -> np.ndarray:
     return mask
 
 
-def paint(data, where, color) -> None:
-    """Set the color of the particles ``where`` is true (the others keep theirs)."""
+def paint(data, where, color, label: str | None = None) -> None:
+    """Set the color of the particles ``where`` is true (the others keep theirs). ``label`` names
+    them in the color legend ("corner"); without it the legend shows ``where`` itself."""
     from . import color_rule
     from .render import _rgb, default_colors
 
@@ -44,7 +45,7 @@ def paint(data, where, color) -> None:
     colors[mask] = _rgb(color)
     data["Color"] = colors
     what = where if isinstance(where, str) else "a mask in code"
-    color_rule.record(data, color_rule.painted(base, "paint()", what, _rgb(color), np.count_nonzero(mask)))
+    color_rule.record(data, color_rule.painted(base, "paint()", what, _rgb(color), np.count_nonzero(mask), label))
 
 
 def hide(data, where) -> None:

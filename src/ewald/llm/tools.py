@@ -222,6 +222,17 @@ class Toolset:
         if tool is None:
             offered = ", ".join(n for n, t in self.tools.items() if t.offered())
             return ToolResult(f"unknown tool {name!r}; available: {offered}", is_error=True)
+        props = (tool.input_schema or {}).get("properties")
+        if props is not None and tool.input_schema.get("additionalProperties") is not True:
+            unknown = sorted(set(arguments or {}) - set(props))
+            if unknown:   # say what it takes, not a Python TypeError about a closure
+                hint = ""
+                if name != "set_view" and "set_view" in self.tools:
+                    viewish = [k for k in unknown if k in self.tools["set_view"].input_schema.get("properties", {})]
+                    if viewish:
+                        hint = f" ({', '.join(viewish)}: a view setting, set it with set_view first)"
+                return ToolResult(f"{name} has no argument {', '.join(map(repr, unknown))}{hint}; it takes: "
+                                  f"{', '.join(props) or 'no arguments'}", is_error=True)
         before = self._outside_cells_state() if tool.plugin else None
         try:
             out = tool.function(**(arguments or {}))
@@ -366,6 +377,9 @@ class Toolset:
 
         k = access.call(tidy)
         out = {"changed": v.changed(), "code": view_source(self.pipeline_name, tab=tab, **v.changed())}
+        same = {k: _jsonable(getattr(v, k)) for k in settings if k not in out["changed"] and hasattr(v, k)}
+        if same:   # asked for, but already so (a default is not written into the cell): not ignored
+            out["unchanged"] = same
         if tab is not None:
             out["tab"] = tab
         if k is not None:
@@ -839,7 +853,8 @@ class Toolset:
            "(view(pipe, ...)), which runs at once. 'tab' sets a view tab instead (view(pipe, tab=..., ...), made on "
            "first use): another 3D viewport tab of the same pipeline and frame that takes the main view's settings "
            "except its own (null follows the main view again), e.g. a top view next to the main one. Returns the "
-           "changed settings and that code.",
+           "changed settings and that code; 'unchanged' lists settings asked for that already had that value (the cell "
+           "keeps only non-default settings, so a default value never shows in it).",
            _obj({**view_props,
                  "tab": {"type": "string", "description": "name of a view tab to set (made if new); "
                                                           "default: the main view"},

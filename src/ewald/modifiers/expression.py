@@ -4,7 +4,8 @@ Property names are used as in OVITO: ``Position.Z``, ``ParticleType``,
 ``ParticleIdentifier``, ``ParticleIndex`` (0-based row), ``Velocity.X``, ``Coordination``; globals ``N``,
 ``Frame``, ``Timestep``, ``CellSize.X``. Combine conditions with numpy
 operators: ``(Position.Z > 10) & (ParticleType == "Cu")``; ``^`` is a power, as in OVITO
-(``Force.X^2``); numpy is ``np``.
+(``Force.X^2``); ``cond ? a : b`` is OVITO's conditional (``np.where``); a name with spaces may be
+written in backticks (```Displacement Magnitude```); numpy is ``np``.
 """
 from __future__ import annotations
 
@@ -40,10 +41,16 @@ class _TypeNames(np.ndarray):
     __hash__ = None
 
 
+def _key(name: str) -> str:
+    """A property's name in expressions: spaces and other characters a Python name cannot hold
+    dropped ("Particle Type" -> ParticleType, "SqDisp (Average)" -> SqDispAverage)."""
+    return re.sub(r"[^\w.]", "", name)
+
+
 def namespace(data, frame=None) -> dict:
     ns: dict[str, object] = {}
     for name, arr in data.particles.items():
-        key = name.replace(" ", "")
+        key = _key(name)
         ns[key] = arr.view(_TypeNames) if key == "ParticleType" and arr.dtype.kind in "US" else arr
         if arr.ndim == 2 and arr.shape[1] in (2, 3):
             letters = _COMPONENTS.get(name, "XYZ")
@@ -121,25 +128,96 @@ def _numpy_import(name, *args, **kw):
 _BUILTINS = {"__import__": _numpy_import}
 
 
+def _matching(s: str, i: int) -> int:
+    """Index of the bracket closing the one at ``s[i]`` (quotes skipped), or -1."""
+    pairs = {"(": ")", "[": "]", "{": "}"}
+    stack, k = [], i
+    while k < len(s):
+        c = s[k]
+        if c in "'\"":
+            end = s.find(c, k + 1)
+            k = len(s) if end < 0 else end
+        elif c in pairs:
+            stack.append(pairs[c])
+        elif stack and c == stack[-1]:
+            stack.pop()
+            if not stack:
+                return k
+        k += 1
+    return -1
+
+
+def _conditional(s: str) -> str:
+    """OVITO's C-style ``cond ? a : b`` (right-associative, lowest precedence, also inside
+    brackets) as ``np.where(cond, a, b)``."""
+    if "?" not in s:
+        return s
+    out, top, k = [], [], 0      # top: positions of ? and : outside brackets, in ``out`` text
+    while k < len(s):
+        c = s[k]
+        if c in "([{":
+            end = _matching(s, k)
+            if end < 0:
+                raise SyntaxError(f"unbalanced {c!r}")
+            out.append(c + _conditional(s[k + 1:end]) + s[end])
+            k = end + 1
+            continue
+        if c in "'\"":
+            end = s.find(c, k + 1)
+            end = len(s) - 1 if end < 0 else end
+            out.append(s[k:end + 1])
+            k = end + 1
+            continue
+        if c in "?:":
+            top.append((len(out), c))
+        out.append(c)
+        k += 1
+    q = next((i for i, (_, c) in enumerate(top) if c == "?"), None)
+    if q is None:
+        return "".join(out)
+    depth = 0
+    for j in range(q + 1, len(top)):
+        depth += 1 if top[j][1] == "?" else -1
+        if depth < 0:
+            qi, ci = top[q][0], top[j][0]
+            cond, a, b = "".join(out[:qi]), "".join(out[qi + 1:ci]), "".join(out[ci + 1:])
+            return f"np.where(({cond.strip()}), ({_conditional(a).strip()}), ({_conditional(b).strip()}))"
+    raise SyntaxError("'?' without its ':' (OVITO's conditional is 'cond ? a : b')")
+
+
+_BACKTICKED = re.compile(r"`([^`]+)`")
 _SPACED_NAME = re.compile(r"[A-Za-z][\w.]*( +[\w.]+)+")
 
 
 def evaluate(expr: str, data, frame=None):
     ns = namespace(data, frame)
+    if expr.strip() in data.particles and _key(expr.strip()) in ns:   # a property as named: "SqDisp (Average)"
+        return ns[_key(expr.strip())]
+    if "`" in expr:     # `Displacement Magnitude`: a name as it is written, spaces and all
+        expr = _BACKTICKED.sub(lambda m: _key(m.group(1)), expr)
     if _SPACED_NAME.fullmatch(expr.strip()):
         try:
             ast.parse(expr.strip(), "<expression>", "eval")
         except SyntaxError:
             # a property written as it is named ("Particle Identifier"); expressions drop the spaces
-            key = expr.strip().replace(" ", "")
+            key = _key(expr.strip())
             if key in ns:
                 return ns[key]
             raise NameError(f"no property {expr.strip()!r} in this frame. "
                             f"Available: {', '.join(sorted(ns))}") from None
+    # properties written as they are named inside a longer expression: "(Net Displacement > 6)",
+    # "SqDisp (Average) > 20" (models write them so); longest first, whole names only
+    spelled = sorted((n for n in data.particles.keys() if _key(n) != n and _key(n) in ns), key=len, reverse=True)
+    for name in spelled:
+        expr = re.sub(r"(?<![\w.])" + re.escape(name) + r"(?![\w(])", _key(name), expr)
     dotted = sorted((k for k in ns if "." in k), key=len, reverse=True)
     env = {"np": np, "abs": np.abs, "sqrt": np.sqrt, "exp": np.exp, "log": np.log,
            "sin": np.sin, "cos": np.cos, "min": np.minimum, "max": np.maximum, "pi": np.pi}
     code = expr.replace("^", "**")   # OVITO's power operator ('Force.X^2'); never XOR here
+    try:
+        code = _conditional(code)
+    except SyntaxError as exc:
+        raise SyntaxError(f"invalid expression {expr!r}: {exc}") from None
     for i, k in enumerate(dotted):
         code = re.sub(r"(?<![\w.])" + re.escape(k) + r"(?![\w])", f"__v{i}", code)
         env[f"__v{i}"] = ns[k]

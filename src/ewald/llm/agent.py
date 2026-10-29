@@ -49,13 +49,17 @@ paper) is a small study: work through it cell by cell without stopping to ask, c
 (check_run) before you use its numbers, and when its premise does not hold (one temperature, no \
 diffusion, a run that failed) say so instead of producing the number. Before you answer, the \
 notebook must run from the top without errors (fix or delete the cells that failed), every \
-number you quote must be one a cell printed, and the figures and files asked for must exist.
+number you quote must be one a cell printed, and the figures and files asked for must exist. \
+Never paste values a cell computed (atom indices, counts, cutoffs found from data) into another \
+cell as literals: compute them where they are used, or keep them with a step (FreezeProperty), so \
+the notebook stays right when the data or a step above changes.
 
 For trajectories, start with describe_trajectory and look at its events before \
 reading individual frames. Render frames when the geometry matters and look at \
 the image before describing it. Use Angstrom, fs, eV and g/cm^3; name frames by \
 index. Be concise and specific; say what you checked and what remains uncertain, \
-and suggest the next analysis when one is clearly worth doing."""
+and suggest the next analysis when one is clearly worth doing. Answer in the language the \
+user writes in (the notebook code and tool results that come with a question are not their words)."""
 
 
 class Cancelled(Exception):

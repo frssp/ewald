@@ -18,11 +18,15 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 - GPU compute installs from the app: Preferences › Compute › Optional components › Install (or
   `ewald gpu --install`) pip-installs CuPy with the CUDA 12 libraries, also into the Windows
   standalone app's add-on folder; only the NVIDIA driver is needed. (D80, #102)
+- `MeanSquaredDisplacement` writes the per-atom property `MSD`, and `ExpressionSelection(expression,
+  top=n, by=...)` keeps the n particles with the largest value, so "the paths of the 5 Li with the
+  largest MSD" is three steps; Ask AI gets the recipe and a new eval task (`li-top-msd-paths`).
+  Expression names drop characters a name cannot hold (`SqDispAverage`). (#105)
 
 ### Changed
 
 - Step cells are edited in Python only: the *Form* button and its generated parameter form are
-  gone; a new step and View › Edit step open the cell's code. (D82, #107)
+  gone; a new step and View › Edit step open the cell's code. (D83, #107)
 - The Windows standalone app is one build, `ewald-X.Y.Z-win64-setup.exe` / `-portable.zip`; the
   separate GPU build (about 1.8 GB per file) is gone, since GPU compute now installs from the app.
   The app bundles the whole standard library, so packages pip installs later find what they

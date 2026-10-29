@@ -7,11 +7,13 @@ from __future__ import annotations
 
 import sys
 
-from . import check_qt_binding
+from . import check_qt_binding, skip_pyside_feature_scan
 
 check_qt_binding()  # before PySide6: a clear error when another Qt binding is loaded
 
 from PySide6 import QtCore, QtGui, QtWidgets
+
+skip_pyside_feature_scan()  # before the heavy imports below and the 3D view's
 
 from .icons import app_icon
 from .macos import set_app_name, strip_psn

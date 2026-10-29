@@ -4966,7 +4966,7 @@ def test_search_box_centered_and_step_button(app, cu_fcc, monkeypatch):
 
 
 def test_step_cells_edit_in_python_only(app, cu_fcc):
-    """The owner dropped the step form ("python만으로 가자", D82): a step cell's header has Python
+    """The owner dropped the step form ("python만으로 가자", D83): a step cell's header has Python
     and no Form button, a new step and View › Edit step open its code, and running edited code
     replaces the step."""
     from ewald.gui.app import MainWindow
@@ -6364,6 +6364,18 @@ def test_console_shares_the_notebook_namespace(app, tmp_path, monkeypatch):
         assert "viewer" in shell.user_ns_hidden                     # console helpers stay out of %who
     finally:
         w.close()
+
+
+def test_pyside_does_not_scan_modules_imported_after_it(app):
+    """PySide6's import hook read the source of every module imported after it, to look for
+    ``__feature__`` options (1.3 s of the Windows start-up); the GUI turns that scan off."""
+    import sys
+    import ewald.gui.app  # noqa: F401  (switches the scan off once PySide6 is loaded)
+
+    feature = sys.modules.get("shibokensupport.feature")
+    if feature is None or not hasattr(feature, "_mod_uses_pyside"):
+        pytest.skip("this PySide6 has no feature scan")
+    assert feature._mod_uses_pyside(sys.modules["ewald.gui.app"]) is False
 
 
 def test_console_kernel_prints_no_debugger_warning(app, monkeypatch):

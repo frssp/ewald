@@ -1069,7 +1069,17 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   (only settings for elements the new structure lacks were dropped).
 - **Landed:** public PR #103.
 
-### D82. Step cells are edited in Python only; the step form is gone (2026-10-29)
+### D82. Fix what the Ask AI probe found, and give show() comparison plots (2026-10-29)
+
+- **Decision:** after a probe of Ask AI with researcher-style requests, fix the small tool and API
+  gaps it found (tool argument errors, set_view's settings already set, OVITO's `?:` and backtick
+  names in expressions, `paint(label=)`, two python_api recipes, answer in the user's language, no
+  computed values pasted into cells) and design a comparison plot API for `show()` (several frames,
+  several columns, stacked panels).
+- **Considered:** the small fixes with new eval tasks only; a report and no code changes.
+- **Landed:** public PR #104 (the small fixes); the plot API follows.
+
+### D83. Step cells are edited in Python only; the step form is gone (2026-10-29)
 
 - **Decision:** a step cell's header keeps the on/off checkbox, the time, the results and
   *Python*, and loses *Form* (the parameter form generated from the constructor with its Apply
