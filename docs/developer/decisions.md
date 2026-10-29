@@ -1092,6 +1092,22 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   without a shaded background).
 - **Landed:** public PR #107.
 
+### D84. Ask AI analyses: steps first, and no silent analysis windows (2026-10-29)
+
+- **Decision:** after a second probe with whole research analyses (16 tasks on the paper
+  datasets), the owner approved the proposed design and its order ("진행시켜"): first fix the
+  analyses whose numbers depend on a hidden choice (MSD fitted over a fraction of each run's lags,
+  so runs of different length fit different times; FindRings counting chains that close only
+  through the periodic boundary), then steer Ask AI to steps (a step-first rule in the system
+  prompt and a read-only tool that finds existing steps), then analysis metadata as variables at
+  the top of the notebook and sources without a structure (HILLS, logs, tables of runs). Where
+  metadata is missing the AI proceeds with a stated assumption instead of asking first, and the
+  full API reference stays one read (D31).
+- **Considered:** asking the user before assuming missing metadata; splitting python_api into
+  sections; prompt changes only.
+- **Landed:** public PR #110 (`MeanSquaredDisplacement`/`IonicConductivity` `fit_time`, the fitted
+  window as attributes, FindRings without winding rings unless `periodic_rings=True`); the rest follows.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

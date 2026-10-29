@@ -177,8 +177,18 @@ def particle_msd(positions, lags=None, backend=None, chunk_bytes=2**28):
     return be.to_numpy(xp.concatenate(out))
 
 
-def fit_lags(n: int, fit_range=(0.2, 0.8)) -> slice:
-    """The lag indices :func:`diffusion_fit` fits over for ``n`` lags."""
+def fit_lags(n: int, fit_range=(0.2, 0.8), time=None, fit_time=None) -> slice:
+    """The lag indices :func:`diffusion_fit` fits over for ``n`` lags: the fraction ``fit_range``
+    of them, or with ``fit_time=(t0, t1)`` the lags whose ``time`` lies in ``t0..t1``, so runs of
+    different length fit the same window."""
+    if fit_time is not None:
+        t = np.arange(n, dtype=float) if time is None else np.asarray(time, dtype=float)
+        t0, t1 = (float(v) for v in fit_time)
+        lo, hi = int(np.searchsorted(t, t0, "left")), int(np.searchsorted(t, t1, "right"))
+        if hi - lo < 2:
+            raise ValueError(f"fit_time={tuple(fit_time)} holds {max(hi - lo, 0)} lag(s); "
+                             f"the lags run from {t[0]:g} to {t[-1]:g} in steps of {t[1] - t[0]:g}")
+        return slice(lo, hi)
     lo = min(int(fit_range[0] * n), n - 2)
     return slice(max(lo, 0), max(int(np.ceil(fit_range[1] * n)), lo + 2))
 
@@ -196,8 +206,9 @@ def autocorrelation_fft(vectors, backend=None, chunk_bytes=2**28):
     return be.to_numpy(_acf_sum(v, xp, chunk_bytes) / lags / n)
 
 
-def diffusion_fit(time, msd, fit_range=(0.2, 0.8), dimensions: int = 3):
-    """Einstein relation: fit ``msd = 2 d D t + c`` over the fraction ``fit_range`` of the lags.
+def diffusion_fit(time, msd, fit_range=(0.2, 0.8), dimensions: int = 3, fit_time=None):
+    """Einstein relation: fit ``msd = 2 d D t + c`` over the fraction ``fit_range`` of the lags,
+    or over the lags with ``time`` in ``fit_time=(t0, t1)`` when given.
 
     Returns ``(D, intercept, (t_first, t_last))``; D is in length^2 per unit of ``time``.
     The first lags (ballistic) and the last ones (few time origins) are excluded by default.
@@ -206,7 +217,7 @@ def diffusion_fit(time, msd, fit_range=(0.2, 0.8), dimensions: int = 3):
     y = np.asarray(msd, dtype=float)
     if len(t) < 3:
         return float("nan"), float("nan"), (float("nan"), float("nan"))
-    window = fit_lags(len(t), fit_range)
+    window = fit_lags(len(t), fit_range, t, fit_time)
     lo, hi = window.start, window.stop
     slope, icpt = np.polyfit(t[lo:hi], y[lo:hi], 1)
     return float(slope / (2 * dimensions)), float(icpt), (float(t[lo]), float(t[hi - 1]))

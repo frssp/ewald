@@ -186,7 +186,8 @@ energy drift, LAMMPS warnings/errors, close contacts); `.ok`, `.to_dict()`. Seve
 from each run's thermostat (`attribute="MeanSquaredDisplacement.diffusion_coefficient.Li"` for one species), or
 `arrhenius(temperatures, values)` / `arrhenius({T: D})`: `.Ea`, `.Ea_error`, `.A`, `.r2`, `.plot()`, `.savefig(path)`.
 A study over several runs (D(T), Ea, a comparison): `check_run` every run first and trim (`msd(pipe, start=check.equilibrated)`)
-or leave out the runs it flags, saying which and why; take temperatures from the input files and say where a folder
+or leave out the runs it flags, saying which and why; runs of different length fit the same time window only with
+`fit_time=(t0, t1)` (`fit_range` is a fraction of each run's lags; `.fit_start`/`.fit_end` say what was fitted); take temperatures from the input files and say where a folder
 name disagrees; finish with a cell that prints every number the answer quotes.
 Workflows (a folder of calculations, `aiida:...`): `workflow_table(path, ...)` (`from ewald import workflow_table`)
 is a row per step and a column per number (energy, energy/atom, barrier, gap, max force, atoms, ...); several paths

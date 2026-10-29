@@ -92,7 +92,10 @@ class MeanSquaredDisplacement(_TrajectoryModifier):
     ``xu yu zu``) and matched by 'Particle Identifier'. Every frame is a time origin (FFT
     algorithm). Writes ``tables['msd']`` with ``Time``, ``MSD``, per-type ``MSD <type>`` and the
     Einstein fit ``MSD fit``, and attributes ``MeanSquaredDisplacement.diffusion_coefficient``
-    (``.<type>`` per type) from a linear fit over ``fit_range`` (fraction of the lags).
+    (``.<type>`` per type) from a linear fit over ``fit_range`` (fraction of the lags), or over
+    the lags between ``fit_time=(t0, t1)`` (units of ``time_per_frame``, frames without it) when
+    given: use it to compare runs of different length, whose fractions are different times.
+    ``.fit_start`` and ``.fit_end`` are the first and last lag time of the fit.
     ``time_per_frame`` is the time between stored frames (e.g. ps, giving D in A^2/ps;
     1 A^2/ps = 1e-4 cm^2/s); 0 reports lags in frames. ``subtract_drift`` removes the
     center-of-mass motion; ``only_selected`` uses the particles selected at frame ``start``.
@@ -106,7 +109,8 @@ class MeanSquaredDisplacement(_TrajectoryModifier):
 
     def __init__(self, start: int = 0, stop: int | None = None, step: int = 1, time_per_frame: float = 0.0,
                  fit_range: tuple = (0.2, 0.8), by_type: bool = True, unwrapped: bool = False,
-                 subtract_drift: bool = False, only_selected: bool = False, by_axis: bool = False):
+                 subtract_drift: bool = False, only_selected: bool = False, by_axis: bool = False,
+                 fit_time: tuple | None = None):
         self.start = start
         self.stop = stop
         self.step = step
@@ -117,6 +121,7 @@ class MeanSquaredDisplacement(_TrajectoryModifier):
         self.subtract_drift = subtract_drift
         self.only_selected = only_selected
         self.by_axis = by_axis
+        self.fit_time = fit_time
 
     def modify(self, data, ctx):
         table, attrs, traj, per_particle = self._cached(ctx, lambda: self._compute(ctx))
@@ -140,13 +145,16 @@ class MeanSquaredDisplacement(_TrajectoryModifier):
             _add_axes(table, x, traj["types"], be)
         attrs = {}
         name = "MeanSquaredDisplacement.diffusion_coefficient"
+        fit_time = getattr(self, "fit_time", None)
         for col in [c for c in table if c.startswith("MSD")]:
             dims = 1 if col[-2:] in (" x", " y", " z") else 3
-            d, icpt, _ = diffusion_fit(table["Time"], table[col], self.fit_range, dimensions=dims)
+            d, icpt, (t0, t1) = diffusion_fit(table["Time"], table[col], self.fit_range, dims, fit_time)
             attrs[name + col[3:].replace(" ", ".")] = d
             if col == "MSD":
                 table["MSD fit"] = 6.0 * d * table["Time"] + icpt
-        per_particle = particle_msd(x, fit_lags(x.shape[0], self.fit_range), be) if x.shape[0] > 2 \
+                attrs["MeanSquaredDisplacement.fit_start"], attrs["MeanSquaredDisplacement.fit_end"] = t0, t1
+        window = fit_lags(x.shape[0], self.fit_range, table["Time"], fit_time) if x.shape[0] > 2 else None
+        per_particle = particle_msd(x, window, be) if x.shape[0] > 2 \
             else np.zeros(x.shape[1])
         index = {k: traj[k] for k in ("Particle Identifier", "Index")}
         return table, attrs, index, per_particle
