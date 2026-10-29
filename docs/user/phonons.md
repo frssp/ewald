@@ -85,5 +85,5 @@ Opening a phonon file adds a `PhononMode` to the pipeline, so the first optical 
 first q-point plays at once. The Plots tab draws the band structure with its high-symmetry
 labels (or one tick per mode for a Gamma-only OUTCAR) and circles the mode on screen. Click a
 band to switch to the nearest mode and start playback; the status bar shows its q-point and
-frequency. The modifier's parameter form changes amplitude, supercell and arrows. Phonon mode
+frequency. The step's arguments (`amplitude`, `supercell`, arrows) change in its cell. Phonon mode
 animation is also under Insert › Step (Phonons).

@@ -58,10 +58,9 @@ There are six kinds of cell.
 (`pipe.modifiers.append(...)` works too; `load` is another name for `import_file`). The notebook shows them as a step: the modifier's name, its parameters, a checkbox to
 switch it off, the time it took and what it produced (new properties, selected atoms, tables,
 removed atoms). A small histogram or curve of the new property or table sits next to the
-results. *Form* opens the parameter form, and Apply writes the new values back into the cell's
-code. *Python* shows the code. **+ Step** next to Run all opens the list of steps to search (type `coord`
+results. *Python* shows the code: edit the arguments there and run the cell again (Ctrl+Enter). **+ Step** next to Run all opens the list of steps to search (type `coord`
 or `msd`), and Insert › Step or **+ Step** under the cells opens the same steps as a menu; each adds
-a step with default parameters after the current cell. Steps that cannot work on the current frame are
+a step with default parameters after the current cell and shows its code. Steps that cannot work on the current frame are
 greyed out, and their tooltip says what is missing (a volumetric grid, a vector property, a
 trajectory, a selection, PTM orientations). Bond analyses (bond angles, bond lengths, rings)
 add `CreateBonds(mode="covalent")` first when the data has no bonds, and Coordination polyhedra
@@ -510,7 +509,7 @@ kernel computes each frame and sends back its particles, cell, bonds, tables, at
 surfaces (polyhedra, isosurfaces), voxel grids, vector styles and the electronic structure
 (and phonon modes) behind DOS and band plots, so the viewport, view cells, plots and Display
 settings look and work as in the app. Plots the cells draw themselves get the notebook's plot
-style there too. Step cells keep their form and on/off checkbox: the
+style there too. Step cells keep their header and on/off checkbox: the
 app builds a local copy of each step from its cell, an edit runs the cell again in the kernel,
 and the status, time and results of the kernel's steps come back with every frame (a failing
 step is skipped and reports its error on its cell, as in the app). The window stays usable
@@ -529,7 +528,7 @@ nb.set_kernel(None)                                              # back to this 
 
 Edit › Undo (Ctrl+Z) and Redo (Ctrl+Shift+Z) step through the notebook's edits, one entry per
 action: inserting, deleting or moving a cell, running cells (with what you typed into them), a
-step form (dragging one slider counts once) and pipeline changes made from elsewhere (console,
+step switched on or off and pipeline changes made from elsewhere (console,
 Ask AI, viewport tools). The menu names the entry it would undo. While the cursor is in a
 cell, Ctrl+Z undoes typing in that cell instead.
 

@@ -4965,6 +4965,40 @@ def test_search_box_centered_and_step_button(app, cu_fcc, monkeypatch):
     w.close()
 
 
+def test_step_cells_edit_in_python_only(app, cu_fcc):
+    """The owner dropped the step form ("python만으로 가자", D82): a step cell's header has Python
+    and no Form button, a new step and View › Edit step open its code, and running edited code
+    replaces the step."""
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(Pipeline(StaticSource([cu_fcc])))
+    w.show()
+    w.panel.add_modifier(mods.CoordinationAnalysis(cutoff=3.0))
+    app.processEvents()
+    view = w.panel.view
+    cell = view.current
+    cw = view.widget_for(cell)
+    texts = [b.text() for b in cw.findChildren(QtWidgets.QToolButton)]
+    assert "Python" in texts and "Form" not in texts
+    assert not hasattr(cw, "form_button") and not hasattr(cw, "form_page")
+    assert cw.editor.isVisible() and cw.code_button.isChecked()          # a new step shows its code
+    cw.show_code(False)
+    assert not cw.editor.isVisible() and not cw.code_button.isChecked()
+    w.panel.show_step(cell.modifier)                                      # View › Edit step
+    assert cw.editor.isVisible() and "cutoff=3" in cw.editor.toPlainText()
+    cw.editor.setPlainText(cell.source.replace("cutoff=3.0", "cutoff=2.8"))
+    view.run(cell)
+    for _ in range(250):
+        app.processEvents()
+        if cell.state not in ("new", "queued", "running"):
+            break
+        QtCore.QThread.msleep(20)
+    steps = [m for m in view.notebook.pipeline.modifiers if isinstance(m, mods.CoordinationAnalysis)]
+    assert cell.state == "ok", (cell.state, cell.outputs)
+    assert len(steps) == 1 and steps[0].cutoff == 2.8
+    w.close()
+
+
 def test_preferences_pages_after_menu_review(app):
     """Preferences: 3D view, Atoms & bonds, Plots, Notebooks and Plugins pages; old page names
     still open the right page; the AI page starts with the provider."""

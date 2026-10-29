@@ -1079,8 +1079,8 @@ class History:
     """Undo/redo for a notebook, one entry per user action, kept as text snapshots.
 
     Call :meth:`commit` after every edit; it records an entry when the cells changed since the
-    last commit. Edits with the same ``merge`` key in a row (dragging one slider of one step
-    form) become one entry.
+    last commit. Edits with the same ``merge`` key in a row (toggling one step on and off)
+    become one entry.
     """
 
     def __init__(self, notebook: Notebook, limit: int = 200):

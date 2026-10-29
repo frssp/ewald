@@ -508,7 +508,7 @@ class Pipeline:
         # keyed by source, frame, device and those modifiers' settings: showing the same frame
         # again (view cells, plots, the GUI, a kernel) skips the analysis.
         # Steps slower than ``checkpoint_seconds`` also keep their own result, so changing a later
-        # step (its form in the GUI, its notebook cell) starts there instead of at the source frame.
+        # step (its notebook cell) starts there instead of at the source frame.
         self._outputs: OrderedDict[tuple, DataCollection] = OrderedDict()
         self.cache_outputs = True
 

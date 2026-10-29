@@ -208,7 +208,7 @@ GUI
   `.ewd` (not `.py`/`.ipynb`), and a chat changes no "unsaved" mark, so closing without saving
   loses it; a saved chat reaches a new model as a text transcript (no tool results or images);
   a streamed answer is drawn as Markdown a few times a second, so an unclosed code fence shows as
-  text until it closes; `ewald ask` and the MCP server do not stream; show tool images inline, insert as a step cell (form) when the block is one `pipe.add(...)`,
+  text until it closes; `ewald ask` and the MCP server do not stream; show tool images inline, insert as a step cell when the block is one `pipe.add(...)`,
   edit or regenerate a sent message. Cells the AI changed are linked from
   its answer (a click scrolls to and lights up the cell); the cells could also stay marked in
   the notebook and show a diff to accept or undo, and a cell number the model writes in its text
@@ -272,7 +272,7 @@ GUI
   only when the view cell runs again.
 - Colors (`ewald.colors`, every form in every color argument): the color swatches of Preferences
   and of the Colors card open only the color dialog (no typed `'tab:blue'` or `'rgb(...)'` there,
-  as the step forms take); alpha in a color is read but atoms, bonds and lines ignore it
+  as step arguments take); alpha in a color is read but atoms, bonds and lines ignore it
   (`transparency` is the way), and `"C0"`-style cycle names follow the current plot style.
 - View tabs (`view(pipe, tab=...)`, more Structure tabs): picks, mouse measurements, bond editing
   and linked plot selections work in the main Structure view only (a tab's pick shows its label);
@@ -304,7 +304,7 @@ GUI
   drawn in matplotlib's default style, not the notebook's plot style; a PNG per frame, not a
   live interactive plot (no zoom or linked selection); moving one between the panel and the cell
   is not saved; steps that run in a notebook kernel do not send their figures back yet.
-- Notebook kernels (`ewald/kernel.py`): step forms for steps a kernel cell adds with code the
+- Notebook kernels (`ewald/kernel.py`): step headers (results, checkbox) for steps a kernel cell adds with code the
   app cannot import (a class only the kernel's Python has stays as code). Outputs of a kernel
   cell (text, progress bars) arrive when the cell ends; in-process cells show them while they
   run. Stream them from the kernel's iopub messages instead of the bridge's final JSON.
@@ -412,7 +412,7 @@ Runs (`ewald/runinfo.py`, `ewald/runs.py`; manual page docs/user/runs.md)
   `run`s with different fixes (the last thermostat wins now), and `thermo_modify line yaml`.
 - Quantum ESPRESSO, CP2K and ABINIT inputs (`run_info` knows VASP and LAMMPS only).
 - Use `check.equilibrated` as the default `start=` of MSD, time averaging and the transport
-  modifiers (now the user passes it); the transport modifiers and the GUI step forms still default
+  modifiers (now the user passes it); the transport modifiers still default
   `time_per_frame` to 0 (frames) instead of the run's value.
 - Time units on plot axes: the MSD/VACF `Time` column is in ps when `time_per_frame` is known, but
   the table does not say so, so the axis reads "Time".

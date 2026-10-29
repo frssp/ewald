@@ -30,7 +30,7 @@ analysis, and the notebook writes the cell for you:
 pipe.add(CoordinationAnalysis(cutoff=3.0))
 ```
 
-The cell shows as a step: the parameters, *Form* to edit them, how long it took and what it produced
+The cell shows as a step: the parameters, *Python* to edit them, how long it took and what it produced
 (here a `Coordination` property and a `coordination-rdf` table, with a small histogram). Edit the
 cutoff and run the cell again (Ctrl+Enter) and the step is replaced, not added twice.
 

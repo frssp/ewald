@@ -506,7 +506,7 @@ class DisplayPanel(QtWidgets.QWidget):
 
     styleChanged = QtCore.Signal()               # visual elements changed -> redraw only
     modifierRequested = QtCore.Signal(object)    # e.g. "Use as Create bonds modifier": a notebook step
-    stepRequested = QtCore.Signal(object)        # Polyhedra › Edit step: show that modifier's cell and form
+    stepRequested = QtCore.Signal(object)        # Polyhedra › Edit step: show that modifier's cell and its Python
     cameraRequested = QtCore.Signal()            # Camera › Save camera: write it into the view cell
 
     def __init__(self, style=None, parent=None):
@@ -1089,7 +1089,7 @@ class DisplayPanel(QtWidgets.QWidget):
 
     def _polyhedra_editor(self):
         """Coordination polyhedra: without a step, the center types and Add polyhedra (a notebook step);
-        with one, its centers (Edit step opens its form) and the look (shown, color, transparency, edges)
+        with one, its centers (Edit step shows its cell) and the look (shown, color, transparency, edges)
         as the view's ``surfaces['coordination-polyhedra']``, so the step stays as it is."""
         w = QtWidgets.QWidget()
         f = self._form_layout(w)
@@ -1119,7 +1119,7 @@ class DisplayPanel(QtWidgets.QWidget):
         row = QtWidgets.QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
         row.addWidget(QtWidgets.QLabel(text, objectName="viewValue"), 1)
-        edit = QtWidgets.QPushButton("Edit step", toolTip="Show the Coordination polyhedra cell and its form")
+        edit = QtWidgets.QPushButton("Edit step", toolTip="Show the Coordination polyhedra cell and its Python")
         edit.clicked.connect(lambda: self.stepRequested.emit(step))
         row.addWidget(edit)
         self._row(f, "Centers", row)
@@ -1544,7 +1544,7 @@ class DisplayPanel(QtWidgets.QWidget):
             step = next((m for m in reversed(getattr(self.pipeline, "modifiers", []))
                          if isinstance(m, mods.CreateBonds)), None)
             if step is not None:
-                edit_step = QtWidgets.QPushButton("Edit step", toolTip="Show the Create bonds cell and its form")
+                edit_step = QtWidgets.QPushButton("Edit step", toolTip="Show the Create bonds cell and its Python")
                 edit_step.clicked.connect(lambda: self.stepRequested.emit(step))
                 row.addWidget(edit_step)
             f.addRow(row)

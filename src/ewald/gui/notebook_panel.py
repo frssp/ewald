@@ -689,7 +689,7 @@ class NotebookView(QtWidgets.QWidget):
         self.rebuild()
         w = self.widget_for(cell)
         if w is not None:
-            w.form_button.setChecked(True)
+            w.show_code()
             QtCore.QTimer.singleShot(0, w, lambda: self.scroll.ensureWidgetVisible(w))
         self.history.commit(f"Add {modifier.name}")
         self.changed.emit()
@@ -1619,15 +1619,15 @@ class NotebookPanel(QtWidgets.QWidget):
             pass
 
     def show_step(self, mod):
-        """Select the step cell of ``mod``, scroll to it and open its form (View › Polyhedra › Edit step)."""
+        """Select the step cell of ``mod``, scroll to it and show its Python (View › Polyhedra › Edit step)."""
         view = self.view
         cell = None if view is None else next((c for c in view.notebook.cells if c.modifier is mod), None)
         if cell is None:
             return
         view.select(cell)
         w = view.widget_for(cell)
-        if w is not None and getattr(w, "form_button", None) is not None:
-            w.form_button.setChecked(True)
+        if w is not None and w.cell.is_step:
+            w.show_code()
             QtCore.QTimer.singleShot(0, w, lambda: view.scroll.ensureWidgetVisible(w))
 
     def refresh(self, select=None):
