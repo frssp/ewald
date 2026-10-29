@@ -22,9 +22,17 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
   top=n, by=...)` keeps the n particles with the largest value, so "the paths of the 5 Li with the
   largest MSD" is three steps; Ask AI gets the recipe and a new eval task (`li-top-msd-paths`).
   Expression names drop characters a name cannot hold (`SqDispAverage`). (#105)
+- `MeanSquaredDisplacement` and `IonicConductivity` take `fit_time=(t0, t1)`, so runs of different
+  length fit the same lag times; the MSD writes the fitted window as `.fit_start`/`.fit_end`. (D84, #110)
+- Ask AI's `search_api` tool finds the step, function or recipe for a job and returns its whole
+  docstring; the system prompt asks for steps before hand-written code and for how much a number
+  moves with each analysis choice. Plugins offer functions to cells and to the AI with
+  `@api_function`. (D84, #111, #112)
 
 ### Changed
 
+- `FindRings` leaves out chains that close only through the periodic boundary (counted in
+  `FindRings.periodic_rings`; `periodic_rings=True` keeps them, as OVITO does). (D84, #110)
 - Step cells are edited in Python only: the *Form* button and its generated parameter form are
   gone; a new step and View › Edit step open the cell's code. (D83, #107)
 - The Windows standalone app is one build, `ewald-X.Y.Z-win64-setup.exe` / `-portable.zip`; the

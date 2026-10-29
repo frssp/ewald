@@ -687,6 +687,42 @@ def test_search_api_finds_the_step_for_a_job():
     assert any(t.startswith("MD trajectory: diffusion coefficient:") and "```python" in t for _, t in chunks)
     out = Toolset().call("search_api", {"query": "residence time of hopping ions"}).content
     assert out["results"][0]["text"].startswith("- `SiteHopping(")
+    # a result carries the whole docstring: options explained after its first paragraph too
+    assert "site_radius` > 0 it changes site only once" in out["results"][0]["text"]
+
+
+def test_plugin_functions_are_in_the_reference_and_found(monkeypatch):
+    from ewald import plugins
+
+    def fes_from_hills(hills, bins=None, *, kt: float = 2.5):
+        """Free energy surface from metadynamics hills, like plumed sum_hills.
+
+        Well-tempered runs are rescaled by (bias factor) / (bias factor - 1)."""
+
+    fes_from_hills.__module__ = "ewald_plumed"
+    monkeypatch.setattr(plugins, "functions",
+                        lambda: {"fes_from_hills": plugins.FunctionPlugin("fes_from_hills", fes_from_hills,
+                                                                          "ewald_plumed", "ewald-plumed")})
+    ref = Toolset().call("python_api").content
+    assert "`from ewald_plumed import fes_from_hills`" in ref
+    assert "- `fes_from_hills(hills, bins=None, *, kt: float = 2.5)`: Free energy surface" in ref
+    hit = Toolset().call("search_api", {"query": "free energy surface from metadynamics hills"}).content
+    found = [r["text"] for r in hit["results"] if r["text"].startswith("- `fes_from_hills(")]
+    assert found and "Well-tempered" in found[0]
+
+
+def test_api_function_decorator_registers(monkeypatch):
+    from ewald import plugins
+
+    monkeypatch.setattr(plugins._registry, "functions", {})
+    monkeypatch.setattr(plugins, "load_plugins", lambda *a, **k: None)
+
+    @plugins.api_function
+    def my_helper(x):
+        """Double x."""
+        return 2 * x
+
+    assert plugins.functions()["my_helper"].function is my_helper and my_helper(2) == 4
 
 
 def test_python_api_cells_run_as_documented(tmp_path, monkeypatch):

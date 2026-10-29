@@ -521,15 +521,27 @@ def modifier_reference() -> str:
 
 
 def plugin_reference() -> str:
-    """Installed modifier plugins, in the same format (not part of llms.txt)."""
+    """Installed modifier plugins and plugin functions (:func:`ewald.plugins.api_function`), in the
+    same format (not part of llms.txt)."""
     from .. import plugins
 
     found = plugins.modifiers()
-    lines = ["## Modifier plugins installed here", ""]
+    lines = ["## Modifier plugins installed here", ""] if found else []
     for name, plugin in found.items():
         doc = _doc(plugin.cls)
         lines.append(f"- `{name}{_signature(plugin.cls)}`" + (f": {doc}" if doc else "") + f" [{plugin.origin}]")
-    return "\n".join(lines) + "\n" if found else ""
+    by_module: dict[str, list] = {}
+    for plugin in plugins.functions().values():
+        by_module.setdefault(plugin.module, []).append(plugin)
+    if by_module:
+        lines += ([""] if lines else []) + ["## Functions from plugins installed here", ""]
+    for module, entries in by_module.items():
+        lines += [f"`from {module} import {', '.join(p.name for p in entries)}`:", ""]
+        for p in entries:
+            doc = _doc(p.function)
+            lines.append(f"- `{p.name}{_signature(p.function)}`" + (f": {doc}" if doc else ""))
+        lines.append("")
+    return "\n".join(lines).rstrip("\n") + "\n" if lines else ""
 
 
 def api_reference(with_plugins: bool = False) -> str:
@@ -618,4 +630,32 @@ def search_reference(query: str, limit: int = 6, with_plugins: bool = False) -> 
         if score > 0:
             scored.append((score, section, text))
     scored.sort(key=lambda s: -s[0])
-    return [{"section": s, "text": t, "score": round(sc, 2)} for sc, s, t in scored[:limit]]
+    return [{"section": s, "text": _full_entry(t), "score": round(sc, 2)} for sc, s, t in scored[:limit]]
+
+
+def _documented(name: str):
+    """The modifier (core or plugin) or notebook function called ``name``, or None."""
+    from .. import modifiers, paint, plugins, views
+    import ewald
+
+    for module, names in FUNCTIONS:
+        if name in names:
+            return getattr({"ewald": ewald, "ewald.views": views, "ewald.paint": paint}[module], name)
+    if name in modifiers.__all__:
+        return getattr(modifiers, name)
+    plugin = plugins.modifiers().get(name)
+    if plugin is not None:
+        return plugin.cls
+    function = plugins.functions().get(name)
+    return function.function if function is not None else None
+
+
+def _full_entry(text: str) -> str:
+    """A modifier or function entry with its whole docstring (the reference keeps only the first
+    paragraph and the sentences naming outputs; options such as ``site_radius`` are explained
+    further down), other pieces unchanged."""
+    m = re.match(r"- `(\w+)\(", text)
+    obj = _documented(m.group(1)) if m else None
+    if obj is None or not obj.__doc__:
+        return text
+    return f"- `{m.group(1)}{_signature(obj)}`:\n" + _plain(inspect.cleandoc(obj.__doc__))

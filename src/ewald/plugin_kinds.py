@@ -336,6 +336,18 @@ class ToolPlugin:
 
 
 @dataclass
+class FunctionPlugin:
+    """A function a plugin offers for notebook cells (e.g. ``fes_from_hills``): listed with its
+    signature and docstring in the AI's API reference and found by its search, imported in a cell
+    as ``from <module> import <name>``."""
+
+    name: str
+    function: Callable
+    module: str = ""
+    origin: str = ""
+
+
+@dataclass
 class PanelPlugin:
     """A panel of the desktop app: with ``area="side"`` a side bar that a button on the activity
     bar (left edge) shows or hides, with ``area="bottom"`` a tab under the 3D view (next to
