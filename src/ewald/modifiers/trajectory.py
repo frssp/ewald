@@ -12,7 +12,7 @@ from itertools import chain
 import numpy as np
 
 from ..kernels import (_add_axes, _per_type, autocorrelation_fft, average_tables, collect_trajectory, diffusion_fit,
-                       finite_difference_velocities, green_kubo, msd_fft, path_statistics, unwrap)
+                       finite_difference_velocities, fit_lags, green_kubo, msd_fft, particle_msd, path_statistics, unwrap)
 from ..pipeline import Modifier
 
 
@@ -99,6 +99,9 @@ class MeanSquaredDisplacement(_TrajectoryModifier):
     ``by_axis`` adds the MSD along x, y and z of each column (``MSD x``, ``MSD Li z``, ...) and
     their one-dimensional diffusion coefficients (``.x``, ``.Li.z``, slope/2): how anisotropic the
     diffusion is, e.g. Li moving in a plane or along a channel only.
+    Also writes the particle property 'MSD': each particle's own time-averaged MSD (A^2), averaged
+    over the lags of ``fit_range``, so the atoms with the largest MSD are
+    ``ExpressionSelection("ParticleType == 'Li'", top=5, by="MSD")`` (0 for untraced particles).
     """
 
     def __init__(self, start: int = 0, stop: int | None = None, step: int = 1, time_per_frame: float = 0.0,
@@ -116,9 +119,10 @@ class MeanSquaredDisplacement(_TrajectoryModifier):
         self.by_axis = by_axis
 
     def modify(self, data, ctx):
-        table, attrs = self._cached(ctx, lambda: self._compute(ctx))
+        table, attrs, traj, per_particle = self._cached(ctx, lambda: self._compute(ctx))
         data.tables["msd"] = dict(table)
         data.attributes.update(attrs)
+        data.particles["MSD"] = _scatter_to_frame(data, traj, per_particle)
 
     def _compute(self, ctx):
         be = ctx.backend
@@ -142,7 +146,10 @@ class MeanSquaredDisplacement(_TrajectoryModifier):
             attrs[name + col[3:].replace(" ", ".")] = d
             if col == "MSD":
                 table["MSD fit"] = 6.0 * d * table["Time"] + icpt
-        return table, attrs
+        per_particle = particle_msd(x, fit_lags(x.shape[0], self.fit_range), be) if x.shape[0] > 2 \
+            else np.zeros(x.shape[1])
+        index = {k: traj[k] for k in ("Particle Identifier", "Index")}
+        return table, attrs, index, per_particle
 
 
 class VelocityAutocorrelation(_TrajectoryModifier):

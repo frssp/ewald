@@ -67,6 +67,19 @@ def test_expression_takes_property_names_with_spaces(cu_fcc):
         Pipeline(StaticSource(cu_fcc), [ColorCoding("Charge Density")]).compute(0)
 
 
+def test_expression_names_drop_characters_a_name_cannot_hold(cu_fcc):
+    """TimeAveraging writes "<name> (Average)": an expression reaches it as SqDispAverage, and the
+    name as written also works on its own (the AI tried both and got NameErrors)."""
+    from ewald.modifiers.expression import evaluate
+
+    data = cu_fcc.copy()
+    data.particles["SqDisp (Average)"] = np.arange(cu_fcc.count, dtype=float)
+    assert (evaluate("SqDispAverage > 2", data)).sum() == cu_fcc.count - 3
+    np.testing.assert_array_equal(evaluate("SqDisp (Average)", data), data["SqDisp (Average)"])
+    data.particles["Net Displacement"] = np.arange(cu_fcc.count, dtype=float)
+    assert evaluate("(Net Displacement > 2) & (SqDisp (Average) < 5)", data).sum() == 2
+
+
 def test_expression_power_as_in_ovito(cu_fcc):
     from ewald.modifiers.expression import evaluate
 

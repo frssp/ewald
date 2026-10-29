@@ -72,7 +72,10 @@ pipe = load("run.npz", format="npz-trajectory")                 # format= also n
 OVITO syntax evaluated with numpy: `Position.Z`, `ParticleType`, `ParticleIdentifier`, `Coordination`, `Velocity.X`,
 globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, not `and`/`or`/`not`:
 `(Position.Z > 10) & (ParticleType == "Cu")`. Powers: `**` or OVITO's `^` (`Force.X^2`). Functions: `abs sqrt exp log sin cos min max`, numpy ufuncs and array functions such as `np.where`, `np.isin`,
-`np.linalg.norm` (no attribute access beyond those, no file or module access).
+`np.linalg.norm` (no attribute access beyond those, no file or module access). A property's name drops the spaces and
+other characters a name cannot hold: "Particle Type" is `ParticleType`, "SqDisp (Average)" is `SqDispAverage`.
+Ranking: `ExpressionSelection("ParticleType == 'Li'", top=5, by="MSD")` selects the 5 Li with the largest `MSD`
+(`top=-5`: the smallest; `by` is a property or an expression), e.g. the atoms whose paths `GenerateTrajectoryLines` draws.
 
 ## Differences from OVITO
 
@@ -237,7 +240,9 @@ The AI's `set_view` / `get_view` tools take the same settings.
 - Trajectory modifiers (`MeanSquaredDisplacement`, `VelocityAutocorrelation`, `TimeAveraging`, `TimeSeries`,
   `GenerateTrajectoryLines`) read every frame of `start:stop:step` through the modifiers above them and cache the
   result, so e.g. `CoordinationAnalysis(3.0)` then `TimeAveraging("table:coordination-rdf")` gives the
-  time-averaged g(r) in `tables["coordination-rdf[average]"]`.
+  time-averaged g(r) in `tables["coordination-rdf[average]"]`. Per atom: `MeanSquaredDisplacement` writes the
+  property 'MSD' (each atom's own time-averaged MSD over the fit window), `GenerateTrajectoryLines` 'Path Length',
+  'Net Displacement', 'Max Displacement'; rank them with `ExpressionSelection(..., top=n, by=...)`, never by hand-written ids.
 - Ion transport modifiers work the same way: `IonicConductivity(temperature, time_per_frame, charges)` (collective
   charge MSD -> `IonicConductivity.conductivity` in S/cm, `.nernst_einstein_conductivity`, `.haven_ratio`; charges
   from the dict, the 'Charge' property or guessed oxidation states), `VanHoveCorrelation(times, part)`,
@@ -292,6 +297,12 @@ show(pipe, table="msd")
 data = pipe.compute(0)
 D = data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]   # A^2/ps; per type: .diffusion_coefficient.<type>
 print(f"D = {D:.3g} A^2/ps = {D * 1e-4:.3g} cm^2/s")
+# %%
+pipe.add(ExpressionSelection("ParticleType == 'Si'", top=5, by="MSD"))   # the 5 Si with the largest per-atom 'MSD'
+# %%
+pipe.add(GenerateTrajectoryLines())                       # paths of the selected atoms
+# %%
+view(pipe, trajectory_color_by="Time", selection=False)
 ```
 
 Defects in a crystal: structure types, show only non-FCC atoms:
@@ -386,7 +397,7 @@ print(grid.shape, grid.integrate("Charge Density"))
 - `ColorCoding(property: str, cmap: str = 'viridis', range=None, only_selected: bool = False)`: Map a scalar property or expression to colors through a color map. The range used is stored in attributes so a legend can be drawn later.
 - `ClearSelection()`: Remove the 'Selection' property.
 - `DeleteSelected()`: Delete the selected particles.
-- `ExpressionSelection(expression: str)`: Select particles where `expression` is true (sets 'Selection').
+- `ExpressionSelection(expression: str, top: int = 0, by: str = '')`: Select particles where `expression` is true (sets 'Selection').
 - `InvertSelection()`: Select the unselected particles and unselect the selected ones.
 - `SelectType(types, property: str = 'Particle Type')`: Select particles whose 'Particle Type' (or another property) is in `types`.
 - `Slice(normal=(0, 0, 1), distance: float = 0.0, width: float = 0.0, inverse: bool = False, select: bool = False, miller: bool = False)`: Keep (or select) particles in a slab `|n.r - distance| <= width/2`.
@@ -432,7 +443,7 @@ print(grid.shape, grid.integrate("Charge Density"))
 
 ### Trajectories, transport, NEB and phonons
 
-- `MeanSquaredDisplacement(start: int = 0, stop: int | None = None, step: int = 1, time_per_frame: float = 0.0, fit_range: tuple = (0.2, 0.8), by_type: bool = True, unwrapped: bool = False, subtract_drift: bool = False, only_selected: bool = False, by_axis: bool = False)`: Time-averaged mean squared displacement over a frame range and the diffusion coefficient. Writes `tables['msd']` with `Time`, `MSD`, per-type `MSD <type>` and the Einstein fit `MSD fit`, and attributes `MeanSquaredDisplacement.diffusion_coefficient` (`.<type>` per type) from a linear fit over `fit_range` (fraction of the lags). `time_per_frame` is the time between stored frames (e.g. ps, giving D in A^2/ps; 1 A^2/ps = 1e-4 cm^2/s); 0 reports lags in frames. `by_axis` adds the MSD along x, y and z of each column (`MSD x`, `MSD Li z`, ...) and their one-dimensional diffusion coefficients (`.x`, `.Li.z`, slope/2): how anisotropic the diffusion is, e.g.
+- `MeanSquaredDisplacement(start: int = 0, stop: int | None = None, step: int = 1, time_per_frame: float = 0.0, fit_range: tuple = (0.2, 0.8), by_type: bool = True, unwrapped: bool = False, subtract_drift: bool = False, only_selected: bool = False, by_axis: bool = False)`: Time-averaged mean squared displacement over a frame range and the diffusion coefficient. Writes `tables['msd']` with `Time`, `MSD`, per-type `MSD <type>` and the Einstein fit `MSD fit`, and attributes `MeanSquaredDisplacement.diffusion_coefficient` (`.<type>` per type) from a linear fit over `fit_range` (fraction of the lags). `time_per_frame` is the time between stored frames (e.g. ps, giving D in A^2/ps; 1 A^2/ps = 1e-4 cm^2/s); 0 reports lags in frames. `by_axis` adds the MSD along x, y and z of each column (`MSD x`, `MSD Li z`, ...) and their one-dimensional diffusion coefficients (`.x`, `.Li.z`, slope/2): how anisotropic the diffusion is, e.g. Also writes the particle property 'MSD': each particle's own time-averaged MSD (A^2), averaged over the lags of `fit_range`, so the atoms with the largest MSD are `ExpressionSelection("ParticleType == 'Li'", top=5, by="MSD")` (0 for untraced particles).
 - `VelocityAutocorrelation(start: int = 0, stop: int | None = None, step: int = 1, time_per_frame: float = 0.0, velocities: str = 'auto', by_type: bool = True, max_lag_fraction: float = 0.5, only_selected: bool = False)`: Velocity autocorrelation function and the Green-Kubo diffusion coefficient. Writes `tables['vacf']` with `Time`, `VACF`, `VACF (normalized)`, per-type `VACF <type>` and the running integral `D(t)` = (1/3) int VACF dt, and the attribute `VelocityAutocorrelation.diffusion_coefficient`: `D(t)` averaged over the second half of `0 .. max_lag_fraction` of the lags.
 - `TimeAveraging(operate_on='table:coordination-rdf', start: int = 0, stop: int | None = None, step: int = 1)`: Average upstream results over a frame range (OVITO's TimeAveragingModifier). `'table:coordination-rdf'` after CoordinationAnalysis gives the time-averaged g(r)) writes `tables['<name>[average]']`; `'attribute:<name>'` writes the attribute `'<name> (Average)'`; `'property:<name>'` writes the per-particle property `'<name> (Average)'` (particles matched by identifier).
 - `TimeSeries(operate_on=None, start: int = 0, stop: int | None = None, step: int = 1)`: Global attributes as a function of time (OVITO's TimeSeriesModifier). `operate_on` is an attribute name or a tuple of names; None takes every numeric attribute of the first frame. Writes `tables['time-series']` with `Frame`, `Timestep` and one column per attribute.
