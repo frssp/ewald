@@ -5,9 +5,10 @@ import pytest
 from ewald import DataCollection, Pipeline, StaticSource, import_file
 from ewald.backend import CPU, Backend
 from ewald.data import Cell
-from ewald.kernels import (autocorrelation_fft, collect_trajectory, diffusion_fit, green_kubo, msd_fft,
-                           path_statistics, trajectory_rdf, trajectory_vacf)
-from ewald.modifiers import (CoordinationAnalysis, GenerateTrajectoryLines, MeanSquaredDisplacement, SelectType,
+from ewald.kernels import (autocorrelation_fft, collect_trajectory, diffusion_fit, fit_lags, green_kubo, msd_fft,
+                           particle_msd, path_statistics, trajectory_rdf, trajectory_vacf)
+from ewald.modifiers import (CoordinationAnalysis, ExpressionSelection, GenerateTrajectoryLines, MeanSquaredDisplacement,
+                             SelectType,
                              TimeAveraging, TimeSeries, VelocityAutocorrelation)
 
 
@@ -68,6 +69,45 @@ def test_msd_modifier_matches_fft_and_einstein(rng, backend):
     assert d == pytest.approx(0.09, rel=0.15)
     assert "MeanSquaredDisplacement.diffusion_coefficient.A" in data.attributes
     assert len(table["MSD fit"]) == 60
+
+
+def test_particle_msd_is_each_atoms_time_averaged_msd(rng, backend):
+    x = np.cumsum(rng.normal(size=(30, 9, 3)), axis=0)
+    lags = slice(4, 20)
+    got = particle_msd(x, lags, backend, chunk_bytes=2000)          # several chunks of particles
+    direct = [np.mean([((x[m:, i] - x[:-m, i]) ** 2).sum(-1).mean() for m in range(4, 20)]) for i in range(9)]
+    np.testing.assert_allclose(got, direct, rtol=1e-9)
+    assert got.mean() == pytest.approx(msd_fft(x)[lags].mean())
+    assert fit_lags(100, (0.2, 0.8)) == slice(20, 80)
+
+
+def test_msd_writes_per_atom_msd_and_top_selection_traces_the_fastest(rng):
+    """The atoms with the largest MSD, as steps: MSD writes 'MSD' per atom (matched by id although
+    every frame shuffles the order), ExpressionSelection(top=, by=) ranks, trajectory lines trace."""
+    pipe, true = _walk_pipeline(rng, T=40, n=60)
+    fast = np.arange(60) % 7 == 3                                    # every 7th atom moves 3x farther
+    true = true[0] + (true - true[0]) * np.where(fast, 3.0, 1.0)[None, :, None]
+    for d, x in zip(pipe.source.frames, true):
+        d.positions = (x % BOX)[np.asarray(d["Particle Identifier"]) - 1]
+    pipe.modifiers.extend([MeanSquaredDisplacement(), ExpressionSelection("ParticleType == 'A'", top=3, by="MSD"),
+                           GenerateTrajectoryLines()])
+    data = pipe.compute(5)
+    ids = np.asarray(data["Particle Identifier"])
+    expected = particle_msd(true, fit_lags(40, (0.2, 0.8)))
+    np.testing.assert_allclose(data["MSD"], expected[ids - 1], rtol=1e-9)
+    a_fast = np.nonzero(fast[:30])[0] + 1                            # the fast atoms among type A (ids 1..30)
+    top3 = (np.arange(1, 31))[np.argsort(-expected[:30])[:3]]
+    assert set(top3) <= set(a_fast)
+    traced = set(np.unique(data.tables["trajectory-lines"]["Particle Identifier"]).tolist())
+    assert traced == set(top3.tolist())
+    smallest = ExpressionSelection("True", top=-2, by="MSD")
+    pipe.modifiers[1:] = [smallest]
+    first = pipe.compute(0)
+    picked = np.asarray(first["Particle Identifier"])[first.selection.astype(bool)]
+    assert set(picked.tolist()) == set((np.argsort(expected)[:2] + 1).tolist())
+    smallest.by = ""
+    with pytest.raises(ValueError, match="needs by"):
+        pipe.compute(0)
 
 
 def test_msd_by_axis_shows_diffusion_confined_to_a_plane(rng):

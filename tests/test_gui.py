@@ -6332,6 +6332,18 @@ def test_console_shares_the_notebook_namespace(app, tmp_path, monkeypatch):
         w.close()
 
 
+def test_pyside_does_not_scan_modules_imported_after_it(app):
+    """PySide6's import hook read the source of every module imported after it, to look for
+    ``__feature__`` options (1.3 s of the Windows start-up); the GUI turns that scan off."""
+    import sys
+    import ewald.gui.app  # noqa: F401  (switches the scan off once PySide6 is loaded)
+
+    feature = sys.modules.get("shibokensupport.feature")
+    if feature is None or not hasattr(feature, "_mod_uses_pyside"):
+        pytest.skip("this PySide6 has no feature scan")
+    assert feature._mod_uses_pyside(sys.modules["ewald.gui.app"]) is False
+
+
 def test_console_kernel_prints_no_debugger_warning(app, monkeypatch):
     """ipykernel imports debugpy, whose frozen-modules check printed four "Debugger warning"
     lines at every start on Windows; the console turns that check off before the import."""

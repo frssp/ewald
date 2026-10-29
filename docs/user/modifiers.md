@@ -32,8 +32,8 @@ the full docstring.
 ## Expressions
 
 `ExpressionSelection`, `ComputeProperty` and `ColorCoding` take OVITO-style expressions,
-evaluated with NumPy. Property names lose their spaces (`ParticleType`,
-`ParticleIdentifier`; `ParticleIndex` is the 0-based row), vector components get a suffix (`Position.Z`, `Velocity.X`,
+evaluated with NumPy. Property names lose their spaces and other characters a name cannot hold
+(`ParticleType`, `ParticleIdentifier`, `SqDispAverage` for "SqDisp (Average)"; `ParticleIndex` is the 0-based row), vector components get a suffix (`Position.Z`, `Velocity.X`,
 `Color.R`), and the globals `N`, `Frame`, `CellSize.X`, `CellOrigin.X` and every scalar
 attribute are available. Combine conditions with `&`, `|`, `~` and parentheses, not
 `and`/`or`/`not`; `^` is a power as in OVITO (`Force.X^2`, the same as `Force.X**2`), and
@@ -55,7 +55,10 @@ session files and from Claude, and plain `eval` would let them reach the rest of
 
 ## Selection and deletion
 
-`ExpressionSelection(expression)` selects particles where the expression is true.
+`ExpressionSelection(expression)` selects particles where the expression is true;
+`ExpressionSelection(expression, top=5, by="MSD")` keeps only the five of them with the largest
+`by` (a property or an expression; `top=-5` the smallest), for example the five fastest Li:
+`ExpressionSelection("ParticleType == 'Li'", top=5, by="MSD")` after `MeanSquaredDisplacement`.
 `SelectType(types)` selects by type (or another property). `InvertSelection()` and
 `ClearSelection()` do what they say. `DeleteSelected()` removes the selected particles.
 `Slice(normal, distance, width, inverse, select, miller)` keeps, deletes or selects a slab;
@@ -323,7 +326,9 @@ frame at a time, cache the result, and show it at every frame. Changing an upstr
 recomputes them.
 
 - `MeanSquaredDisplacement(time_per_frame, ...)`: FFT time-origin-averaged MSD, per type,
-  unwrapped and matched by id, with the Einstein diffusion coefficient.
+  unwrapped and matched by id, with the Einstein diffusion coefficient. It also writes the
+  particle property `MSD`, each atom's own time-averaged MSD over the lags of `fit_range`, so
+  the most mobile atoms can be selected and traced (example below).
 - `VelocityAutocorrelation(time_per_frame, ...)`: VACF from velocities or differentiated
   positions, with the Green-Kubo diffusion coefficient.
 - `TimeAveraging(operate_on)`: average of a table, attribute or property over frames, for
@@ -360,6 +365,15 @@ pipe.modifiers.append(TimeAveraging("table:coordination-rdf"))
 data = pipe.compute(0)
 data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # Å²/ps
 data.tables["coordination-rdf[average]"]
+```
+
+The paths of the five Li atoms with the largest MSD:
+
+```python
+pipe.add(MeanSquaredDisplacement(time_per_frame=0.1))
+pipe.add(ExpressionSelection("ParticleType == 'Li'", top=5, by="MSD"))
+pipe.add(GenerateTrajectoryLines())          # traces the selected atoms
+view(pipe, trajectory_color_by="Time", selection=False)
 ```
 
 ## Combining files

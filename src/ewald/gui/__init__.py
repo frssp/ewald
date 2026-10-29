@@ -20,6 +20,20 @@ class QtStartupError(ImportError):
     """Qt can't be loaded or started; the message says why and what to install or change."""
 
 
+def skip_pyside_feature_scan():
+    """Stop PySide6 from reading the source of every module imported after it.
+
+    Once PySide6 is loaded, its import hook (``shibokensupport.feature``) looks into each newly
+    imported module to see whether it uses PySide's ``__feature__`` options (snake_case,
+    true_property). That made importing numba, scipy, pyvista and matplotlib about 40 % slower,
+    1.3 s of the owner's Windows start-up. EWALD and the libraries it loads never use
+    ``__feature__``, so the check is answered "no" for every module. Private PySide API: when it
+    is not there, nothing changes."""
+    feature = sys.modules.get("shibokensupport.feature")
+    if feature is not None and hasattr(feature, "_mod_uses_pyside"):
+        feature._mod_uses_pyside = lambda module: False
+
+
 def check_qt_binding():
     """Raise ImportError when PySide6 is missing or another Qt binding is already imported."""
     loaded = [b for b in OTHER_BINDINGS if b in sys.modules]

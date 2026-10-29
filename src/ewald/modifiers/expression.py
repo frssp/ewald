@@ -41,10 +41,16 @@ class _TypeNames(np.ndarray):
     __hash__ = None
 
 
+def _key(name: str) -> str:
+    """A property's name in expressions: spaces and other characters a Python name cannot hold
+    dropped ("Particle Type" -> ParticleType, "SqDisp (Average)" -> SqDispAverage)."""
+    return re.sub(r"[^\w.]", "", name)
+
+
 def namespace(data, frame=None) -> dict:
     ns: dict[str, object] = {}
     for name, arr in data.particles.items():
-        key = name.replace(" ", "")
+        key = _key(name)
         ns[key] = arr.view(_TypeNames) if key == "ParticleType" and arr.dtype.kind in "US" else arr
         if arr.ndim == 2 and arr.shape[1] in (2, 3):
             letters = _COMPONENTS.get(name, "XYZ")
@@ -185,18 +191,25 @@ _SPACED_NAME = re.compile(r"[A-Za-z][\w.]*( +[\w.]+)+")
 
 def evaluate(expr: str, data, frame=None):
     ns = namespace(data, frame)
+    if expr.strip() in data.particles and _key(expr.strip()) in ns:   # a property as named: "SqDisp (Average)"
+        return ns[_key(expr.strip())]
     if "`" in expr:     # `Displacement Magnitude`: a name as it is written, spaces and all
-        expr = _BACKTICKED.sub(lambda m: m.group(1).replace(" ", ""), expr)
+        expr = _BACKTICKED.sub(lambda m: _key(m.group(1)), expr)
     if _SPACED_NAME.fullmatch(expr.strip()):
         try:
             ast.parse(expr.strip(), "<expression>", "eval")
         except SyntaxError:
             # a property written as it is named ("Particle Identifier"); expressions drop the spaces
-            key = expr.strip().replace(" ", "")
+            key = _key(expr.strip())
             if key in ns:
                 return ns[key]
             raise NameError(f"no property {expr.strip()!r} in this frame. "
                             f"Available: {', '.join(sorted(ns))}") from None
+    # properties written as they are named inside a longer expression: "(Net Displacement > 6)",
+    # "SqDisp (Average) > 20" (models write them so); longest first, whole names only
+    spelled = sorted((n for n in data.particles.keys() if _key(n) != n and _key(n) in ns), key=len, reverse=True)
+    for name in spelled:
+        expr = re.sub(r"(?<![\w.])" + re.escape(name) + r"(?![\w(])", _key(name), expr)
     dotted = sorted((k for k in ns if "." in k), key=len, reverse=True)
     env = {"np": np, "abs": np.abs, "sqrt": np.sqrt, "exp": np.exp, "log": np.log,
            "sin": np.sin, "cos": np.cos, "min": np.minimum, "max": np.maximum, "pi": np.pi}

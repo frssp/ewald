@@ -6,6 +6,39 @@ the saved runs are in `benchmarks/ai_eval/` (answers, the notebooks the models l
 tokens and cost per task), so a later prompt or tool change can be compared with
 `ewald eval --compare benchmarks/ai_eval/2026-10-24-opus.json new.json`.
 
+## 2026-10-29: the atoms with the largest MSD
+
+The owner asked Ask AI, in the Li6PS5Cl example, to "draw the trajectories of the 5 Li atoms
+whose MSDs are largest" and it could not. EWALD had an MSD per species but none per atom, so the
+models either wrote 30 lines of their own unwrapping and MSD code or chained
+`UnwrapTrajectories`, `CalculateDisplacements`, `ComputeProperty` and `TimeAveraging` (which gives
+the mean squared displacement from frame 0, not an MSD, and picked a different set of atoms), and
+then could not use the averaged property in an expression: "SqDisp (Average)" was reachable only
+as `SqDisp(Average)`, which parses as a call. The ids they found ended up hand-written in an
+`ExpressionSelection`.
+
+Now `MeanSquaredDisplacement` writes the particle property 'MSD' (each atom's own time-averaged MSD
+over the lags of `fit_range`), `ExpressionSelection(expression, top=n, by=...)` keeps the `n`
+particles with the largest `by`, property names drop every character a name cannot hold
+(`SqDispAverage`) and are also understood as written inside an expression (`Net Displacement > 6`),
+and python_api has the three-step recipe. The new task `li-top-msd-paths` (category `paper`, the
+notebook already has the paper's MSD step) passes when the traced atoms are the top five under any
+of the readings an analyst may take (squared displacement first to last frame, time-averaged MSD
+over all lags or over a fit window).
+
+Runs with `--tasks li-top-msd-paths --repeat 2`, effort high, first-party API, run cells off.
+"Before" is main at 68c5cda with only the task and its grader copied in.
+
+| Model | Passed before | Passed after | Tool errors | Tool calls per task | Cost (2 runs) |
+|---|---|---|---|---|---|
+| Claude Opus 5.5 | 1/2 | 2/2 | 5 → 0 | 21.5 → 9.0 | $1.16 → $0.54 |
+| Claude Sonnet 5.5 | 2/2 | 2/2 | 6 → 0 | 23.0 → 8.0 | $0.65 → $0.30 |
+| Claude Haiku 5.5 | 1/2 | 2/2 | 3 → 0 | 19.5 → 8.5 | $0.036 → $0.020 |
+
+Before, Opus once traced a different five (after ranking by hand from properties it built) and
+Haiku once drew no trajectory lines at all. After, every run added the selection and the
+trajectory lines in two step cells. Saved runs: `benchmarks/ai_eval/2026-10-29-top-msd-{before,after}-{opus,sonnet,haiku}.json`.
+
 ## 2026-10-26: whole studies from one sentence (D70)
 
 The owner's next goal (D70) is the AI doing a whole analysis alone: "find the activation energy

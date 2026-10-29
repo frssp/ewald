@@ -147,6 +147,42 @@ def msd_fft(positions, backend=None, chunk_bytes=2**28):
     return be.to_numpy((s1 - 2.0 * s2) / n)
 
 
+def particle_msd(positions, lags=None, backend=None, chunk_bytes=2**28):
+    """Each particle's own time-averaged MSD of an unwrapped trajectory ``(T, N, 3)``, averaged
+    over the lags ``lags`` (a slice of lag indices; all lags but 0 by default), as a length-N
+    array: ``<|x_i(t+m) - x_i(t)|^2>_{t, m in lags}``. Its mean over the particles is the mean of
+    :func:`msd_fft` over the same lags. Same FFT algorithm, in chunks of particles."""
+    be = get_backend(backend)
+    xp = be.xp
+    x = xp.asarray(positions, dtype=xp.float64)
+    T, n = x.shape[0], x.shape[1]
+    if n == 0 or T < 2:
+        return np.zeros(n)
+    m = np.arange(T)[lags if lags is not None else slice(1, None)]
+    if len(m) == 0:
+        raise ValueError(f"no lags in {lags} for {T} frames")
+    nfft = 2 * T
+    chunk = max(1, int(chunk_bytes // (nfft * 3 * 16)))
+    count = xp.asarray((T - m).astype(np.float64))[:, None]
+    m_x = xp.asarray(m)
+    out = []
+    for s in range(0, n, chunk):
+        c = x[:, s:s + chunk]                                    # (T, k, 3)
+        D = (c * c).sum(axis=2)                                  # (T, k)
+        csum, rsum = xp.cumsum(D, axis=0), xp.cumsum(D[::-1], axis=0)
+        Q = 2.0 * D.sum(axis=0)[None] - xp.concatenate([xp.zeros((1, c.shape[1])), csum[:-1] + rsum[:-1]])
+        F = xp.fft.rfft(c, n=nfft, axis=0)
+        acf = xp.fft.irfft(F * F.conj(), n=nfft, axis=0)[:T].sum(axis=2)   # (T, k)
+        out.append(((Q[m_x] - 2.0 * acf[m_x]) / count).mean(axis=0))
+    return be.to_numpy(xp.concatenate(out))
+
+
+def fit_lags(n: int, fit_range=(0.2, 0.8)) -> slice:
+    """The lag indices :func:`diffusion_fit` fits over for ``n`` lags."""
+    lo = min(int(fit_range[0] * n), n - 2)
+    return slice(max(lo, 0), max(int(np.ceil(fit_range[1] * n)), lo + 2))
+
+
 def autocorrelation_fft(vectors, backend=None, chunk_bytes=2**28):
     """Time-averaged autocorrelation ``c[m] = < v(t) . v(t+m) >_{t, atoms}`` of a
     ``(T, N, 3)`` series (e.g. velocities for the VACF), via FFT. Returns length T."""
@@ -170,8 +206,8 @@ def diffusion_fit(time, msd, fit_range=(0.2, 0.8), dimensions: int = 3):
     y = np.asarray(msd, dtype=float)
     if len(t) < 3:
         return float("nan"), float("nan"), (float("nan"), float("nan"))
-    lo = min(int(fit_range[0] * len(t)), len(t) - 2)
-    hi = max(int(np.ceil(fit_range[1] * len(t))), lo + 2)
+    window = fit_lags(len(t), fit_range)
+    lo, hi = window.start, window.stop
     slope, icpt = np.polyfit(t[lo:hi], y[lo:hi], 1)
     return float(slope / (2 * dimensions)), float(icpt), (float(t[lo]), float(t[hi - 1]))
 
