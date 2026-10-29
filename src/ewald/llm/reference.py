@@ -539,7 +539,7 @@ def plugin_reference() -> str:
         lines += [f"`from {module} import {', '.join(p.name for p in entries)}`:", ""]
         for p in entries:
             doc = _doc(p.function)
-            lines.append(f"- `{p.name}{_signature(p.function)}`" + (f": {doc}" if doc else "") + f" [{p.origin}]")
+            lines.append(f"- `{p.name}{_signature(p.function)}`" + (f": {doc}" if doc else ""))
         lines.append("")
     return "\n".join(lines).rstrip("\n") + "\n" if lines else ""
 
