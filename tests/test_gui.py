@@ -6407,6 +6407,58 @@ def test_next_notebook_does_not_inherit_the_previous_ones_bond_table(app, tmp_pa
     w.close()
 
 
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_new_notebook_starts_from_the_default_view_not_the_previous_tabs(app, tmp_path):
+    """A radius scale, theme or color set in one notebook (View tab or view cell) does not reach the
+    next notebook: an untouched view starts from Preferences' defaults; going back keeps the first's."""
+    from ase.build import bulk
+    from ase.io import write
+
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.view3d import STYLE_PRESETS
+
+    write(tmp_path / "POSCAR.NaCl", bulk("NaCl", "rocksalt", a=5.64), format="vasp")
+    write(tmp_path / "POSCAR.Si", bulk("Si", "diamond", a=5.43), format="vasp")
+    for name, path in (("a", "POSCAR.NaCl"), ("b", "POSCAR.Si"), ("c", "POSCAR.Si")):
+        (tmp_path / f"{name}.py").write_text(f"# %%\nfrom ewald import load\npipe = load({str(tmp_path / path)!r})\n",
+                                             encoding="utf-8", newline="\n")
+    s = settings.Settings()
+    s["bonds.radius"] = 0.2
+    w = MainWindow(settings=s)
+    first = w.panel.open_notebook(str(tmp_path / "a.py"), trusted=True)
+    first.run_all()
+    app.processEvents()
+    w.style.radius_scale, w.style.type_colors["Na"] = 1.3, (0.1, 0.9, 0.1)   # the user's edits in the View tab
+    w.style.apply_theme("VESTA", w.data.types)
+    w._style_changed()
+    assert first.notebook.pipeline.view.radius_scale == 1.3
+    second = w.panel.open_notebook(str(tmp_path / "b.py"), trusted=True)
+    second.run_all()
+    app.processEvents()
+    default = STYLE_PRESETS[s["viewport.style_preset"]][0]
+    assert w.style.radius_scale == default and not w.style.theme and w.style.bond_radius == 0.2
+    v = second.notebook.pipeline.view
+    assert v.radius_scale == default and v.theme is None and not v.colors
+    w.style.radius_scale = 0.9     # an edit in the second notebook stays there too
+    w._style_changed()
+    w.panel.tabs.setCurrentWidget(first)
+    app.processEvents()
+    w.recompute()
+    app.processEvents()
+    assert w.style.radius_scale == 1.3 and w.style.theme == "VESTA"
+    w.panel.tabs.setCurrentWidget(second)
+    app.processEvents()
+    w.recompute()
+    app.processEvents()
+    assert w.style.radius_scale == 0.9
+    third = w.panel.open_notebook(str(tmp_path / "c.py"), trusted=True)
+    third.run_all()
+    app.processEvents()
+    assert w.style.radius_scale == default
+    w.close()
+
+
 def test_viewport_sets_vtk_surface_format_before_any_gl_widget(app, monkeypatch):
     """The placeholder (the window's first OpenGL widget) already gets VTK's 3.2 core format, so
     the window's compositing context can share with the VTK view's on macOS (black view otherwise)."""

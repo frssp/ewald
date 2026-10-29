@@ -596,6 +596,7 @@ class FilesMixin:
             for k, v in s.style.items():  # in place: viewport, panel and console share this object
                 if k in self.style.__dataclass_fields__:
                     setattr(self.style, k, list(map(list, v)) if k == "bond_pairs" else v)
+            self._keep_style = True   # the session's style, not the defaults a new notebook starts from
         if s.device:
             self.device = s.device
         self.set_pipeline(s.pipeline)

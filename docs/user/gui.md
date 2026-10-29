@@ -85,7 +85,9 @@ background entries change only the background.
 
 **Styles.** The Style box on the view toolbar switches between Ball & stick (the default: small
 balls and bonds found automatically), Space-filling, Simple (ASE) and Points; Preferences ›
-3D view › *Default style* picks the one a new window starts with. Simple (ASE) looks like ASE's
+3D view › *Default style* picks the one a new notebook starts with. Display settings belong to
+their notebook: a radius scale, theme or color changed in one tab stays with it, and a notebook
+whose view nothing set yet starts from the Preferences defaults, not from the tab shown before. Simple (ASE) looks like ASE's
 GUI: flat discs in the element color with a dark outline, bonds (on, like Ball & stick) as unshaded
 sticks with outlined edges, and the ASE theme (white background). It is drawn with impostors, so it stays fast for any number of
 atoms; leaving it restores the colors and background you had. Particles › Rendering = flat gives
