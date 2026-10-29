@@ -21,7 +21,7 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 - `MeanSquaredDisplacement` writes the per-atom property `MSD`, and `ExpressionSelection(expression,
   top=n, by=...)` keeps the n particles with the largest value, so "the paths of the 5 Li with the
   largest MSD" is three steps; Ask AI gets the recipe and a new eval task (`li-top-msd-paths`).
-  Expression names drop characters a name cannot hold (`SqDispAverage`). (#104)
+  Expression names drop characters a name cannot hold (`SqDispAverage`). (#105)
 
 ### Changed
 
