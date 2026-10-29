@@ -672,6 +672,24 @@ def test_code_modifiers_need_allow_code(cu_fcc):
     assert "Differences from OVITO" in ref and "`CommonNeighborAnalysis(" in ref
 
 
+def test_a_toolset_that_runs_cells_works_as_a_coding_agent():
+    """With permission to run cells the model gets the cell, search and look tools and the coding
+    agent prompt; without it, the tools that write fixed cells and compute (D84)."""
+    from ewald.llm.agent import SYSTEM_PROMPT, system_prompt
+
+    coder, plain = Toolset(allow_code=True), Toolset()
+    assert coder.coding and not plain.coding
+    offered = {d["name"] for d in coder.definitions() if not coder.tools[d["name"]].plugin}   # plugin tools stay
+    assert offered <= tools_mod.CODING_TOOLS and {"run_cell", "search_api", "insert_cell"} <= offered
+    assert {"compute_rdf", "add_modifier", "set_view"} <= {d["name"] for d in plain.definitions()}
+    assert not coder.call("list_styles").is_error              # left out of the offer, still callable
+    assert "coding agent" in system_prompt(True) and "add_modifier" not in system_prompt(True)
+    assert SYSTEM_PROMPT == system_prompt(False) and "add_modifier" in SYSTEM_PROMPT
+    client = NS(beta=NS(messages=NS(create=None)))
+    assert Agent(coder, client=client).chat.system == system_prompt(True)
+    assert Agent(plain, client=client).chat.system == SYSTEM_PROMPT
+
+
 def test_search_api_finds_the_step_for_a_job():
     import json
 

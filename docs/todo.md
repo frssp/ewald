@@ -43,8 +43,10 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   question itself (`llm.related_steps`). Next (review against related work, 2026-10-29): research eval graded by subtask, reported analysis
   choices and cost; `sensitivity` is in (more steps could record the choices they make, as the MSD
   records its fit window); Li sites from the
-  time-averaged density and a minimum stay for `SiteHopping`; whether to keep reading the whole reference first (D31) or load tools
-  and reference on demand, decided from an A/B run; analysis metadata (temperature,
+  time-averaged density and a minimum stay for `SiteHopping`; with permission to run cells Ask AI works as a coding agent (few tools,
+  reference searched; A/B on 15 research tasks 15/15 vs 13/15, full suite 65/69 vs 66/69 at 16%
+  less cost), waiting on the owner's call; the OVITO habits seen in its cell errors
+  (`ParticleType == 2`, `data.cell[...]`, `Table.attribute`, `export_file` not imported); analysis metadata (temperature,
   timestep, composition) as variables at the top of the notebook; sources without a structure
   (PLUMED HILLS, thermo logs, a table of runs). `StructureFactor` needs a memory bound (100k atoms
   took 325 s and 6.6 GB).

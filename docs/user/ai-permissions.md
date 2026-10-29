@@ -13,6 +13,18 @@ cells, so the notebook is the full record of what it did. It cannot run Python o
 you allow it, it never sees your API key, and the built-in tools never hand it raw coordinate
 arrays.
 
+## Two ways of working
+
+When you let the AI run cells (Preferences › AI › **Let the AI run cells**, `llm.run_cells`;
+`allow_code=True` in Python), it works as a coding agent: it computes and changes everything by
+writing cells with ewald's Python API and running them, and looks up the API with `search_api`.
+It is then offered only the cell tools, `search_api`, `python_api`, `render_image`, `get_view`,
+`describe_trajectory`, `describe_selection`, `check_run` and plugin tools (`CODING_TOOLS` in
+`llm/tools.py`), and its system prompt says so. Without that permission it cannot run code, so it
+gets every tool below: tools such as `compute_rdf` read results without a cell, and tools such as
+`add_modifier` and `set_view` write a fixed cell and run it. In an A/B run on 15 research
+analyses (Sonnet 5.5, 2026-10-29) the coding agent passed 15 against 13 at about the same cost.
+
 ## Through the notebook or not
 
 Everything the AI can do falls on one side of this line. What changes the structure, the
