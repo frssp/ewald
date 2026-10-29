@@ -219,6 +219,10 @@ since the last question of that chat:
   6,000 characters), or a note that there are none any more.
 - How the 3D view colors the atoms (the color rule: which step or setting, which property,
   the colors or color map and range).
+- With Preferences › AI › Show the AI related steps (`llm.related_steps`, on by default), every
+  question: up to four steps or functions of ewald's API reference whose names and docstrings
+  match the question's words (`related_part`: name, signature, first sentence). This comes from
+  ewald's own reference, not from your data.
 - Once, after the agent was made again (a new `pipe`) or for a chat saved in the notebook: the
   earlier transcript of that tab's chat (questions and answers as text, at most 20,000
   characters), marked as a record, not instructions. Each notebook tab has its own chat, saved in

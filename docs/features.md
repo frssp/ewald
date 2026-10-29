@@ -333,7 +333,7 @@ Details: [Command line](user/cli.md).
 | `ewald api` | print the Python API reference for LLMs (llms.txt) | `--with-plugins` |
 | `ewald plugins` | list installed plugins and any that failed to load | `--json` `--enable` `--disable` |
 | `ewald forge [REQUEST...]` | have an AI write a modifier plugin, test it and save it | `--yes` `--draft` `--overwrite` `--rounds` `--model` `--provider` `--profile` `--base-url` |
-| `ewald eval` | score an AI model on tasks with known answers (costs API tokens; see --dry-run) | `--model` `--provider` `--profile` `--base-url` `--effort` `--tasks` `--category` `--list` `--allow-code` `--repeat` `--max-turns` `--out` `--compare` `--dry-run` `--price` `--no-download` `--context` |
+| `ewald eval` | score an AI model on tasks with known answers (costs API tokens; see --dry-run) | `--model` `--provider` `--profile` `--base-url` `--effort` `--tasks` `--category` `--list` `--allow-code` `--repeat` `--max-turns` `--out` `--compare` `--dry-run` `--price` `--no-download` `--no-related` `--context` |
 | `ewald mcp [INPUT]` | serve the analysis tools over MCP (stdio) | `--allow-code` |
 | `ewald remote [REMOTE_CMD]` | saved SSH profiles: list, add, remove, test, ls, get |  |
 | `ewald optimade [OPTIMADE_CMD]` | search OPTIMADE structure databases (Materials Project, COD, OQMD, ...) |  |
@@ -554,6 +554,7 @@ One section per simulation code (`ewald.codes`; plugins add codes with `@simulat
 | `llm.effort` | Effort | `'high'` |
 | `llm.stream` | Stream answers | `True` |
 | `llm.code_cells` | Code in answers | `'insert'` |
+| `llm.related_steps` | Show the AI related steps | `True` |
 | `llm.run_cells` | Let the AI run cells | `False` |
 | `llm.follow_cells` | Follow the AI's cells | `'follow'` |
 | `llm.read_folders` | Folders the AI may read | `''` |

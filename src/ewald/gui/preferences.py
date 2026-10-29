@@ -76,7 +76,7 @@ LAYOUT = {
                         "llm.timeout"]),
         ("Model", ["llm.model", "llm.effort"]),
         ("Chat", ["llm.stream"]),
-        ("Notebook", ["llm.code_cells", "llm.run_cells", "llm.follow_cells"]),
+        ("Notebook", ["llm.code_cells", "llm.run_cells", "llm.follow_cells", "llm.related_steps"]),
         ("Files", ["llm.read_folders", "llm.confirm_hosts"]),
         ("Saved connections", ["llm.profiles"])]),
     "Plugins": ("Where the Plugins side bar finds plugins; each plugin's own settings follow as pages.", [

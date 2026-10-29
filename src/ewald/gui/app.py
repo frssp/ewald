@@ -22,7 +22,7 @@ from .. import modifiers as mods
 from ..raytrace import RenderCancelled
 from ..render import camera_state, opengl_available, render
 from .busy import busy, finish_orphans
-from .ask_panel import AskPanel, agent_from_settings, code_cells_mode, run_cells
+from .ask_panel import AskPanel, agent_from_settings, code_cells_mode, related_steps, run_cells
 from .collapsible import make_collapsible
 from .compute import ComputeRunner, warm_up_jit
 from .console import LazyConsole
@@ -142,7 +142,8 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
                                   auto_insert=lambda: code_cells_mode(self.settings) == "insert",
                                   errors=self._notebook_errors, view=self._view_summary,
                                   current=lambda: getattr(getattr(self, "panel", None), "notebook", None),
-                                  run_inserted=lambda: run_cells(self.settings))
+                                  run_inserted=lambda: run_cells(self.settings),
+                                  related=lambda: related_steps(self.settings))
         self.ask_panel.pipelineChanged.connect(self._after_claude)
         self.ask_panel.insertRequested.connect(self._insert_claude_cell)
         self.ask_panel.cellRequested.connect(self._show_ai_cell)

@@ -691,6 +691,21 @@ def test_search_api_finds_the_step_for_a_job():
     assert "site_radius` > 0 it changes site only once" in out["results"][0]["text"]
 
 
+def test_questions_carry_the_steps_that_match_their_words():
+    from ewald.llm.evals import _gui_question
+    from ewald.llm.notebook_prompt import related_part
+
+    part = related_part("Li6PS5Cl AIMD /data/run1/XDATCAR.gz: Li가 자리 사이를 몇 번 hopping 했는지")
+    assert part.startswith("Steps and functions of ewald") and "- `SiteHopping(" in part
+    assert "(from ewald import bond_angles)" in related_part("bond angle distribution")
+    assert part.count("\n- `") <= 4 and "Site occupancy, hops between sites" in part
+    assert related_part("안녕하세요") == "" and related_part("Again") == ""   # no matching words, or only common ones
+    q = _gui_question(Toolset(), "ring size distribution", "ring size distribution")
+    assert "- `FindRings(" in q and q.endswith("ring size distribution")
+    plain = _gui_question(Toolset(), "ring size distribution")
+    assert plain.endswith("ring size distribution") and "FindRings" not in plain
+
+
 def test_plugin_functions_are_in_the_reference_and_found(monkeypatch):
     from ewald import plugins
 
