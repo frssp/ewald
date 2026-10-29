@@ -277,7 +277,8 @@ def style(frame, data):
 
 Write conditions as expression strings where you can: the color legend of the view and of
 rendered figures then names each condition (`Coordination < 12`), while for an array it can only
-say "a mask in code".
+say "a mask in code". `label=` gives the legend row a name of its own:
+`paint(data, "Coordination == 6", "red", label="corner")`.
 
 `paint`, `hide`, `isolate` (hide the rest), `fade` and `resize` write new Color, Transparency
 and Radius properties, which every renderer draws. Import them with

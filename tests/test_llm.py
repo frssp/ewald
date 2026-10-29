@@ -759,7 +759,7 @@ def test_reference_lists_outputs_signatures_and_moved_modifiers():
     assert "### Structure identification and local order" in ref and "### Other" not in ref
     assert "`MeanSquaredDisplacement.diffusion_coefficient`" in ref       # outputs beyond the first paragraph
     assert "tables['NEB']" in ref and not re.search(r"(?<!`)``(?!`)|:class:|:func:", ref)   # Markdown, not reST
-    assert "- `show(source, table: str | None = None" in ref and "- `paint(data, where, color) -> None`" in ref
+    assert "- `show(source, table: str | None = None" in ref and "- `paint(data, where, color, label: str | None = None) -> None`" in ref
     assert all(f"`{name}`" in ref for name in MOVED) and "ewald-plumed" in ref
     assert ref.index("## Recipes") < ref.index("## Functions") < ref.index("## Modifiers")
 
@@ -1093,6 +1093,23 @@ def test_set_view_tab_writes_and_runs_a_view_tab_cell(cu_file):
     assert ts.call("get_view", {}).content["changed"] == {}
     again = Notebook.from_py(nb.to_py())
     assert again.run_all() and again.pipeline.views["Top"].changed() == {"bonds": False, "direction": "z"}
+
+
+def test_tool_arguments_it_does_not_take_and_settings_already_set(cu_file):
+    """An argument a tool does not take is an error naming what it takes (and set_view for a view
+    setting), not a Python TypeError; set_view says which settings already had the value asked for,
+    so the model does not tell the user it was ignored (2026-10-29 probe)."""
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\npipe = load({str(cu_file)!r})\n")
+    assert nb.run_all()
+    ts = Toolset(notebook=nb)
+    r = ts.call("render_image", {"legend": True})
+    assert r.is_error and "has no argument 'legend'" in r.content and "set_view" in r.content
+    assert "TypeError" not in r.content and "frame" in r.content
+    r = ts.call("set_view", {"bonds": False, "radius_scale": 0.5})
+    assert not r.is_error and r.content["changed"] == {"bonds": False}
+    assert r.content["unchanged"] == {"radius_scale": 0.5}
 
 
 def test_tools_edit_the_cell_that_does_the_job_instead_of_adding_another(cu_file):

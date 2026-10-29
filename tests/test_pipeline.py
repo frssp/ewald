@@ -75,6 +75,24 @@ def test_expression_power_as_in_ovito(cu_fcc):
                        np.hypot(cu_fcc.positions[:, 0], cu_fcc.positions[:, 1]))
 
 
+def test_expression_conditional_and_backticks_as_in_ovito(cu_fcc):
+    """OVITO's ``cond ? a : b`` (nested, inside brackets) and a property name in backticks: models
+    trained on OVITO wrote both and got a bare SyntaxError three times in a row (2026-10-29 probe)."""
+    from ewald.modifiers.expression import evaluate
+
+    x, z = cu_fcc.positions[:, 0], cu_fcc.positions[:, 2]
+    assert np.allclose(evaluate("Position.Z > 2 ? Position.X : -1", cu_fcc), np.where(z > 2, x, -1))
+    assert np.allclose(evaluate("(Position.Z > 2 ? 1 : 0) + (Position.X > 2 ? 10 : 0)", cu_fcc),
+                       np.where(z > 2, 1, 0) + np.where(x > 2, 10, 0))
+    assert np.allclose(evaluate("Position.Z > 4 ? 2 : Position.Z > 2 ? 1 : 0", cu_fcc),
+                       np.where(z > 4, 2, np.where(z > 2, 1, 0)))
+    data = cu_fcc.copy()
+    data.particles["Displacement Magnitude"] = np.linspace(0, 1, cu_fcc.count)
+    assert evaluate("`Displacement Magnitude` >= 0.5", data).sum() == (data["Displacement Magnitude"] >= 0.5).sum()
+    with pytest.raises(SyntaxError, match="cond \\? a : b"):
+        evaluate("Position.Z > 2 ? 1", cu_fcc)
+
+
 def test_expression_particle_type_numbers(cu_fcc):
     """OVITO's ParticleType is a number: ParticleType == 2 matches LAMMPS types named "2", and with
     element names it is an error that names them, never silently no match (a model trained on

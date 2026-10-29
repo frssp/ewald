@@ -1324,7 +1324,7 @@ class DisplayPanel(QtWidgets.QWidget):
                     if kind == "type" or e.get("count", 1)]
         elif kind == "custom":
             rows = [(c["color"], "", c["count"]) for c in r.get("colors", [])]
-        rows += [(p["color"], p["where"], p["count"]) for p in r.get("painted", ())]
+        rows += [(p["color"], p.get("label") or p["where"], p["count"]) for p in r.get("painted", ())]
         table.setRowCount(len(rows))
         for i, (color, name, count) in enumerate(rows):
             cell, btn = self._swatch(np.asarray(QtGui.QColor(color).getRgbF()[:3]), f"{name} {color}")
