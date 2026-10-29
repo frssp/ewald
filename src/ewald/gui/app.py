@@ -10,11 +10,13 @@ import time
 
 import numpy as np
 
-from . import check_qt_binding
+from . import check_qt_binding, skip_pyside_feature_scan
 
 check_qt_binding()  # before PySide6: a clear error when another Qt binding is loaded
 
 from PySide6 import QtCore, QtGui, QtWidgets
+
+skip_pyside_feature_scan()  # before the heavy imports below and the 3D view's
 
 from .. import modifiers as mods
 from ..raytrace import RenderCancelled
