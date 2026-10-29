@@ -86,8 +86,8 @@ Ranking: `ExpressionSelection("ParticleType == 'Li'", top=5, by="MSD")` selects 
 | `from ovito.io import import_file` | `from ewald import import_file` |
 | `from ovito.modifiers import CommonNeighborAnalysisModifier` | `from ewald.modifiers import CommonNeighborAnalysis` (the OVITO name also works) |
 | `pipeline.source.num_frames` | `pipe.num_frames` |
-| `data.particles.count` | `data.count` |
-| `data.particles.positions`, `data.particles['Position']` | `data.positions`, `data['Position']` |
+| `data.particles.count` | `data.count` (the OVITO form also works) |
+| `data.particles.positions`, `data.particles['Position']` | `data.positions`, `data['Position']` (the OVITO forms also work, read-only) |
 | `data.particles_['Position_'][...] = v` (in place) | `data.positions = v` (assign a new array) |
 | `data.particles_.create_property('X', data=v)` | `data['X'] = v` |
 | `data.particles.particle_types` (type objects, ids) | `data.types` (element strings) |

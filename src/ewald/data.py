@@ -173,6 +173,21 @@ def _same_state(a, b) -> bool:
             and np.array_equal(a.cell, b.cell) and np.array_equal(a.pbc, b.pbc))
 
 
+class Particles(dict):
+    """``DataCollection.particles``: a dict of property name -> array that also answers OVITO's
+    ``particles.count`` and ``particles.positions`` (read-only shortcuts, so code written the OVITO
+    way reads the same numbers)."""
+
+    @property
+    def count(self) -> int:
+        p = self.get("Position")
+        return 0 if p is None else len(p)
+
+    @property
+    def positions(self) -> np.ndarray:
+        return self["Position"]
+
+
 class DataCollection:
     """One snapshot flowing through a pipeline.
 
@@ -191,7 +206,7 @@ class DataCollection:
     """
 
     def __init__(self, positions=None, types=None, cell: Cell | None = None):
-        self.particles: dict[str, np.ndarray] = {}
+        self.particles = {}
         self.attributes: dict[str, object] = {}
         self.tables: dict[str, dict[str, np.ndarray]] = {}
         self.bonds = None
@@ -203,6 +218,15 @@ class DataCollection:
             self.particles["Position"] = np.asarray(positions, dtype=float).reshape(-1, 3)
         if types is not None:
             self.particles["Particle Type"] = np.asarray(types).astype(str)
+
+    @property
+    def particles(self) -> Particles:
+        """Property name -> per-particle array (a dict; any dict assigned is kept as :class:`Particles`)."""
+        return self._particles
+
+    @particles.setter
+    def particles(self, value):
+        self._particles = value if type(value) is Particles else Particles(value)
 
     # ---- convenience accessors -------------------------------------------------
     @property
