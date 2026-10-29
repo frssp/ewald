@@ -159,7 +159,12 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   worked out from size hints, also on every resize), 0.23 s to the WGL OpenGL check, 0.22 s to
   two `QFontDatabase.families()` scans (now one), 0.32 s to the plugin entry-point scan and
   0.25 s to the theme. The 3D view then blocks the window for about 3 s after the first paint
-  (pyvistaqt and the first OpenGL context); `--profile` now covers that stretch too.
+  (pyvistaqt and the first OpenGL context). Profiled there (2026-10-29): importing pyvista took
+  2.4 s of it (pyvista pulls pooch and paramiko and matplotlib.pyplot), and 1.3 s of every
+  import after PySide6 was PySide's `__feature__` import hook reading each new module's source
+  (`shibokensupport.feature._mod_uses_pyside`); the GUI now answers that check "no"
+  (`gui.skip_pyside_feature_scan`). Also in `MainWindow()` there: 304 `addWidget` calls took
+  0.44 s and 123 `setVisible` 0.24 s (1.5-2 ms each against 0.2 ms here; style-sheet polish?).
 - Maximizing the window (2026-10-24, `python benchmarks/resize.py`): in the container (llvmpipe,
   cu_void tutorial) it is settled after 0.3-0.7 s, of which one full 3D render is 0.1-0.3 s;
   restoring takes about 0.12 s. The rest is Qt layout and painting plus matplotlib mathtext
@@ -814,8 +819,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   `since`/`until`, then `open_workflow`; days are the PC's local days against sim-agent's
   creation time.
 - GUI startup on the owner's Windows machine: measured and profiled (see Performance); next
-  `python benchmarks/startup.py --profile` once more, for the 3 s the 3D view blocks the window
-  after its first paint, on the Arc and on the RTX. Windows Defender scanning freshly installed packages can make the
+  `python benchmarks/startup.py --profile` once more after the PySide import-hook change, to see
+  what is left of the 3 s the 3D view blocks the window after its first paint. Windows Defender scanning freshly installed packages can make the
   first start after an update much slower than later ones (the "Preparing EWALD" first-run
   notice, `gui/first_run.py`, shows during that start).
 - First-run notice on a real Mac and Windows machine: after `uv pip install -e .` the next
