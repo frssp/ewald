@@ -171,16 +171,18 @@ class Number(Check):
 
 @dataclass
 class Matches(Check):
-    """The answer matches ``pattern`` (a regular expression, case-insensitive)."""
+    """The answer matches ``pattern`` (a regular expression, case-insensitive); ``name`` says what
+    that means (e.g. "reports the fit window")."""
 
     pattern: str
+    name: str = ""
 
     def grade(self, outcome):
         ok = re.search(self.pattern, outcome.answer or "", re.I | re.S) is not None
         return ok, f"/{self.pattern}/ {'found' if ok else 'not found'}"
 
     def label(self):
-        return f"Matches {self.pattern}"
+        return f"Matches {self.name or self.pattern}"
 
 
 def _class_name(m) -> str:
@@ -451,6 +453,16 @@ def step_cells(nb, name: str) -> int:
     return sum(1 for c in nb.cells if c.kind == "code" and re.search(rf"\b{re.escape(name)}\s*\(", c.source))
 
 
+def code_lines(nb) -> int:
+    """Non-blank, non-comment lines of the code cells of ``nb`` past the notebook's import cell:
+    how much code the model wrote itself (steps and view cells are one line each)."""
+    from ..notebook import IMPORTS
+
+    skip = set(IMPORTS.splitlines())
+    return sum(1 for c in nb.cells if c.kind == "code" for ln in c.source.splitlines()
+               if ln.strip() and not ln.strip().startswith("#") and ln not in skip)
+
+
 def error_cells(nb) -> int:
     """How many cells of ``nb`` failed when they last ran (for :class:`Cells`)."""
     return sum(1 for c in nb.cells if c.kind == "code" and c.state == "error")
@@ -640,6 +652,8 @@ class TaskResult:
     category: str
     passed: bool | None            # None: skipped or failed to run
     checks: list = field(default_factory=list)     # [label, ok, detail]
+    score: float | None = None     # share of the checks passed (subtasks of a long analysis)
+    code_lines: int = 0            # non-blank, non-comment lines of code cells the model left
     reproducible: bool | None = None
     reproduce_detail: str = ""
     tool_calls: int = 0
@@ -908,6 +922,8 @@ def run_task(task: Task, *, agent_options: dict | None = None, client=None, allo
             ok, detail = _grade(check, outcome)
             result.checks.append([check.label(), ok, detail])
         result.passed = all(ok for _, ok, _ in result.checks)
+        result.score = round(sum(ok for _, ok, _ in result.checks) / len(result.checks), 4) if result.checks else None
+        result.code_lines = code_lines(ts.notebook) if ts.notebook is not None else 0
 
         state = [c for c in task.checks if c.state]
         if task.reproducible and state and ts.notebook is not None:
@@ -1068,9 +1084,12 @@ def summarize(results: list[dict]) -> dict:
     repro = [r for r in ran if r["reproducible"] is not None]
     cats = {}
     for r in ran:
-        c = cats.setdefault(r["category"], [0, 0])
+        c = cats.setdefault(r["category"], [0, 0, []])
         c[0] += bool(r["passed"])
         c[1] += 1
+        if r.get("score") is not None:
+            c[2].append(r["score"])
+    scores = [r["score"] for r in ran if r.get("score") is not None]
     tokens = {k: sum(r["tokens"].get(k, 0) for r in ran) for k in ("input", "output", "cache_read", "cache_write")}
     costs = [r["cost"] for r in ran if r["cost"] is not None]
     return {
@@ -1078,7 +1097,11 @@ def summarize(results: list[dict]) -> dict:
         "skipped": sum(1 for r in results if r["skipped"]), "errors": sum(1 for r in results if r["error"]),
         "accuracy": round(len(passed) / len(ran), 4) if ran else None,
         "reproducible": round(sum(r["reproducible"] for r in repro) / len(repro), 4) if repro else None,
-        "by_category": {k: {"passed": v[0], "ran": v[1], "accuracy": round(v[0] / v[1], 4)} for k, v in sorted(cats.items())},
+        "score": round(sum(scores) / len(scores), 4) if scores else None,
+        "by_category": {k: {"passed": v[0], "ran": v[1], "accuracy": round(v[0] / v[1], 4),
+                            "score": round(sum(v[2]) / len(v[2]), 4) if v[2] else None}
+                        for k, v in sorted(cats.items())},
+        "code_lines": sum(r.get("code_lines", 0) for r in ran),
         "tool_calls": sum(r["tool_calls"] for r in ran),
         "tool_calls_per_task": round(sum(r["tool_calls"] for r in ran) / len(ran), 2) if ran else None,
         "tool_errors": sum(r["tool_errors"] for r in ran),
@@ -1108,7 +1131,9 @@ def format_result(r) -> str:
     repro = {True: "repro", False: "NOT-REPRO", None: "-"}[r["reproducible"]]
     cost_s = f"${r['cost']:.3f}" if r["cost"] is not None else "-"
     tok = r["tokens"].get("input", 0) + r["tokens"].get("cache_read", 0) + r["tokens"].get("cache_write", 0)
-    line = (f"{mark}  {r['id']:<26} tools {r['tool_calls']:>2} (err {r['tool_errors']})  "
+    score = r.get("score")
+    part = f" {round(score * len(r['checks']))}/{len(r['checks'])}" if score is not None and not r["passed"] else ""
+    line = (f"{mark}{part}  {r['id']:<26} tools {r['tool_calls']:>2} (err {r['tool_errors']})  "
             f"in {tok:>7} out {r['tokens'].get('output', 0):>6}  {cost_s:>7}  {r['seconds']:>6.1f}s  {repro}")
     why = [f"{label}: {detail}" for label, ok, detail in r["checks"] if not ok]
     if r["error"]:
@@ -1125,14 +1150,18 @@ def format_summary(report: dict) -> str:
     rep = f"{100 * s['reproducible']:.1f}%" if s["reproducible"] is not None else "-"
     lines = [f"{m['provider']} / {m['model']}" + (f" (effort {m['effort']})" if m.get("effort") else ""),
              f"accuracy {acc}: {s['passed']}/{s['ran']} passed, {s['skipped']} skipped, {s['errors']} errors; "
-             f"reproducible {rep}",
+             f"reproducible {rep}" + (f"; subtasks {100 * s['score']:.1f}%" if s.get("score") is not None else ""),
              f"tool calls {s['tool_calls']} ({s['tool_calls_per_task']} per task, {s['tool_errors']} errors), "
              f"requests {s['requests']}",
              f"tokens: input {s['tokens']['input']}, output {s['tokens']['output']}, cache read "
              f"{s['tokens']['cache_read']}, cache write {s['tokens']['cache_write']}; cost "
              + (f"${s['cost']:.2f}" if s["cost"] is not None else
                 "-" if m["model"] == "solution" else "unknown (no price for this model; use --price)"),
-             "by category: " + ", ".join(f"{k} {v['passed']}/{v['ran']}" for k, v in s["by_category"].items())]
+             "by category: " + ", ".join(
+                 f"{k} {v['passed']}/{v['ran']}" + (f" ({100 * v['score']:.0f}% of subtasks)"
+                                                    if v.get("score") is not None and v["passed"] < v["ran"] else "")
+                 for k, v in s["by_category"].items()),
+             f"code the model wrote: {s.get('code_lines', 0)} lines"]
     return "\n".join(lines)
 
 
@@ -1160,7 +1189,9 @@ def compare(a: dict, b: dict) -> str:
 
     lines = [f"A: {name(a)}", f"B: {name(b)}",
              f"accuracy      {pct(sa['accuracy']):>8} -> {pct(sb['accuracy']):>8}",
+             f"subtasks      {pct(sa.get('score')):>8} -> {pct(sb.get('score')):>8}",
              f"reproducible  {pct(sa['reproducible']):>8} -> {pct(sb['reproducible']):>8}",
+             f"code lines    {sa.get('code_lines', '-')!s:>8} -> {sb.get('code_lines', '-')!s:>8}",
              f"tools/task    {sa['tool_calls_per_task']!s:>8} -> {sb['tool_calls_per_task']!s:>8}",
              f"tool errors   {sa['tool_errors']:>8} -> {sb['tool_errors']:>8}",
              "cost          " + (f"${sa['cost']:.2f}" if sa["cost"] is not None else "-").rjust(8) + " -> "
@@ -1179,5 +1210,5 @@ def compare(a: dict, b: dict) -> str:
 
 __all__ = ["ANSWER_HINT", "EXAMPLE_PLUGINS", "PRICES", "Any", "CellNumber", "Cells", "Check", "Data", "File",
            "Matches", "Number", "Outcome", "SolutionClient", "Step", "Task", "TaskResult", "UsageMeter", "UsedTool",
-           "View", "along", "answer_values", "compare", "cost", "error_cells", "format_result", "format_summary",
+           "View", "along", "answer_values", "code_lines", "compare", "cost", "error_cells", "format_result", "format_summary",
            "load", "reproduce", "run", "run_task", "same_color", "save", "select", "step_cells", "summarize"]

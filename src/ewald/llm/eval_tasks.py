@@ -8,7 +8,10 @@ has: change a step, remove one, fix a failing cell), ``recipe`` (a plot or per-f
 the way python_api's recipes do it), ``plugin`` (a plugin modifier or ``@ai_tool`` from
 ``examples/plugins``), ``paper`` (published data, downloaded once) and ``study`` (a whole study
 from one sentence: a series of MD runs written by :mod:`ewald.llm.eval_data`, compared, fitted,
-plotted and written up, some with a trap a careful analyst catches or a premise that is wrong).
+plotted and written up, some with a trap a careful analyst catches or a premise that is wrong) and
+``research`` (a long request in Korean with several subtasks, as a researcher writes it, graded
+per subtask: values, the analysis choices reported, the figure, no failed cell, the language and
+how much code the model wrote).
 
 Reference values are computed from the files with ewald itself when a task runs (the
 ``ref_*`` functions), so they follow the example files if those are regenerated; physical
@@ -19,7 +22,7 @@ from __future__ import annotations
 import numpy as np
 
 from .evals import (ANSWER_TURN, Any, CellNumber, Cells, Data, File, Matches, Mentions, NoAnswer, Not, Number, Prose, Step, Task,
-                    UsedTool, View, along, error_cells, figure_cells, same_color, step_cells)
+                    UsedTool, View, along, code_lines, error_cells, figure_cells, same_color, step_cells)
 
 
 # ------------------------------------------------------------------ reference values
@@ -354,6 +357,125 @@ _SERIES_INTRO = ("This VASP MD run of Li in a sulfide host is one of {n} runs at
 # ------------------------------------------------------------------ tasks
 STO, SI, PT, CU, SIMD, CHG, VOID, CUZR = ("POSCAR.SrTiO3", "Si.cif", "Pt_nanoparticle.xyz", "Cu_md.extxyz",
                                           "XDATCAR.Si", "CHGCAR.Si", "Cu_void.lammpstrj", "CuZr.data")
+
+# ------------------------------------------------------------------ research: long requests, graded by subtask
+def ref_li_axis(axis):
+    """Li tracer D along ``axis`` (cm^2/s) of the Li6PS5Cl run, default fit window."""
+    def ref(pipe):
+        from ..verbs import msd
+
+        a = msd(pipe, time_per_frame=0.1, by_axis=True).attributes
+        return a[f"MeanSquaredDisplacement.diffusion_coefficient.Li.{axis}"] * 1e-4
+    return ref
+
+
+def ref_carbon_sp3(pipe, density="3.0"):
+    """Percent of 4-coordinated C in the last frame of the 3.0 g/cm^3 quench (cutoff 1.85 A; the
+    fraction is the same from 1.8 to 2.0 A)."""
+    from .. import examples, load
+    from ..modifiers import CoordinationAnalysis
+
+    p = load(str(examples.fetch("carbon-synth", quiet=True) / f"density-{density}-T-3000.extxyz"))
+    p.add(CoordinationAnalysis(cutoff=1.85))
+    cn = np.asarray(p.compute(p.num_frames - 1).particles["Coordination"])
+    return 100.0 * float(np.mean(cn == 4))
+
+
+def ref_neb(pipe, which="barrier"):
+    e = [pipe.compute(i).attributes["NEB.Relative Energy"] for i in range(pipe.num_frames)]
+    return max(e) if which == "barrier" else e[-1]
+
+
+#: A Korean answer: five Korean words in a row (the research prompts are in Korean, as the owner writes).
+_KOREAN = r"(?:[가-힣]+[^가-힣\n]{1,12}){5}"
+
+
+def _research_checks(figure=True, max_lines=80):
+    """What every research request must leave, besides its own subtasks: no failed cell, the
+    figure asked for, the answer in the user's language and no more code than the analysis needs
+    (lines the model wrote; a pile of hand-written code is the cost a reviewer pays)."""
+    checks = [Cells(error_cells, 0, name="cells with errors"), Matches(_KOREAN, name="answers in Korean"),
+              Cells(code_lines, lambda n: n <= max_lines, name=f"code lines <= {max_lines}")]
+    return checks + ([Cells(figure_cells, True, name="figure")] if figure else [])
+
+
+_LI_AXIS_CELL = """\
+from ewald import msd, sensitivity
+t = msd(pipe, time_per_frame=0.1, by_axis=True)
+a = t.attributes
+print(f"fit window {a['MeanSquaredDisplacement.fit_start']:.1f}-{a['MeanSquaredDisplacement.fit_end']:.1f} ps")
+for ax in "xyz":
+    print(f"D_{ax} = {a[f'MeanSquaredDisplacement.diffusion_coefficient.Li.{ax}'] * 1e-4:.3g} cm^2/s")
+print(sensitivity(pipe, "MeanSquaredDisplacement", "fit_range", [(0.1, 0.7), (0.2, 0.8), (0.3, 0.9)]))
+t"""
+
+_CARBON_CELL = """\
+import numpy as np
+import matplotlib.pyplot as plt
+from ewald import examples, load
+from ewald.modifiers import CoordinationAnalysis
+cutoff = 1.85   # A, first minimum of the C-C g(r); the fractions are the same from 1.8 to 2.0 A
+rows = {}
+for f in sorted(examples.fetch("carbon-synth", quiet=True).glob("density-*-T-3000.extxyz")):
+    p = load(str(f))
+    p.add(CoordinationAnalysis(cutoff=cutoff))
+    cn = np.asarray(p.compute(p.num_frames - 1).particles["Coordination"])
+    rows[float(f.name.split("-")[1])] = [100 * np.mean(cn == k) for k in (2, 3, 4)]
+rho = sorted(rows)
+fig, ax = plt.subplots()
+for i, label in enumerate(["sp", "sp2", "sp3"]):
+    ax.plot(rho, [rows[r][i] for r in rho], "o-", label=label)
+ax.set(xlabel="density (g/cm$^3$)", ylabel="fraction (%)")
+ax.legend()
+print(f"sp3 at 3.0 g/cm^3: {rows[3.0][2]:.1f} %")
+plt.show()"""
+
+_NEB_CELL = """\
+E = [pipe.compute(i).attributes["NEB.Relative Energy"] for i in range(pipe.num_frames)]
+print(f"barrier = {max(E):.3f} eV, reaction energy = {E[-1]:.4f} eV (energy(sigma->0) of each image's OUTCAR)")
+show(pipe, table="NEB")"""
+
+#: Research requests: several subtasks in one Korean message, as a researcher writes them; graded
+#: per subtask (TaskResult.score) besides pass/fail, with the analysis choices reported.
+RESEARCH = [
+    Task("research-li-axes", "Li6PS5Cl argyrodite AIMD 결과야 (frame 간격 0.1 ps). Li 확산이 방향에 따라 다른지 보고 "
+         "싶어. x, y, z 방향 Li tracer 확산계수를 cm^2/s로 구하고 MSD 그래프를 보여줘. fit 구간을 어떻게 잡았는지, "
+         "그 구간을 바꾸면 값이 얼마나 달라지는지도 알려줘.", "paper:li6ps5cl-aimd/XDATCAR.gz",
+         [Step("MeanSquaredDisplacement", {"by_axis": True}),
+          Number(ref_li_axis("x"), rel=0.35, index=0, name="D_x"),
+          Number(ref_li_axis("y"), rel=0.35, index=1, name="D_y"),
+          Number(ref_li_axis("z"), rel=0.35, index=2, name="D_z"),
+          Matches(r"\d+(\.\d+)?\s*(ps)?\s*(-|–|~|to|부터|에서)\s*\d+(\.\d+)?\s*ps", name="reports the fit window"),
+          Matches(r"\d+(\.\d+)?\s*%", name="says how much D moves (%)")] + _research_checks(),
+         category="research", allow_code=True,
+         solution=[("insert_cell", {"source": _LI_AXIS_CELL})],
+         answer="x, y, z 방향 확산계수는 서로 30% 이내로 비슷해서 이 짧은 AIMD로는 방향 의존성이 있다고 보기 어렵습니다. "
+                "fit 구간은 2.1-8.6 ps (lag의 20-80%)이고, 구간을 10-70%에서 30-90%로 옮기면 D가 약 15% 달라집니다.\n"
+                "ANSWER: {0}, {1}, {2}"),
+    Task("research-carbon-sp3", "같은 폴더의 density-*-T-3000.extxyz 파일들은 밀도(g/cm^3)별로 3000 K에서 quench한 "
+         "비정질 탄소야. 각 밀도의 마지막 frame에서 sp, sp2, sp3 비율을 밀도에 따라 비교하는 그래프를 그려주고, "
+         "3.0 g/cm^3에서 sp3 비율을 %로 알려줘. bond cutoff는 어떻게 정했는지도 말해줘.",
+         "paper:carbon-synth/density-1.0-T-3000.extxyz",
+         [Number(ref_carbon_sp3, tol=8.0, name="sp3 % at 3.0 g/cm^3"),
+          CellNumber(ref_carbon_sp3, tol=3.0),
+          Matches(r"[12]\.\d+\s*(Å|A\b|Angstrom|옹스트롬)", name="reports the bond cutoff")] + _research_checks(),
+         category="research", allow_code=True,
+         solution=[("insert_cell", {"source": _CARBON_CELL})],
+         answer="밀도가 2.5 g/cm^3까지는 거의 모두 sp2이고, 3.0 g/cm^3부터 sp3가 많아집니다. 배위수는 C-C g(r)의 "
+                "첫 극소인 1.85 Å을 cutoff로 셌고, 1.8-2.0 Å 사이에서는 비율이 바뀌지 않습니다.\nANSWER: {0}"),
+    Task("research-fe-neb", "bcc Fe vacancy 이동 NEB 계산 폴더야 (image 00-04). 이동 barrier와 반응 에너지를 eV로 "
+         "구하고 energy profile 그림을 보여줘. 어떤 에너지(OUTCAR의 어느 값)를 썼는지도 알려줘.",
+         "paper:fe-vacancy-neb/",
+         [Number(lambda p: ref_neb(p, "barrier"), tol=0.02, index=0, name="barrier"),
+          Number(lambda p: ref_neb(p, "reaction"), tol=0.01, index=1, name="reaction energy"),
+          Matches(r"(?i)sigma|free energy|TOTEN|자유 ?에너지|energy\s*\(", name="says which energy")]
+         + _research_checks(),
+         category="research", allow_code=True,
+         solution=[("insert_cell", {"source": _NEB_CELL})],
+         answer="각 image OUTCAR의 energy(sigma->0)를 썼습니다. 이동 barrier는 가운데 image 02에서 나오고, 처음과 끝 "
+                "구조의 에너지 차이(반응 에너지)는 거의 0입니다.\nANSWER: {0}, {1}"),
+]
+
 
 TASKS: list[Task] = [
     # ---------------------------------------------------------- answers
@@ -725,9 +847,9 @@ TASKS: list[Task] = [
          answer="The Li MSD plateaus at about 0.07 A^2: Li only vibrates around its sites and does not diffuse "
                 "in this run, so there is no diffusion coefficient to fit, and one temperature cannot give an "
                 "activation energy."),
-]
+] + RESEARCH
 
 #: Task ids by category.
 CATEGORIES = sorted({t.category for t in TASKS})
 
-__all__ = ["CATEGORIES", "TASKS"]
+__all__ = ["CATEGORIES", "RESEARCH", "TASKS"]
