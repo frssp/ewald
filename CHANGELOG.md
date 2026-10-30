@@ -36,7 +36,7 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 - With permission to run cells, Ask AI works as a coding agent: it is offered only the cell tools,
   `search_api`, `python_api`, `render_image`, `get_view`, `describe_trajectory`,
   `describe_selection`, `check_run` and plugin tools, and computes everything in cells it writes
-  and runs; without that permission it keeps every tool. (#115)
+  and runs; without that permission it keeps every tool. (D85, #115)
 - `sensitivity(pipe, step, parameter, values, attributes)` tries each value of a step's parameter
   (a fit window, a cutoff) and returns the step's results per value with their relative spread;
   Ask AI is told to use it when it reports how a number depends on a choice. (D84, #113)
