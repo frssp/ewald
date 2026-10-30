@@ -234,17 +234,21 @@ def _draw(ax, title: str, columns: dict, histogram: str | None, show_title: bool
         ax.set_title(title)
 
 
-def figure(source, table: str | None = None, y: str | None = None, histogram: str | None = None,
-           frame: int = 0, bins: int = 50, size: str | tuple | None = None, title: bool = False,
-           xlim: tuple | None = None, ylim: tuple | None = None):
+def figure(source, table: str | None = None, y: str | list | None = None, histogram: str | None = None,
+           frame: int | list = 0, bins: int = 50, size: str | tuple | None = None, title: bool = False,
+           xlim: tuple | None = None, ylim: tuple | None = None, layout: str | None = None):
     """The matplotlib Figure of a view (what :func:`show` draws), without pyplot, in the
     publication style of :mod:`ewald.plotstyle` (``size``: a column width name or inches;
     ``xlim``/``ylim``: the range shown, e.g. ``xlim=(-3, 3)`` for a DOS energy window).
-    Save it with :func:`ewald.plotstyle.save` to keep the text editable in PDF/SVG."""
+    Save it with :func:`ewald.plotstyle.save` to keep the text editable in PDF/SVG. ``frame``
+    or ``y`` as a list, or ``layout``, compares frames or columns as :func:`show` does."""
     from . import plotstyle
 
     fig = plotstyle.figure(size)
     with plotstyle.context(*fig._ewald_style):
+        if is_comparison({"frame": frame, "y": y, "layout": layout}):
+            _compare_figure(fig, source, table, y, histogram, frame, bins, layout, xlim, ylim, title)
+            return fig
         ax = fig.add_subplot()
         _draw(ax, *view_data(source, table, y, histogram, frame, bins), histogram, show_title=title)
         _limit(ax, xlim, ylim)
@@ -258,9 +262,9 @@ def _limit(ax, xlim, ylim):
         ax.set_ylim(*ylim)
 
 
-def show(source, table: str | None = None, y: str | None = None, histogram: str | None = None,
-         frame: int = 0, bins: int = 50, xlim: tuple | None = None, ylim: tuple | None = None,
-         panel: bool | None = None, save=None):
+def show(source, table: str | None = None, y: str | list | None = None, histogram: str | None = None,
+         frame: int | list = 0, bins: int = 50, xlim: tuple | None = None, ylim: tuple | None = None,
+         layout: str | None = None, panel: bool | None = None, save=None):
     """Show ``source`` (a Pipeline or a DataCollection) at ``frame``.
 
     ``show(pipe)`` alone (a Pipeline or DataCollection; a table still plots) is a picture of the structure, drawn with the pipeline's view settings (a
@@ -275,13 +279,31 @@ def show(source, table: str | None = None, y: str | None = None, histogram: str 
     called (the image stays for files and Jupyter); in a cell that is only this call, zooming writes
     the range back into the arguments. ``panel``: True opens the GUI's plot in the Plots panel (a
     thumbnail stays under the cell), False keeps it under the cell; None (default) decides by
-    :func:`in_panel`."""
-    if table is None and y is None and histogram is None and _is_structure(source):
+    :func:`in_panel`.
+
+    Comparisons: ``frame=[0, 5, -1]`` draws the table (one column: give ``y``) or histogram of
+    each frame, ``y=["Cu-Cu", "Cu-Zr"]`` several columns of one frame (names or their legend
+    labels). ``layout`` puts them on one axis (``"overlay"``, the default), shifted one above the
+    other (``"offset"``, a waterfall) or in panels sharing x (``"stack"``). A comparison is a
+    fixed figure in the GUI too (it does not follow the frame)."""
+    comparison = is_comparison({"frame": frame, "y": y, "layout": layout})
+    if table is None and y is None and histogram is None and not comparison and _is_structure(source):
         return _show_structure(source, frame, save)
     import matplotlib.pyplot as plt
 
     from . import plotstyle
 
+    if comparison:
+        with plotstyle.context():
+            w, h = plotstyle.figsize()
+            n = len(frame) if isinstance(frame, (list, tuple)) else len(y) if isinstance(y, (list, tuple)) else 1
+            fig = plt.figure(figsize=(w, h * max(1.0, 0.6 * n)) if layout == "stack" else (w, h),
+                             layout="constrained")
+            title = _compare_figure(fig, source, table, y, histogram, frame, bins, layout, xlim, ylim)
+        if save is not None:
+            plotstyle.save(fig, save)
+        plt.show()
+        return Plot(fig, title)
     title, columns = view_data(source, table, y, histogram, frame, bins)
     with plotstyle.context():
         fig, ax = plt.subplots(figsize=plotstyle.figsize(), layout="constrained")
@@ -297,6 +319,161 @@ def show(source, table: str | None = None, y: str | None = None, histogram: str 
         plotstyle.save(fig, save)
     plt.show()
     return Plot(fig, title)
+
+
+# ------------------------------------------------------------------ comparison plots
+LAYOUTS = ("overlay", "offset", "stack")
+
+
+def is_comparison(args: dict) -> bool:
+    """Whether ``show(**args)`` compares frames or columns (``frame`` or ``y`` a list, or a
+    ``layout``): a fixed figure, not a live plot that follows the frame."""
+    return (isinstance(args.get("frame"), (list, tuple)) or isinstance(args.get("y"), (list, tuple))
+            or args.get("layout") is not None)
+
+
+def _column(names: list, wanted) -> str:
+    """The column of ``names`` that ``wanted`` names: its name, or its legend label ("Cu-Cu" for
+    "g(r) Cu-Cu", "Total" for "g(r)")."""
+    if wanted in names:
+        return wanted
+    from .plotstyle import legend_labels
+
+    key = str(wanted).replace("\u2013", "-").strip().lower()
+    for name, short in zip(names, legend_labels(names)):
+        if short.replace("\u2013", "-").lower() == key:
+            return name
+    raise KeyError(f"no column {wanted!r}; this table has: {', '.join(names)}")
+
+
+def _frame(source, f) -> int:
+    n = getattr(source, "num_frames", None)
+    f = int(f)
+    if n is not None:
+        if f < 0:
+            f += n
+        if not 0 <= f < n:
+            raise IndexError(f"frame {f} is out of range; this pipeline has {n} frames (0 to {n - 1})")
+    return f
+
+
+def compare_data(source, table: str | None = None, y=None, histogram: str | None = None, frame=0,
+                 bins: int = 50) -> tuple[str, str, list]:
+    """What a comparison plot draws: ``(title, x column, series)`` with one ``(label, x, values,
+    column)`` per frame of ``frame`` (a list; negative counts from the end) or per column of ``y``
+    (a list of column names or their legend labels, e.g. ``["Cu-Cu", "Cu-Zr"]``). Histograms of
+    several frames share their bins."""
+    from .verbs import Table
+
+    frames = list(frame) if isinstance(frame, (list, tuple)) else [frame]
+    columns = list(y) if isinstance(y, (list, tuple)) else None if y is None else [y]
+    if not frames:
+        raise ValueError("frame=[] names no frame")
+    if len(frames) > 1 and columns is not None and len(columns) > 1:
+        raise ValueError("compare several frames or several columns, not both: give one frame or one y")
+    if len(frames) > 1 and (isinstance(source, Table) or not hasattr(source, "compute")):
+        raise ValueError("comparing frames needs a Pipeline; this is the data of one frame")
+    frames = [_frame(source, f) for f in frames] if hasattr(source, "compute") else frames
+    several = len(frames) > 1
+    if histogram is not None:
+        if columns is not None:
+            raise ValueError("y= is for tables; a histogram compares frames (frame=[...])")
+        values = []
+        for f in frames:
+            data = source.compute(f) if hasattr(source, "compute") else source
+            if histogram not in data.particles:
+                raise KeyError(f"no particle property {histogram!r}; this frame has: {', '.join(data.particles)}")
+            v = np.asarray(data.particles[histogram], float)
+            values.append(v[np.isfinite(v)])
+        every = np.concatenate(values)
+        if len(every) and np.all(every == np.round(every)) and np.ptp(every) <= bins:   # counts: one bin each
+            edges = np.arange(every.min() - 0.5, every.max() + 1.0)
+        else:
+            edges = np.histogram_bin_edges(every, bins=bins)
+        x = 0.5 * (edges[1:] + edges[:-1])
+        return histogram, histogram, [(f"frame {f}", x, np.histogram(v, edges)[0].astype(float), "Count")
+                                      for f, v in zip(frames, values)]
+    from .plotstyle import legend_labels
+
+    series = []
+    for f in frames:
+        title, cols = view_data(source, table, None, None, f, bins)
+        names = list(cols)
+        ys = names[1:]
+        pick = ys if columns is None else [_column(ys, c) for c in columns]
+        if several and len(pick) > 1:
+            raise ValueError(f"table {title!r} has several columns ({', '.join(ys)}); "
+                             "give y= to pick the one to compare across frames")
+        x = np.asarray(cols[names[0]], float)
+        labels = [f"frame {f}"] if several else legend_labels(pick)
+        series += [(label, x, np.asarray(cols[name], float), name) for label, name in zip(labels, pick)]
+    return title, names[0], series
+
+
+def _draw_compare(fig, xname: str, series: list, layout: str, frames: bool) -> list:
+    """Draw comparison ``series`` (:func:`compare_data`) into ``fig``: on one axis (``overlay``),
+    shifted up one above the other (``offset``) or in panels sharing x (``stack``). Frames take
+    colors along viridis (early dark, late light), columns the plot style's color cycle.
+    Returns the axes."""
+    from .colormaps import get_colormap
+    from .plotstyle import axis_label, start_at_zero
+
+    import matplotlib as mpl
+
+    if layout not in LAYOUTS:
+        raise ValueError(f"unknown layout {layout!r}; use one of {', '.join(LAYOUTS)}")
+    n = len(series)
+    if frames:
+        cmap = get_colormap("viridis")
+        colors = [cmap(0.9 * i / max(1, n - 1)) for i in range(n)]
+    else:
+        cycle = mpl.rcParams["axes.prop_cycle"].by_key()["color"]
+        colors = [cycle[i % len(cycle)] for i in range(n)]
+    units = {axis_label(s[3]) for s in series}
+    ylabel = units.pop() if len(units) == 1 else ""
+    counts = all(s[3] == "Count" or s[3].startswith("Count ") for s in series)
+    if layout == "stack":
+        axes = list(fig.subplots(n, 1, sharex=True, squeeze=False)[:, 0])
+    else:
+        axes = [fig.subplots()]
+    peak = max((np.nanmax(np.abs(v)) for _, _, v, _ in series if np.isfinite(v).any()), default=1.0)
+    step = 0.7 * peak if layout == "offset" else 0.0
+    for i, ((label, x, v, _), color) in enumerate(zip(series, colors)):
+        ax = axes[i] if layout == "stack" else axes[0]
+        ok = np.isfinite(v)
+        shift = i * step
+        if counts:
+            ax.plot(x[ok], v[ok] + shift, drawstyle="steps-mid", color=color, label=label)
+        else:
+            ax.plot(x[ok], v[ok] + shift, color=color, label=label)
+        if layout == "stack":
+            ax.text(0.98, 0.92, label, transform=ax.transAxes, ha="right", va="top")
+        elif layout == "offset" and ok.any():   # over the curve's baseline, at its left end
+            ax.annotate(label, (x[ok][0], shift), xytext=(2, 3), textcoords="offset points",
+                        ha="left", va="bottom", color=color)
+    for ax in axes:
+        ax.set_ylabel(ylabel if layout != "offset" else (f"{ylabel} (offset)" if ylabel else "offset"))
+        if counts and layout != "offset":
+            ax.set_ylim(bottom=0)
+    if layout == "offset":
+        axes[0].set_yticks([])
+        axes[0].set_ylim(top=(n - 1) * step + 1.08 * peak)
+    elif layout == "overlay" and n > 1:
+        axes[0].legend(loc="best")
+    axes[-1].set_xlabel(axis_label(xname))
+    start_at_zero(axes[-1], series[0][1])
+    return axes
+
+
+def _compare_figure(fig, source, table, y, histogram, frame, bins, layout, xlim, ylim, title=False):
+    name, xname, series = compare_data(source, table, y, histogram, frame, bins)
+    frames = isinstance(frame, (list, tuple)) and len(frame) > 1
+    axes = _draw_compare(fig, xname, series, layout or "overlay", frames)
+    for ax in axes:
+        _limit(ax, xlim, ylim)
+    if title:
+        fig.suptitle(name)
+    return name
 
 
 class Plot:
@@ -547,6 +724,8 @@ def view_args(source: str, function: str = "show") -> dict | None:
             return None
     if function == "show" and args["source"] == "pipe" and not {"table", "y", "histogram"} & set(args):
         return None   # show(pipe) alone is a picture of the structure, not a plot (show(table) still plots)
+    if function == "show" and is_comparison(args):
+        return None   # frames or columns compared: a fixed figure, not a live plot
     return args
 
 

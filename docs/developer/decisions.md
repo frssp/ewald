@@ -1079,7 +1079,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   computed values pasted into cells) and design a comparison plot API for `show()` (several frames,
   several columns, stacked panels).
 - **Considered:** the small fixes with new eval tasks only; a report and no code changes.
-- **Landed:** public PR #104 (the small fixes); the plot API follows.
+- **Landed:** public PR #104 (the small fixes); public PR #108 (the plot API, D86).
 
 ### D83. Step cells are edited in Python only; the step form is gone (2026-10-29)
 
@@ -1128,6 +1128,17 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** fewer tools but the whole reference read first (D31 kept); keeping every tool
   and only adding the matching steps to each question.
 - **Landed:** public PR #115.
+
+### D86. Comparison plots overlay by default, with offset and stack layouts (2026-10-29)
+
+- **Decision:** `show(pipe, table=..., frame=[...])` and `y=[...]` draw the frames or columns over
+  each other on one axis, frames in viridis order; `layout="offset"` shifts each curve up
+  (waterfall) and `layout="stack"` gives each its own panel with a shared x axis.
+- **Why:** shown the concepts (concepts.png: color, highlight, offset, stack for frames; overlay or
+  split for columns), the owner picked overlay with both the stack and the offset options.
+- **Considered:** overlay and stack only; a highlighted reference frame when two frames are
+  compared, overlay for more.
+- **Landed:** public PR #108.
 
 ## Adding an entry
 

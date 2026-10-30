@@ -87,6 +87,22 @@ writes `xlim=`/`ylim=`, and a double-click removes them. Run as a script, `show`
 `show(pipe)` with no table or histogram is a picture of the structure instead (a snapshot drawn
 with the pipeline's view settings), not a plot.
 
+To compare frames or columns, give `frame` or `y` a list. `layout` puts the curves on one axis
+(`"overlay"`, the default), shifted one above the other (`"offset"`, a waterfall), or in panels
+that share the x axis (`"stack"`):
+
+```python
+show(pipe, table="coordination-rdf", frame=[0, 5, -1])                   # g(r) of three frames
+show(pipe, table="coordination-rdf", frame=[0, -1], layout="stack")
+show(pipe, histogram="Coordination", frame=[0, -1])                      # same bins for both
+show(pipe, table="coordination-rdf", y=["Cu-Cu", "Cu-Zr"], layout="offset")   # partials of one frame
+```
+
+Frames take colors along viridis (early dark, late light) and columns the plot style's colors.
+A column is named as in the table or by its legend label (`"Cu-Cu"` for `"g(r) Cu-Cu"`). With
+several frames, pick one column with `y=` when the table has more. A comparison stays a fixed
+figure under the cell in the GUI: it does not follow the frame or link to the 3D view.
+
 `show(pipe, ...)` anywhere else in a code cell (after other code, several in one cell, with
 arguments from variables) is a live plot too, under the cell where it was called: it follows
 the frame and is linked to the Structure view the same way. Only a cell that is nothing but the

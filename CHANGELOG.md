@@ -10,6 +10,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- `show(pipe, table=..., frame=[...])` and `y=[...]` compare frames or columns in one plot:
+  over each other (default), `layout="offset"` (waterfall) or `layout="stack"` (one panel each,
+  shared x); in the GUI drawn under the cell for now. (D82, D86, #108)
 - `data.particles.count` and `data.particles.positions` work as in OVITO (read-only shortcuts for
   `data.count` and `data.positions`): the AI wrote them in 11 of 69 eval tasks. (D84, #116)
 - NumPy `.npz` trajectories are read and written built in (`positions`, `types`/`numbers`, `cell`,
