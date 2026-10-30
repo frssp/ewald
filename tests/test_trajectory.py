@@ -176,6 +176,47 @@ def test_diffusion_helpers():
     np.testing.assert_allclose(green_kubo(t, np.full(50, 3.0)), t)
 
 
+def test_fit_time_fits_the_same_lag_window_in_runs_of_any_length(rng):
+    t = np.arange(50) * 0.1
+    assert fit_lags(50, time=t, fit_time=(1.0, 2.0)) == slice(10, 21)
+    with pytest.raises(ValueError, match="lags run from 0 to 4.9"):
+        fit_lags(50, time=t, fit_time=(7.0, 9.0))
+    pipe, _ = _walk_pipeline(rng, T=60, n=50)
+    windows = []
+    for stop in (30, 60):
+        pipe.modifiers[:] = [MeanSquaredDisplacement(time_per_frame=0.5, stop=stop, fit_time=(2.0, 6.0))]
+        a = pipe.compute(0).attributes
+        windows.append((a["MeanSquaredDisplacement.fit_start"], a["MeanSquaredDisplacement.fit_end"]))
+    assert windows == [(2.0, 6.0), (2.0, 6.0)]
+    pipe.modifiers[:] = [MeanSquaredDisplacement(time_per_frame=0.5, stop=30)]
+    a = pipe.compute(0).attributes                # the default fraction (0.2, 0.8) of 30 lags
+    assert (a["MeanSquaredDisplacement.fit_start"], a["MeanSquaredDisplacement.fit_end"]) == (3.0, 11.5)
+
+
+def test_sensitivity_shows_how_a_result_moves_with_a_choice(rng):
+    from ewald import sensitivity
+
+    pipe, _ = _walk_pipeline(rng, T=60, n=200)
+    msd_step = MeanSquaredDisplacement(time_per_frame=0.5, fit_time=(2.0, 8.0))
+    pipe.add(msd_step)
+    before = pipe.compute(0).attributes["MeanSquaredDisplacement.diffusion_coefficient"]
+    t = sensitivity(pipe, "MeanSquaredDisplacement", "fit_time", [(1.0, 5.0), (2.0, 8.0), (5.0, 20.0)],
+                    "MeanSquaredDisplacement.diffusion_coefficient")
+    d = t["MeanSquaredDisplacement.diffusion_coefficient"]
+    assert t.labels == ["(1.0, 5.0)", "(2.0, 8.0)", "(5.0, 20.0)"] and len(set(d.round(12))) == 3
+    assert d[1] == pytest.approx(before)                     # the step's own setting gives its own result
+    spread = t.attributes["sensitivity.spread.MeanSquaredDisplacement.diffusion_coefficient"]
+    assert spread == pytest.approx((d.max() - d.min()) / abs(before))
+    assert pipe.modifiers[-1] is msd_step and msd_step.fit_time == (2.0, 8.0)   # put back as it was
+    assert pipe.compute(0).attributes["MeanSquaredDisplacement.diffusion_coefficient"] == pytest.approx(before)
+    numeric = sensitivity(pipe, msd_step, "stop", [30, 60])     # numbers stay numbers; every attribute
+    assert list(numeric.x) == [30.0, 60.0] and "MeanSquaredDisplacement.fit_end" in numeric
+    with pytest.raises(ValueError, match="no parameter 'cutoff'"):
+        sensitivity(pipe, msd_step, "cutoff", [1, 2])
+    with pytest.raises(ValueError, match="not a step of this pipeline"):
+        sensitivity(pipe, "CoordinationAnalysis", "cutoff", [1, 2])
+
+
 def test_vacf_from_positions_and_velocities_agree(rng, backend):
     pipe, true = _walk_pipeline(rng, T=50, n=300, velocities=True)
     pos = VelocityAutocorrelation(velocities="positions", time_per_frame=1.0)

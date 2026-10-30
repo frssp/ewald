@@ -17,6 +17,7 @@ against the same API the built-in readers and modifiers use, so everything in th
 | [Color map](styles.md#color-maps) | a function returning colors or a matplotlib `Colormap` | `@colormap` in the plugin folder, or an `ewald.colormaps` entry point | available |
 | [Theme](styles.md#themes) | a function returning a `Theme` (element colors, background, cell color, radius preset) | `@theme` in the plugin folder, or an `ewald.themes` entry point | available |
 | [AI tool](tools.md) | a function `f(toolset, **arguments)` returning JSON-ready data | `@ai_tool` (or `@claude_tool`) in the plugin folder, or an `ewald.tools` entry point | available |
+| [API function](tools.md#functions-for-notebook-cells) | a plain Python function cells can call (`fes_from_hills`) | `@api_function` on a function the plugin defines | available |
 | [AI provider](tools.md#ai-providers) | an `ewald.llm.providers.Provider` (another AI service: Mistral, a company gateway, ...) | `@ai_provider` in the plugin folder, or an `ewald.ai_providers` entry point | available |
 | [UI theme](styles.md#ui-themes) | a function returning design tokens (`{"accent": "#7aa2f7", ...}`) on top of Paper or Graphite | `@ui_theme` in the plugin folder, or an `ewald.ui_themes` entry point | available |
 | [Side bar](gui.md) | a function returning a Qt widget, opened from its own activity-bar button | `@panel` in the plugin folder, or an `ewald.panels` entry point | available |

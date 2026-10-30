@@ -699,6 +699,24 @@ class Notebook:
         self._reorder()
         self.dirty = True
 
+    def move_cells(self, cells, before: int) -> bool:
+        """Move ``cells`` together, in notebook order, in front of the cell now at ``before``
+        (``len(cells)``: to the end), like a dragged selection; False when nothing moves (a drop
+        inside or next to the block itself)."""
+        block = [c for c in self.cells if any(c is x for x in cells)]
+        if not block:
+            return False
+        before = max(0, min(before, len(self.cells)))
+        rest = [c for c in self.cells if not any(c is b for b in block)]
+        k = sum(1 for c in self.cells[:before] if not any(c is b for b in block))
+        order = rest[:k] + block + rest[k:]
+        if all(a is b for a, b in zip(order, self.cells)):
+            return False
+        self.cells[:] = order
+        self._reorder()
+        self.dirty = True
+        return True
+
     def _reorder(self):
         pipe = self.pipeline
         if pipe is None:
@@ -1067,7 +1085,8 @@ def _worth_checking(pipeline) -> bool:
 # AI's cells failed with a NameError).
 IMPORTS = ("import numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\n"
            "from ewald.views import show, view\nfrom ewald.paint import paint, hide, isolate, fade, resize\n"
-           "from ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius")
+           "from ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n"
+           "from ewald import sensitivity")
 NEW_NOTEBOOK = '''# %% [markdown]
 # # {title}
 

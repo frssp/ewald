@@ -190,7 +190,9 @@ pipe.modifiers.append(ReduceProperty("Potential Energy", "sum"))
   `tables["ring-size-histogram"]`, the atoms of every ring in `tables["6-rings"]` and so on,
   and the per-atom 'Ring Count'. Every ring OVITO's Find Rings modifier reports is among
   them; OVITO drops some of the largest rings that differ from another ring of the same size
-  only by a smaller ring.
+  only by a smaller ring. A chain that closes only through the periodic boundary (it winds around
+  the cell, as in small amorphous cells) is not counted; `periodic_rings=True` keeps it as
+  OVITO does, and `FindRings.periodic_rings` says how many were left out.
 - `SteinhardtOrderParameters(degrees, num_neighbors, cutoff, average, wl)`: bond-orientational
   order q_l and w_l per atom ('Steinhardt Q6', ...), with the neighbor-averaged form of Lechner
   and Dellago for solid/liquid separation. It runs on the pipeline device and matches freud.
@@ -328,7 +330,10 @@ recomputes them.
 - `MeanSquaredDisplacement(time_per_frame, ...)`: FFT time-origin-averaged MSD, per type,
   unwrapped and matched by id, with the Einstein diffusion coefficient. It also writes the
   particle property `MSD`, each atom's own time-averaged MSD over the lags of `fit_range`, so
-  the most mobile atoms can be selected and traced (example below).
+  the most mobile atoms can be selected and traced (example below). `fit_range` is a fraction
+  of the lags, so runs of different length fit different times; compare runs with
+  `fit_time=(t0, t1)` in the units of `time_per_frame`. The attributes
+  `MeanSquaredDisplacement.fit_start` and `.fit_end` give the window that was fitted.
 - `VelocityAutocorrelation(time_per_frame, ...)`: VACF from velocities or differentiated
   positions, with the Green-Kubo diffusion coefficient.
 - `TimeAveraging(operate_on)`: average of a table, attribute or property over frames, for

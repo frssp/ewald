@@ -173,6 +173,25 @@ def test_add_step_update_move_and_delete(nb):
     assert nb.dirty
 
 
+def test_move_cells_moves_a_block_and_the_pipeline_follows(nb):
+    """A dragged selection: the cells move together, a drop inside or next to them changes nothing."""
+    nb.run_all()
+    pipe = nb.pipeline
+    cell = nb.add_step(mods.Slice((0, 0, 1), 2.0), index=3)
+    order = list(nb.cells)
+    k = order.index(cell)
+    block = order[k - 1:k + 1]                       # the step before the Slice and the Slice
+    assert not nb.move_cells(block, k) and not nb.move_cells(block, k + 1)   # dropped onto itself
+    assert not nb.move_cells([], 0)
+    nb.dirty = False
+    assert nb.move_cells(list(reversed(block)), len(nb.cells))    # to the end, in notebook order
+    assert nb.cells[-2:] == block and nb.cells[:-2] == [c for c in order if c not in block] and nb.dirty
+    assert [m.name for m in pipe.modifiers] == ["ExpressionSelection", "CoordinationAnalysis", "Slice"]
+    assert nb.move_cells(block, 0)
+    assert nb.cells[:2] == block and len(nb.cells) == len(order)
+    assert [m.name for m in pipe.modifiers] == ["CoordinationAnalysis", "Slice", "ExpressionSelection"]
+
+
 def test_sync_follows_changes_made_outside_the_cells(nb):
     nb.run_all()
     pipe = nb.pipeline

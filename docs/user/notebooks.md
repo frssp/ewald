@@ -353,6 +353,17 @@ wrote: after `pipe.add(CoordinationAnalysis(cutoff=3.0))`, `rdf(pipe, cutoff=6)`
 `coordination-rdf (rdf)`. `show(pipe, table="coordination-rdf")` puts the same table
 in a live view cell.
 
+`sensitivity` shows how much a result moves with an analysis choice: it tries each value of one
+parameter of a step, puts the step back as it was, and returns a table of the step's results
+per value, drawn as bars, with the relative spread of each result in its `attributes`:
+
+```python
+from ewald import sensitivity
+s = sensitivity(pipe, "MeanSquaredDisplacement", "fit_time", [(1, 5), (2, 8), (4, 12)],
+                "MeanSquaredDisplacement.diffusion_coefficient.Li")
+s.attributes["sensitivity.spread.MeanSquaredDisplacement.diffusion_coefficient.Li"]   # 0.12: 12 %
+```
+
 **Text cells** are Markdown. Double-click one (or select it and press Enter) to edit it; Esc
 shows it rendered again. Under the cells, **+ Code**, **+ Text**, **+ Step** and **+ Plot** add a
 cell after the current one, in Jupyter's order.
@@ -394,8 +405,11 @@ The ⋯ menu of a cell has Run and Run this and below (Edit for text), Cell type
 views), Runs, Clear output, *Ask AI about this cell* (opens the AI chat with the cell quoted), then Insert cell
 above/below, Move up/down and Delete. Notebook › Clear cell output (Ctrl+Shift+Backspace) and Clear all outputs
 (Ctrl+Alt+Shift+Backspace) remove printed text, values, figures and run counts, as Jupyter's Clear outputs; the
-pipeline and its results stay, and the next save leaves the outputs out of the `.ipynb` or `.ewd`. Drag a cell by the dotted grip above its run button (it appears on hover) to move it; steps move with it in the
-pipeline. The `.py` button at the top shows the whole file.
+pipeline and its results stay, and the next save leaves the outputs out of the `.ipynb` or `.ewd`. Drag a cell by the dotted grip at its top right (it appears on hover and on the current cell) to move it;
+a line shows where it lands, and holding the drag near the top or bottom edge scrolls the notebook. When the
+cell is part of a selection (Shift+click or Shift+Up/Down) the whole selection moves as one block, and one Undo
+puts it back. Steps move with their cells in the pipeline. The AI moves cells the same way, through its
+`move_cell` tool (`count` moves a block). The `.py` button at the top shows the whole file.
 
 A notebook that loads several runs (`runs = load_runs("T*/XDATCAR")`) shows a run picker above its cells;
 picking a run binds `pipe` to it, so the 3D view follows ([Runs](runs.md)). Opening an MD run or a relaxation

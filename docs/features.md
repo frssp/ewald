@@ -7,7 +7,7 @@ in the [TODO list](todo.md); how each feature works is in the rest of this manua
 
 ## Python API
 
-`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `AllFramesModifier`, `Frames`, `each_frame`, `all_frames`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `View`, `view`, `show`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`, `cna`, `ptm`, `voronoi`, `clusters`, `run_info`, `check_run`, `load_runs`, `arrhenius`, `workflow_table`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
+`import ewald`: `Cell`, `DataCollection`, `Pipeline`, `Modifier`, `PythonModifier`, `AllFramesModifier`, `Frames`, `each_frame`, `all_frames`, `ComputeContext`, `ComputeCancelled`, `StaticSource`, `import_file`, `load`, `View`, `view`, `show`, `export_file`, `get_backend`, `gpu_available`, `rdf`, `msd`, `vacf`, `sq`, `xrd`, `bond_angles`, `cna`, `ptm`, `voronoi`, `clusters`, `sensitivity`, `run_info`, `check_run`, `load_runs`, `arrhenius`, `workflow_table`. Details: [Python scripting](user/scripting.md) and the [API reference](reference/api.md).
 
 ## Modifiers
 
@@ -333,7 +333,7 @@ Details: [Command line](user/cli.md).
 | `ewald api` | print the Python API reference for LLMs (llms.txt) | `--with-plugins` |
 | `ewald plugins` | list installed plugins and any that failed to load | `--json` `--enable` `--disable` |
 | `ewald forge [REQUEST...]` | have an AI write a modifier plugin, test it and save it | `--yes` `--draft` `--overwrite` `--rounds` `--model` `--provider` `--profile` `--base-url` |
-| `ewald eval` | score an AI model on tasks with known answers (costs API tokens; see --dry-run) | `--model` `--provider` `--profile` `--base-url` `--effort` `--tasks` `--category` `--list` `--allow-code` `--repeat` `--max-turns` `--out` `--compare` `--dry-run` `--price` `--no-download` `--context` |
+| `ewald eval` | score an AI model on tasks with known answers (costs API tokens; see --dry-run) | `--model` `--provider` `--profile` `--base-url` `--effort` `--tasks` `--category` `--list` `--allow-code` `--repeat` `--max-turns` `--out` `--compare` `--dry-run` `--price` `--no-download` `--no-related` `--context` |
 | `ewald mcp [INPUT]` | serve the analysis tools over MCP (stdio) | `--allow-code` |
 | `ewald remote [REMOTE_CMD]` | saved SSH profiles: list, add, remove, test, ls, get |  |
 | `ewald optimade [OPTIMADE_CMD]` | search OPTIMADE structure databases (Materials Project, COD, OQMD, ...) |  |
@@ -386,6 +386,7 @@ Tools:
 | `export_file` *cell* | Write frames of the pipeline (after its modifiers) to a file: POSCAR, LAMMPS data/dump, extxyz, CIF, XSF, H5MD, XTC, cube/CHGCAR, ASE db, ... as an export_file(...) cell in the notebook, run at once. |
 | `get_script` | The notebook as a standalone Python script (percent format): it reproduces everything the tools did, since they work only through its cells. |
 | `python_api` | Reference for the ewald Python API (data model, expression syntax, differences from OVITO, every modifier signature, the notebook's cell kinds, show/view/paint, and the modifier plugins installed here). |
+| `search_api` | Search the ewald API reference (steps, verbs, functions, recipes and the modifier plugins installed here) for what does a job, e.g. 'Li site hops residence time' or 'ring statistics'. |
 | `list_workflows` | Recent workflows (calculations that ran in steps, e.g. AiiDA WorkGraphs, or folders of VASP/LAMMPS/NEB/phonopy calculations: source 'folders') of a workflow source, newest first: id, kind, formula, state and the path that opens each, and today's date. |
 | `open_workflow` *cell* | Open a workflow, one of its steps or one of its outputs as the pipeline (like load_structure: a pipe = load(...) cell at the end of the notebook, run at once). |
 | `describe_workflow` | Steps of a workflow (nested; restarts joined), their states, numbers (energies, gaps) and outputs, each with the path load_structure opens, and the analyses its plugin offers (add_analysis). |
@@ -553,6 +554,7 @@ One section per simulation code (`ewald.codes`; plugins add codes with `@simulat
 | `llm.effort` | Effort | `'high'` |
 | `llm.stream` | Stream answers | `True` |
 | `llm.code_cells` | Code in answers | `'insert'` |
+| `llm.related_steps` | Show the AI related steps | `True` |
 | `llm.run_cells` | Let the AI run cells | `False` |
 | `llm.follow_cells` | Follow the AI's cells | `'follow'` |
 | `llm.read_folders` | Folders the AI may read | `''` |

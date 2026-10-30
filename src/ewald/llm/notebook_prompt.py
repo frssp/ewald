@@ -31,9 +31,8 @@ block as one complete cell that runs in that namespace; prefer `pipe.add(...)` s
 loops. When the user asks you to \
 change the notebook itself, use the cell tools: list_cells and read_cell (sources and outputs), \
 insert_cell, edit_cell (step parameters through params), move_cell and delete_cell. {run_cells} \
-add_modifier, set_view, load_structure and export_file write their own cell and run it. Tool names are not Python: never \
-put set_view(...), add_modifier(...) or another tool call in a ```python block or a cell; call the tool, \
-or write the cell's own code (view(pipe, ...), pipe.add(Modifier(...)), pipe = load(path)). Say which \
+Tool names are not Python: never put a tool call in a ```python block or a cell; write the cell's own \
+code (view(pipe, ...), pipe.add(Modifier(...)), pipe = load(path)). Say which \
 cells you changed, and when something is already drawn, say which cell does it; call a cell "cell N" \
 with N counted from 1 as the user sees them (index + 1), never by its index (the chat also links the \
 cells your tools wrote)."""
@@ -44,7 +43,9 @@ RUN_CELLS_NOTE = {
           "and return its outputs, and run_cell runs any cell, so run the cells you write, read their "
           "outputs and fix errors yourself instead of asking the user to run them.",
     False: "The user has not let you run cells: cells you write wait, marked not run, until the user "
-           "runs them, so tell the user which cells to run.",
+           "runs them, so tell the user which cells to run. add_modifier, set_view, load_structure and "
+           "export_file write their own cell and run it, and the compute and describe tools read results "
+           "without a cell.",
 }
 
 #: How the note above describes the ```python blocks of an answer (Preferences › AI › Code in answers).
@@ -87,10 +88,43 @@ def view_part(view: str) -> str:
     return f"The 3D view now shows: {view}"
 
 
+_PATHISH = re.compile(r"\S*[/\\]\S*|\S+\.(?:gz|xyz|extxyz|cif|dat|yaml|csv|lammpstrj|h5)\b", re.I)
+
+
+def related_part(question: str, limit: int = 4) -> str:
+    """The steps and functions of the API reference that match ``question``'s words (paths and file
+    names left out), one line each, as a question carries them ('' when nothing matches)."""
+    from .reference import FUNCTIONS, _documented, _first_sentence, _doc, _signature, search_reference
+
+    from .. import modifiers
+    from ..notebook import IMPORTS
+
+    imported = set(re.findall(r"\w+", IMPORTS)) | set(modifiers.__all__)
+    home = {name: module for module, names in FUNCTIONS for name in names}
+    lines = []
+    hits = search_reference(_PATHISH.sub(" ", question), 3 * limit, with_plugins=True)
+    for hit in hits:
+        if hit["score"] < max(6.0, 0.5 * hits[0]["score"]):   # weak matches are noise ("again")
+            break
+        m = re.match(r"- `(\w+)\(", hit["text"])
+        obj = _documented(m.group(1)) if m else None
+        if obj is None:
+            continue
+        doc = _first_sentence(_doc(obj))
+        where = "" if m.group(1) in imported else f" (from {home.get(m.group(1), obj.__module__)} import {m.group(1)})"
+        lines.append(f"- `{m.group(1)}{_signature(obj)}`{where}" + (f": {doc}" if doc else ""))
+        if len(lines) == limit:
+            break
+    if not lines:
+        return ""
+    return ("Steps and functions of ewald that may do this (search_api returns their whole docstrings; use "
+            "them rather than your own code where they fit):\n" + "\n".join(lines))
+
+
 def code_blocks(text: str) -> list[str]:
     """The Python code blocks of a Markdown answer (fenced as python, py or untagged)."""
     return [m.group(1).rstrip() + "\n" for m in _CODE_BLOCK.finditer(text) if m.group(1).strip()]
 
 
 __all__ = ["CODE_CELLS_NOTE", "MAX_NOTEBOOK", "NOTEBOOK_NOTE", "RUN_CELLS_NOTE", "code_blocks", "errors_part",
-           "notebook_part", "notebook_system", "view_part"]
+           "notebook_part", "notebook_system", "related_part", "view_part"]

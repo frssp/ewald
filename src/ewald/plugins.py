@@ -81,7 +81,7 @@ from .io.base import FrameReader
 from .plugin_kinds import (  # noqa: F401 (part of this module's API)
     ColormapPlugin, ListReader, ModifierPlugin, OverlayPlugin, MenuItemPlugin, PanelPlugin, PlotTarget, ReaderPlugin, SettingsField,
     SettingsPagePlugin,
-    ThemePlugin, ToolPlugin, UiThemePlugin, VisualPlugin, WorkflowSourcePlugin, WriterPlugin, _builtin_ai_providers, _builtin_codes, _builtin_panels, _builtin_workflows, _builtin_overlays, _builtin_readers,
+    ThemePlugin, ToolPlugin, FunctionPlugin, UiThemePlugin, VisualPlugin, WorkflowSourcePlugin, WriterPlugin, _builtin_ai_providers, _builtin_codes, _builtin_panels, _builtin_workflows, _builtin_overlays, _builtin_readers,
     _builtin_themes, _builtin_ui_themes, _builtin_visuals, _builtin_writers, path_scheme, MENU_WHEN, MENUS, PANEL_AREAS,
     TARGET_MENUS)
 from .plugin_manifest import (  # noqa: F401 (part of this module's API)
@@ -118,6 +118,7 @@ class _Registry:
     colormaps: dict = field(default_factory=dict)
     themes: dict = field(default_factory=_builtin_themes)
     tools: dict = field(default_factory=dict)
+    functions: dict = field(default_factory=dict)
     ui_themes: dict = field(default_factory=_builtin_ui_themes)
     ai_providers: dict = field(default_factory=_builtin_ai_providers)
     panels: dict = field(default_factory=_builtin_panels)
@@ -131,7 +132,7 @@ class _Registry:
 
 
 _registry = _Registry()
-_REGISTRIES = ("readers", "writers", "modifiers", "visuals", "overlays", "colormaps", "themes", "tools",
+_REGISTRIES = ("readers", "writers", "modifiers", "visuals", "overlays", "colormaps", "themes", "tools", "functions",
                "ui_themes", "ai_providers", "panels", "menu_items", "settings_pages", "workflows",
                "codes")
 
@@ -457,6 +458,41 @@ def tools() -> dict[str, ToolPlugin]:
     """AI tools contributed by plugins, by name."""
     load_plugins()
     return dict(_registry.tools)
+
+
+def api_function(function=None, *, name: str | None = None):
+    """Decorator offering a plugin function to notebook cells and to the AI: Ask AI's API reference
+    (``python_api``) lists it with its signature and the first paragraph of its docstring, and
+    ``search_api`` finds it, so the model calls it instead of rewriting it::
+
+        from ewald.plugins import api_function
+
+        @api_function
+        def fes_from_hills(hills, bins=None):
+            \"\"\"Free energy surface from metadynamics hills, like ``plumed sum_hills``.\"\"\"
+    """
+
+    def deco(f):
+        register_function(name or f.__name__, f)
+        return f
+
+    return deco(function) if callable(function) else deco
+
+
+def register_function(name: str, function: Callable, origin: str = "python") -> FunctionPlugin:
+    if not callable(function):
+        raise TypeError(f"{function!r} is not callable")
+    plugin = FunctionPlugin(name, function, getattr(function, "__module__", "") or "",
+                            getattr(_loading, "origin", None) or origin)
+    _registry.functions[name] = plugin
+    _contribute("functions", name)
+    return plugin
+
+
+def functions() -> dict[str, FunctionPlugin]:
+    """Functions plugins offer for notebook cells (:func:`api_function`), by name."""
+    load_plugins()
+    return dict(_registry.functions)
 
 
 def ai_provider(provider=None, *, name: str | None = None):
@@ -1059,6 +1095,7 @@ def load_plugins(force: bool = False):
         keep = {k: v for k, v in _registry.themes.items() if v.origin == "python" and not v.builtin}
         _registry.themes = {**_builtin_themes(), **keep}
         _registry.tools = {k: v for k, v in _registry.tools.items() if v.origin == "python"}
+        _registry.functions = {k: v for k, v in _registry.functions.items() if v.origin == "python"}
         keep = {k: v for k, v in _registry.ui_themes.items() if v.origin == "python" and not v.builtin}
         _registry.ui_themes = {**_builtin_ui_themes(), **keep}
         keep = {k: v for k, v in _registry.ai_providers.items() if v.origin == "python"}
@@ -1320,6 +1357,8 @@ def status() -> dict:
             "plugins": [p.as_dict() for p in _registry.plugins.values()],
             "tools": [{"name": p.name, "description": p.description.split("\n")[0], "origin": p.origin}
                       for p in _registry.tools.values()],
+            "functions": [{"name": p.name, "module": p.module, "origin": p.origin}
+                          for p in _registry.functions.values()],
             "ui_themes": [{"name": p.name, "base": p.base, "description": p.description, "origin": p.origin}
                           for p in _registry.ui_themes.values()],
             "ai_providers": [{"name": p.name, "label": p.label, "description": p.description, "origin": p.origin}

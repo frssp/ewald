@@ -76,6 +76,8 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** splitting it by topic (`python_api(topic=...)`), cheaper per call but the
   model may skip the part it needs; keeping the old size (about 36 KB) with only a reordering.
 - **Landed:** PR #242.
+- **Changed by D85 (2026-10-29):** when the AI may run cells it searches the reference
+  (`search_api`) instead of reading it first; `python_api` still returns all of it.
 
 ### D5. Any AI provider, named "Ask AI" (2026-10-20)
 
@@ -1077,7 +1079,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   computed values pasted into cells) and design a comparison plot API for `show()` (several frames,
   several columns, stacked panels).
 - **Considered:** the small fixes with new eval tasks only; a report and no code changes.
-- **Landed:** public PR #104 (the small fixes); the plot API follows.
+- **Landed:** public PR #104 (the small fixes); public PR #108 (the plot API, D86).
 
 ### D83. Step cells are edited in Python only; the step form is gone (2026-10-29)
 
@@ -1091,6 +1093,52 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** keeping both buttons; merging them (the parameter line unfolds the form, with or
   without a shaded background).
 - **Landed:** public PR #107.
+
+### D84. Ask AI analyses: steps first, and no silent analysis windows (2026-10-29)
+
+- **Decision:** after a second probe with whole research analyses (16 tasks on the paper
+  datasets), the owner approved the proposed design and its order ("진행시켜"): first fix the
+  analyses whose numbers depend on a hidden choice (MSD fitted over a fraction of each run's lags,
+  so runs of different length fit different times; FindRings counting chains that close only
+  through the periodic boundary), then steer Ask AI to steps (a step-first rule in the system
+  prompt and a read-only tool that finds existing steps), then analysis metadata as variables at
+  the top of the notebook and sources without a structure (HILLS, logs, tables of runs). Where
+  metadata is missing the AI proceeds with a stated assumption instead of asking first, and the
+  full API reference stays one read (D31).
+- **Considered:** asking the user before assuming missing metadata; splitting python_api into
+  sections; prompt changes only.
+- **Landed:** public PR #110 (`MeanSquaredDisplacement`/`IonicConductivity` `fit_time`, the fitted
+  window as attributes, FindRings without winding rings unless `periodic_rings=True`); public PR #111
+  (the step-first paragraph in the system prompt and the `search_api` tool); public PR #112 (whole
+  docstrings in `search_api`, plugin functions in the reference); public PR #113 (`sensitivity()`);
+  public PR #114 (the matching steps carried in each question); public PR #116
+  (OVITO's `data.particles.count`/`.positions`); the rest follows.
+
+### D85. Ask AI is a coding agent when it may run cells (2026-10-29)
+
+- **Decision:** with permission to run cells, Ask AI works as a coding agent: it computes and
+  changes results by writing and running cells, looks up the API with `search_api`, and is
+  offered only the cell tools, `search_api`, `python_api`, `render_image`, `get_view`,
+  `describe_trajectory`, `describe_selection`, `check_run` and plugin tools. Without that
+  permission it keeps every tool, since it cannot run code of its own.
+- **Why:** the owner: "근데 이거는 코딩 에이전트라고 봐야하지 않아? 툴이라니 좀 어색하네". Asked
+  whether to change D31, the owner chose to compare the two ways in an A/B run first, then picked
+  the switch from the numbers (Sonnet 5.5: 15/15 against 13/15 research analyses, about the same
+  cost; full eval suite 65/69 against 66/69 at 16% less cost).
+- **Considered:** fewer tools but the whole reference read first (D31 kept); keeping every tool
+  and only adding the matching steps to each question.
+- **Landed:** public PR #115.
+
+### D86. Comparison plots overlay by default, with offset and stack layouts (2026-10-29)
+
+- **Decision:** `show(pipe, table=..., frame=[...])` and `y=[...]` draw the frames or columns over
+  each other on one axis, frames in viridis order; `layout="offset"` shifts each curve up
+  (waterfall) and `layout="stack"` gives each its own panel with a shared x axis.
+- **Why:** shown the concepts (concepts.png: color, highlight, offset, stack for frames; overlay or
+  split for columns), the owner picked overlay with both the stack and the offset options.
+- **Considered:** overlay and stack only; a highlighted reference frame when two frames are
+  compared, overlay for more.
+- **Landed:** public PR #108.
 
 ## Adding an entry
 

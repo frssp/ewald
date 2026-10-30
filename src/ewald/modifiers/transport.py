@@ -55,7 +55,8 @@ class IonicConductivity(_TrajectoryModifier):
     sigma = lim d/dt < |sum_i q_i dr_i(t)|^2 > / (6 V kB T) (Einstein-Helfand, every frame a
     time origin) and sigma_NE = sum_i q_i^2 < |dr_i(t)|^2 > / (6 V kB T), which leaves out the
     cross correlations between ions; the Haven ratio is sigma_NE / sigma. Both slopes come from
-    a linear fit over ``fit_range`` (fraction of the lags). ``charges`` maps type names to
+    a linear fit over ``fit_range`` (fraction of the lags), or over the lags between
+    ``fit_time=(t0, t1)`` (units of ``time_per_frame``) when given. ``charges`` maps type names to
     charges in e; None takes the 'Charge' property of frame ``start``, else formal oxidation
     states guessed from the types (as the ionic radii do). ``only_selected`` sums over the
     particles selected at ``start`` (e.g. only Li, giving its own conductivity and Haven ratio).
@@ -69,7 +70,8 @@ class IonicConductivity(_TrajectoryModifier):
 
     def __init__(self, temperature: float = 300.0, time_per_frame: float = 0.0, charges: dict | None = None,
                  start: int = 0, stop: int | None = None, step: int = 1, fit_range: tuple = (0.2, 0.8),
-                 unwrapped: bool = False, subtract_drift: bool = True, only_selected: bool = False):
+                 unwrapped: bool = False, subtract_drift: bool = True, only_selected: bool = False,
+                 fit_time: tuple | None = None):
         self.temperature = temperature
         self.time_per_frame = time_per_frame
         self.charges = charges
@@ -80,6 +82,7 @@ class IonicConductivity(_TrajectoryModifier):
         self.unwrapped = unwrapped
         self.subtract_drift = subtract_drift
         self.only_selected = only_selected
+        self.fit_time = fit_time
 
     def modify(self, data, ctx):
         table, attrs = self._cached(ctx, lambda: self._compute(ctx))
@@ -125,8 +128,9 @@ class IonicConductivity(_TrajectoryModifier):
         total = (xs * qs[None, :, None]).sum(axis=1)[:, None, :]       # (T, 1, 3) charge displacement
         charge_msd = msd_fft(total, be)
         ne_msd = msd_fft(xs * qs[None, :, None], be) * int(sel.sum())
-        d_sigma, icpt, _ = diffusion_fit(t, charge_msd, self.fit_range)
-        d_ne, _, _ = diffusion_fit(t, ne_msd, self.fit_range)
+        fit_time = getattr(self, "fit_time", None)
+        d_sigma, icpt, _ = diffusion_fit(t, charge_msd, self.fit_range, fit_time=fit_time)
+        d_ne, _, _ = diffusion_fit(t, ne_msd, self.fit_range, fit_time=fit_time)
         volume = float(np.mean(np.abs(np.linalg.det(traj["cells"]))))
         table = {"Time": t, "Charge MSD": charge_msd, "Charge MSD fit": 6.0 * d_sigma * t + icpt,
                  "Nernst-Einstein MSD": ne_msd}

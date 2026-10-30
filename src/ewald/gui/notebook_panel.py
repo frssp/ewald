@@ -237,6 +237,8 @@ class NotebookView(QtWidgets.QWidget):
         self.drop_line = QtWidgets.QFrame(self.container, objectName="cellDropLine")
         self.drop_line.setFixedHeight(3)
         self.drop_line.hide()
+        self._drag_vy = None   # where a dragged cell is held, in viewport px
+        self._drag_timer = QtCore.QTimer(self, interval=30, timeout=self._drag_scroll_tick)
         self.stack.addWidget(self.scroll)
         self.ai_follow = AiFollow(self)   # how the scroll follows the cells the AI chat writes
         bar = self.scroll.verticalScrollBar()
@@ -939,17 +941,22 @@ class NotebookView(QtWidgets.QWidget):
 
     def move_cell(self, cell, before: int):
         """Move ``cell`` in front of the cell at ``before`` (``len(cells)``: to the end)."""
-        nb = self.notebook
-        i = nb.cells.index(cell)
-        to = before - 1 if before > i else before
-        if to == i:
+        self.move_cells_to([cell], before)
+
+    def move_cells_to(self, cells, before: int):
+        """Move ``cells`` together in front of the cell at ``before`` (a dragged selection)."""
+        if not self.notebook.move_cells(cells, before):
             return
-        nb.move(cell, to)
-        self.current = cell
+        if self.current not in cells:
+            self.current = cells[0]
         self.rebuild()
         self.changed.emit()
-        self.history.commit("Move cell")
+        self.history.commit("Move cells" if len(cells) > 1 else "Move cell")
         self.titleChanged.emit()
+
+    def drag_group(self, cell) -> list:
+        """The cells a drag by ``cell``'s grip moves: the selection when ``cell`` is in it."""
+        return self._group(cell)
 
     def _drop_index(self, y: float) -> int:
         """Where a cell dropped at height ``y`` of the page goes: before the first cell whose middle is lower."""
@@ -958,30 +965,71 @@ class NotebookView(QtWidgets.QWidget):
                 return k
         return len(self.widgets)
 
+    def _show_drop_line(self, y: float):
+        k = self._drop_index(y)
+        ref = self.widgets[k].geometry().top() - 5 if k < len(self.widgets) else \
+            (self.widgets[-1].geometry().bottom() + 3 if self.widgets else 0)
+        self.drop_line.setGeometry(8, max(0, ref), self.container.width() - 16, 3)
+        self.drop_line.show()
+        self.drop_line.raise_()
+
+    DRAG_EDGE = 48   # px at the top and bottom of the cells where a dragged cell scrolls them
+
+    def _drag_scroll_step(self, y: float) -> int:
+        """How far a drag held at height ``y`` of the page scrolls per tick: faster nearer the edge."""
+        vy = self.container.mapTo(self.scroll.viewport(), QtCore.QPoint(0, round(y))).y()
+        h = self.scroll.viewport().height()
+        edge = min(self.DRAG_EDGE, h // 4)
+        if vy < edge:
+            return -max(2, round(24 * (edge - vy) / edge))
+        if vy > h - edge:
+            return max(2, round(24 * (vy - (h - edge)) / edge))
+        return 0
+
+    def _drag_scroll_tick(self):
+        """While a dragged cell is held near an edge the cells scroll under it and the drop line follows."""
+        bar = self.scroll.verticalScrollBar()
+        if self._drag_vy is None:
+            self._drag_timer.stop()
+            return
+        y = self.container.mapFrom(self.scroll.viewport(), QtCore.QPoint(0, self._drag_vy)).y()
+        step = self._drag_scroll_step(y)
+        if not step or bar.value() == (bar.minimum() if step < 0 else bar.maximum()):
+            self._drag_timer.stop()
+            return
+        bar.setValue(bar.value() + step)
+        y = self.container.mapFrom(self.scroll.viewport(), QtCore.QPoint(0, self._drag_vy)).y()
+        self._show_drop_line(y)
+
+    def _end_drag(self):
+        self.drop_line.hide()
+        self._drag_vy = None
+        self._drag_timer.stop()
+
     def eventFilter(self, obj, event):
         if obj is self.container and event.type() in (QtCore.QEvent.DragEnter, QtCore.QEvent.DragMove,
                                                       QtCore.QEvent.DragLeave, QtCore.QEvent.Drop):
             if event.type() == QtCore.QEvent.DragLeave:
-                self.drop_line.hide()
+                self._end_drag()
                 return True
             if not event.mimeData().hasFormat(CELL_MIME):
                 return False
             y = event.position().y()
             k = self._drop_index(y)
             if event.type() == QtCore.QEvent.Drop:
-                self.drop_line.hide()
+                self._end_drag()
                 cid = bytes(event.mimeData().data(CELL_MIME)).decode()
                 cell = next((c for c in self.notebook.cells if c.id == cid), None)
                 if cell is not None:
                     event.acceptProposedAction()
-                    QtCore.QTimer.singleShot(0, self, lambda: self.move_cell(cell, k))  # not inside the drag
+                    cells = self.drag_group(cell)   # the selection moves as one block
+                    QtCore.QTimer.singleShot(0, self, lambda: self.move_cells_to(cells, k))  # not inside the drag
                 return True
             event.acceptProposedAction()
-            ref = self.widgets[k].geometry().top() - 5 if k < len(self.widgets) else \
-                (self.widgets[-1].geometry().bottom() + 3 if self.widgets else 0)
-            self.drop_line.setGeometry(8, max(0, ref), self.container.width() - 16, 3)
-            self.drop_line.show()
-            self.drop_line.raise_()
+            self._show_drop_line(y)
+            self._drag_vy = self.container.mapTo(self.scroll.viewport(), QtCore.QPoint(0, round(y))).y()
+            if self._drag_scroll_step(y) and not self._drag_timer.isActive():
+                self._drag_timer.start()
             return True
         return super().eventFilter(obj, event)
 

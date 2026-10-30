@@ -22,6 +22,27 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   (llvmlite 115 MB, ffmpeg 84 MB, VTK 230 MB, Qt 105 MB). Next candidates: Qt Quick/QML, which
   nothing uses, and making movie export's ffmpeg an installable component like GPU compute.
 
+- Ask AI analysis design (D84): a second probe (16 whole research analyses, Opus and Sonnet 5.5)
+  found notebooks of 80-170 hand-written lines where steps exist (`SiteHopping`, `fes_from_hills`)
+  or are missing (time-averaged density grid, polyhedron rotation and tilt, run-label-vs-value
+  plots, 2D free energy surfaces). Done: MSD/conductivity `fit_time`, FindRings without rings that
+  wind around the cell; a step-first paragraph in the system prompt and `search_api` (Sonnet on
+  15 of the tasks: it searched in 9, found the right entry each time, and the answers that report
+  how a number moves with an analysis choice went from 6 to 9); `search_api` returns whole
+  docstrings (the model found `SiteHopping`, got 1942 hops without `site_radius` and wrote its own
+  hysteresis, because the reference cut the paragraph that explains it) and plugin functions
+  marked `@api_function`. The steps and functions that match a question's words go into the
+  question itself (`llm.related_steps`). Next (review against related work, 2026-10-29): research eval graded by subtask, reported analysis
+  choices and cost; `sensitivity` is in (more steps could record the choices they make, as the MSD
+  records its fit window); Li sites from the
+  time-averaged density and a minimum stay for `SiteHopping`; with permission to run cells Ask AI works as a coding agent (few tools,
+  reference searched; A/B on 15 research tasks 15/15 vs 13/15, full suite 65/69 vs 66/69 at 16%
+  less cost, D85); the OVITO habits seen in its cell errors
+  (`ParticleType == 2`, `data.cell[...]`, `Table.attribute`, `export_file` not imported); analysis metadata (temperature,
+  timestep, composition) as variables at the top of the notebook; sources without a structure
+  (PLUMED HILLS, thermo logs, a table of runs). `StructureFactor` needs a memory bound (100k atoms
+  took 325 s and 6.6 GB).
+
 ## Next
 
 - ASE/pymatgen as the main tools inside steps (owner, 2026-10-29: record only): keep the pipeline
@@ -39,6 +60,8 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   wrote a spglib Python step; structure editing is deferred); a 2D contour plot of a grid slice
   (`GridSlice` is a 3D cross-section only).
 
+- Cell drag: a cell cannot be dragged into another notebook tab yet (cut and paste with X / V
+  works across tabs), and the grip is the only drag handle (no drag by the cell gutter).
 - Running-cell marks in a kernel notebook: when a cell rebinds `pipe` and the cells below run
   again inside the kernel, only the first cell is marked as running (the kernel reports the rest
   when they are all done); the kernel bridge could send a start message per cell.
@@ -745,6 +768,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- Dragging a notebook cell (or a selection) by its grip on Windows at 200 % scaling and on macOS:
+  the drag picture, the drop line and the edge scroll (only synthetic drops and a patched
+  `QDrag.exec` are tested under xvfb).
 - The frozen Windows app from `windows-release.yml` (setup.exe, portable zip) on the owner's
   Windows PC: install, open a VASP/LAMMPS file, render, quit without a crash dialog. Then GPU
   compute from Preferences › Compute › Optional components › Install (D80): pip finishes in the

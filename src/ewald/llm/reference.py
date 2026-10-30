@@ -99,8 +99,8 @@ Ranking: `ExpressionSelection("ParticleType == 'Li'", top=5, by="MSD")` selects 
 | `from ovito.io import import_file` | `from ewald import import_file` |
 | `from ovito.modifiers import CommonNeighborAnalysisModifier` | `from ewald.modifiers import CommonNeighborAnalysis` (the OVITO name also works) |
 | `pipeline.source.num_frames` | `pipe.num_frames` |
-| `data.particles.count` | `data.count` |
-| `data.particles.positions`, `data.particles['Position']` | `data.positions`, `data['Position']` |
+| `data.particles.count` | `data.count` (the OVITO form also works) |
+| `data.particles.positions`, `data.particles['Position']` | `data.positions`, `data['Position']` (the OVITO forms also work, read-only) |
 | `data.particles_['Position_'][...] = v` (in place) | `data.positions = v` (assign a new array) |
 | `data.particles_.create_property('X', data=v)` | `data['X'] = v` |
 | `data.particles.particle_types` (type objects, ids) | `data.types` (element strings) |
@@ -145,7 +145,7 @@ curve); `ewald.display.options` sets size/renderer/quality, `options["enabled"] 
 A notebook is a percent-format `.py` file (`# %%` cells, one namespace). New notebooks import
 `numpy as np`, `all_frames, each_frame, import_file, load` (from `ewald`), every modifier (`from ewald.modifiers import *`), `show, view`
 (from `ewald.views`), `paint, hide, isolate, fade, resize` (from `ewald.paint`) and `rdf, msd, vacf, sq, xrd, load_runs,
-check_run, run_info, arrhenius` (from `ewald`); import anything else in the cell.
+check_run, run_info, arrhenius, sensitivity` (from `ewald`); import anything else in the cell.
 `pipe` is the pipeline. Write each change as its own cell, in the kinds the GUI recognizes:
 
 - load cell: `pipe = load("XDATCAR")`.
@@ -190,7 +190,9 @@ energy drift, LAMMPS warnings/errors, close contacts); `.ok`, `.to_dict()`. Seve
 from each run's thermostat (`attribute="MeanSquaredDisplacement.diffusion_coefficient.Li"` for one species), or
 `arrhenius(temperatures, values)` / `arrhenius({T: D})`: `.Ea`, `.Ea_error`, `.A`, `.r2`, `.plot()`, `.savefig(path)`.
 A study over several runs (D(T), Ea, a comparison): `check_run` every run first and trim (`msd(pipe, start=check.equilibrated)`)
-or leave out the runs it flags, saying which and why; take temperatures from the input files and say where a folder
+or leave out the runs it flags, saying which and why; runs of different length fit the same time window only with
+`fit_time=(t0, t1)` (`fit_range` is a fraction of each run's lags; `.fit_start`/`.fit_end` say what was fitted);
+`sensitivity(pipe, step, "fit_time", [(1, 5), (2, 8)], attribute)` shows how much a result moves with a choice; take temperatures from the input files and say where a folder
 name disagrees; finish with a cell that prints every number the answer quotes.
 Workflows (a folder of calculations, `aiida:...`): `workflow_table(path, ...)` (`from ewald import workflow_table`)
 is a row per step and a column per number (energy, energy/atom, barrier, gap, max force, atoms, ...); several paths
@@ -391,7 +393,7 @@ FAMILIES = [
 FUNCTIONS = [
     ("ewald", ("load", "import_file", "export_file", "each_frame", "all_frames", "view", "rdf", "msd", "vacf", "sq",
                "xrd", "bond_angles", "cna", "ptm", "voronoi", "clusters", "run_info", "check_run", "load_runs",
-               "arrhenius", "workflow_table")),
+               "arrhenius", "sensitivity", "workflow_table")),
     ("ewald.views", ("show", "snapshot", "figure")),
     ("ewald.paint", ("paint", "hide", "isolate", "fade", "resize")),
 ]
@@ -524,15 +526,27 @@ def modifier_reference() -> str:
 
 
 def plugin_reference() -> str:
-    """Installed modifier plugins, in the same format (not part of llms.txt)."""
+    """Installed modifier plugins and plugin functions (:func:`ewald.plugins.api_function`), in the
+    same format (not part of llms.txt)."""
     from .. import plugins
 
     found = plugins.modifiers()
-    lines = ["## Modifier plugins installed here", ""]
+    lines = ["## Modifier plugins installed here", ""] if found else []
     for name, plugin in found.items():
         doc = _doc(plugin.cls)
         lines.append(f"- `{name}{_signature(plugin.cls)}`" + (f": {doc}" if doc else "") + f" [{plugin.origin}]")
-    return "\n".join(lines) + "\n" if found else ""
+    by_module: dict[str, list] = {}
+    for plugin in plugins.functions().values():
+        by_module.setdefault(plugin.module, []).append(plugin)
+    if by_module:
+        lines += ([""] if lines else []) + ["## Functions from plugins installed here", ""]
+    for module, entries in by_module.items():
+        lines += [f"`from {module} import {', '.join(p.name for p in entries)}`:", ""]
+        for p in entries:
+            doc = _doc(p.function)
+            lines.append(f"- `{p.name}{_signature(p.function)}`" + (f": {doc}" if doc else ""))
+        lines.append("")
+    return "\n".join(lines).rstrip("\n") + "\n" if lines else ""
 
 
 def api_reference(with_plugins: bool = False) -> str:
@@ -541,3 +555,112 @@ def api_reference(with_plugins: bool = False) -> str:
     text = "\n".join([GUIDE, recipes_reference(), function_reference(), modifier_reference()])
     plugins_text = plugin_reference() if with_plugins else ""
     return text + ("\n" + plugins_text if plugins_text else "")
+
+
+# ------------------------------------------------------------------------------------------- search
+_WORD = re.compile(r"[A-Za-z][a-z]+|[A-Z]+(?![a-z])|\d+")
+
+
+def _terms(text: str) -> list[str]:
+    """Lower-case search terms: CamelCase and snake_case split (SiteHopping -> site, hopping),
+    a plural or -ing ending dropped, so "hops" finds "hop" and "Hopping"."""
+    out = []
+    for word in _WORD.findall(text):
+        w = word.lower()
+        for end in ("ing", "es", "s"):
+            if len(w) > len(end) + 2 and w.endswith(end):
+                w = w[:-len(end)]
+                break
+        out.append(w)
+    return out
+
+
+def reference_chunks(with_plugins: bool = False) -> list[tuple[str, str]]:
+    """The reference cut into ``(section, text)`` pieces: one per modifier or function entry, one
+    per recipe (its title and cells), one per paragraph of the guide."""
+    chunks, section = [], ""
+    lines = api_reference(with_plugins).splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("#"):
+            section = line.lstrip("# ").strip()
+            i += 1
+        elif line.startswith("```"):
+            end = next((k for k in range(i + 1, len(lines)) if lines[k].startswith("```")), len(lines) - 1)
+            block = "\n".join(lines[i:end + 1])
+            if chunks and chunks[-1][0] == section and not chunks[-1][1].startswith("- `"):
+                chunks[-1] = (section, chunks[-1][1] + "\n" + block)   # a recipe's cells join its title
+            else:
+                chunks.append((section, block))
+            i = end + 1
+        elif line.strip():
+            k = i + 1
+            if line.startswith("- "):    # an entry runs until the next entry, heading or blank line
+                while k < len(lines) and lines[k].strip() and not lines[k].startswith(("- ", "#", "```")):
+                    k += 1
+            else:
+                while k < len(lines) and lines[k].strip() and not lines[k].startswith(("#", "```")):
+                    k += 1
+            chunks.append((section, "\n".join(lines[i:k])))
+            i = k
+        else:
+            i += 1
+    return chunks
+
+
+def search_reference(query: str, limit: int = 6, with_plugins: bool = False) -> list[dict]:
+    """The pieces of the reference that best match ``query`` (BM25 over words; an entry whose name
+    contains a query word ranks first): ``[{"section", "text", "score"}]``, best first."""
+    import math
+
+    chunks = reference_chunks(with_plugins)
+    docs = [_terms(text) for _, text in chunks]
+    names = [_terms(m.group(1)) if (m := re.match(r"- `(\w+)", text)) else [] for _, text in chunks]
+    want = list(dict.fromkeys(_terms(query)))
+    if not want or not docs:
+        return []
+    avg = sum(map(len, docs)) / len(docs)
+    df = {t: sum(t in set(d) for d in docs) for t in want}
+    scored = []
+    for (section, text), doc, name in zip(chunks, docs, names):
+        score = 0.0
+        for t in want:
+            f = doc.count(t)
+            if f:
+                idf = math.log(1 + (len(docs) - df[t] + 0.5) / (df[t] + 0.5))
+                score += idf * f * 2.2 / (f + 1.2 * (0.25 + 0.75 * len(doc) / avg))
+                if t in name:
+                    score += 2 * idf
+        if score > 0:
+            scored.append((score, section, text))
+    scored.sort(key=lambda s: -s[0])
+    return [{"section": s, "text": _full_entry(t), "score": round(sc, 2)} for sc, s, t in scored[:limit]]
+
+
+def _documented(name: str):
+    """The modifier (core or plugin) or notebook function called ``name``, or None."""
+    from .. import modifiers, paint, plugins, views
+    import ewald
+
+    for module, names in FUNCTIONS:
+        if name in names:
+            return getattr({"ewald": ewald, "ewald.views": views, "ewald.paint": paint}[module], name)
+    if name in modifiers.__all__:
+        return getattr(modifiers, name)
+    plugin = plugins.modifiers().get(name)
+    if plugin is not None:
+        return plugin.cls
+    function = plugins.functions().get(name)
+    return function.function if function is not None else None
+
+
+def _full_entry(text: str) -> str:
+    """A modifier or function entry with its whole docstring (the reference keeps only the first
+    paragraph and the sentences naming outputs; options such as ``site_radius`` are explained
+    further down), other pieces unchanged."""
+    m = re.match(r"- `(\w+)\(", text)
+    obj = _documented(m.group(1)) if m else None
+    if obj is None or not obj.__doc__:
+        return text
+    return f"- `{m.group(1)}{_signature(obj)}`:\n" + _plain(inspect.cleandoc(obj.__doc__))

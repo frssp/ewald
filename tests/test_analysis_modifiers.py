@@ -242,6 +242,19 @@ def test_rings_through_modifier_match_function():
             assert len(d.tables[f"{size}-rings"]["Particle Indices"]) == count
 
 
+def test_rings_winding_around_the_cell_are_left_out():
+    # a chain of 6 atoms along x closes on itself only through the boundary, next to a square ring
+    pos = np.array([[1.5 * k, 0, 0] for k in range(6)] + [[0, 4, 4], [1.5, 4, 4], [1.5, 5.5, 4], [0, 5.5, 4]])
+    d = DataCollection(pos, None, Cell(np.diag([9.0, 10.0, 10.0]), np.zeros(3), np.ones(3, bool)))
+    d = run(CreateBonds(cutoff=1.6), d)
+    out = run(FindRings(3, 8), d)
+    assert out.attributes["FindRings.count.4"] == 1 and out.attributes["FindRings.count.6"] == 0
+    assert out.attributes["FindRings.periodic_rings"] == 1
+    np.testing.assert_array_equal(out["Ring Count"], [0] * 6 + [1] * 4)
+    kept = run(FindRings(3, 8, periodic_rings=True), d)
+    assert kept.attributes["FindRings.count.6"] == 1 and kept.attributes["FindRings.periodic_rings"] == 0
+
+
 # ------------------------------------------------------------------------------------------- Steinhardt
 def steinhardt_system(tag):
     return DataCollection(REF[f"st/{tag}/pos"], None, Cell(REF[f"st/{tag}/cell"], np.zeros(3), np.ones(3, bool)))

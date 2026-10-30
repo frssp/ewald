@@ -13,6 +13,18 @@ cells, so the notebook is the full record of what it did. It cannot run Python o
 you allow it, it never sees your API key, and the built-in tools never hand it raw coordinate
 arrays.
 
+## Two ways of working
+
+When you let the AI run cells (Preferences › AI › **Let the AI run cells**, `llm.run_cells`;
+`allow_code=True` in Python), it works as a coding agent: it computes and changes everything by
+writing cells with ewald's Python API and running them, and looks up the API with `search_api`.
+It is then offered only the cell tools, `search_api`, `python_api`, `render_image`, `get_view`,
+`describe_trajectory`, `describe_selection`, `check_run` and plugin tools (`CODING_TOOLS` in
+`llm/tools.py`), and its system prompt says so. Without that permission it cannot run code, so it
+gets every tool below: tools such as `compute_rdf` read results without a cell, and tools such as
+`add_modifier` and `set_view` write a fixed cell and run it. In an A/B run on 15 research
+analyses (Sonnet 5.5, 2026-10-29) the coding agent passed 15 against 13 at about the same cost.
+
 ## Through the notebook or not
 
 Everything the AI can do falls on one side of this line. What changes the structure, the
@@ -38,7 +50,7 @@ ewald itself shows the chat, does not write a cell.
 
 | What | Effect outside the notebook |
 | --- | --- |
-| The read-only tools (table above, `python_api`, `check_run`, `describe_workflow`, `list_workflows`, `read_plumed_output`, `compute_plumed_cvs` with `keep=false`) | none on your data; they compute on the pipeline or on a copy and return text, tables or images |
+| The read-only tools (table above, `python_api`, `search_api`, `check_run`, `describe_workflow`, `list_workflows`, `read_plumed_output`, `compute_plumed_cvs` with `keep=false`) | none on your data; they compute on the pipeline or on a copy and return text, tables or images |
 | `set_frame` | sets the frame the next tools look at, kept in the toolset only; the view's frame is `set_view frame` (a cell) |
 | `render_image`, `read_plumed_output`, the selection close-up | write PNGs into the AI's work dir, a temporary `ewald-llm-*` folder |
 | Remote paths the AI opens (`host:/path`) | connect over SSH (after you agree, `llm.confirm_hosts`) and may download into ewald's remote cache |
@@ -100,6 +112,7 @@ the next tools look at).
 | `list_visuals`, `list_overlays`, `list_styles` | what can be drawn, and the themes and color maps |
 | `get_script` | the notebook as a script |
 | `python_api` | the API reference: `llms.txt` plus the modifier plugins installed here |
+| `search_api` | the entries of that reference that match a few words (a step for a job, before code is written) |
 | `list_cells`, `read_cell` | cell summaries; one cell's source and outputs (plots as images) |
 | `list_workflows`, `describe_workflow` | workflows of a workflow source; offered only when one is installed ([Workflows](workflows.md)) |
 
@@ -218,6 +231,10 @@ since the last question of that chat:
   6,000 characters), or a note that there are none any more.
 - How the 3D view colors the atoms (the color rule: which step or setting, which property,
   the colors or color map and range).
+- With Preferences › AI › Show the AI related steps (`llm.related_steps`, on by default), every
+  question: up to four steps or functions of ewald's API reference whose names and docstrings
+  match the question's words (`related_part`: name, signature, first sentence). This comes from
+  ewald's own reference, not from your data.
 - Once, after the agent was made again (a new `pipe`) or for a chat saved in the notebook: the
   earlier transcript of that tab's chat (questions and answers as text, at most 20,000
   characters), marked as a record, not instructions. Each notebook tab has its own chat, saved in

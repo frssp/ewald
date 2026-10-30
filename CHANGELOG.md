@@ -10,6 +10,11 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- `show(pipe, table=..., frame=[...])` and `y=[...]` compare frames or columns in one plot:
+  over each other (default), `layout="offset"` (waterfall) or `layout="stack"` (one panel each,
+  shared x); in the GUI drawn under the cell for now. (D82, D86, #108)
+- `data.particles.count` and `data.particles.positions` work as in OVITO (read-only shortcuts for
+  `data.count` and `data.positions`): the AI wrote them in 11 of 69 eval tasks. (D84, #116)
 - NumPy `.npz` trajectories are read and written built in (`positions`, `types`/`numbers`, `cell`,
   per-atom and per-frame arrays such as `forces` and `energies`; group "npz"). (D78, #100)
 - Windows online installer `ewald-X.Y.Z-win64-online-setup.exe`: a private Python into which setup
@@ -22,9 +27,27 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
   top=n, by=...)` keeps the n particles with the largest value, so "the paths of the 5 Li with the
   largest MSD" is three steps; Ask AI gets the recipe and a new eval task (`li-top-msd-paths`).
   Expression names drop characters a name cannot hold (`SqDispAverage`). (#105)
+- `MeanSquaredDisplacement` and `IonicConductivity` take `fit_time=(t0, t1)`, so runs of different
+  length fit the same lag times; the MSD writes the fitted window as `.fit_start`/`.fit_end`. (D84, #110)
+- Ask AI's `search_api` tool finds the step, function or recipe for a job and returns its whole
+  docstring; the system prompt asks for steps before hand-written code and for how much a number
+  moves with each analysis choice. Plugins offer functions to cells and to the AI with
+  `@api_function`. (D84, #111, #112)
+- Ask AI's questions carry the steps and functions of ewald that match their words (signature and
+  first sentence, paths and file names left out), so the model starts from them rather than from
+  its own code; Preferences › Notebook › Show the AI related steps (`llm.related_steps`). (D84, #114)
+- With permission to run cells, Ask AI works as a coding agent: it is offered only the cell tools,
+  `search_api`, `python_api`, `render_image`, `get_view`, `describe_trajectory`,
+  `describe_selection`, `check_run` and plugin tools, and computes everything in cells it writes
+  and runs; without that permission it keeps every tool. (D85, #115)
+- `sensitivity(pipe, step, parameter, values, attributes)` tries each value of a step's parameter
+  (a fit window, a cutoff) and returns the step's results per value with their relative spread;
+  Ask AI is told to use it when it reports how a number depends on a choice. (D84, #113)
 
 ### Changed
 
+- `FindRings` leaves out chains that close only through the periodic boundary (counted in
+  `FindRings.periodic_rings`; `periodic_rings=True` keeps them, as OVITO does). (D84, #110)
 - Step cells are edited in Python only: the *Form* button and its generated parameter form are
   gone; a new step and View › Edit step open the cell's code. (D83, #107)
 - The Windows standalone app is one build, `ewald-X.Y.Z-win64-setup.exe` / `-portable.zip`; the

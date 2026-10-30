@@ -672,6 +672,92 @@ def test_code_modifiers_need_allow_code(cu_fcc):
     assert "Differences from OVITO" in ref and "`CommonNeighborAnalysis(" in ref
 
 
+def test_a_toolset_that_runs_cells_works_as_a_coding_agent():
+    """With permission to run cells the model gets the cell, search and look tools and the coding
+    agent prompt; without it, the tools that write fixed cells and compute (D84)."""
+    from ewald.llm.agent import SYSTEM_PROMPT, system_prompt
+
+    coder, plain = Toolset(allow_code=True), Toolset()
+    assert coder.coding and not plain.coding
+    offered = {d["name"] for d in coder.definitions() if not coder.tools[d["name"]].plugin}   # plugin tools stay
+    assert offered <= tools_mod.CODING_TOOLS and {"run_cell", "search_api", "insert_cell"} <= offered
+    assert {"compute_rdf", "add_modifier", "set_view"} <= {d["name"] for d in plain.definitions()}
+    assert not coder.call("list_styles").is_error              # left out of the offer, still callable
+    assert "coding agent" in system_prompt(True) and "add_modifier" not in system_prompt(True)
+    assert SYSTEM_PROMPT == system_prompt(False) and "add_modifier" in SYSTEM_PROMPT
+    client = NS(beta=NS(messages=NS(create=None)))
+    assert Agent(coder, client=client).chat.system == system_prompt(True)
+    assert Agent(plain, client=client).chat.system == SYSTEM_PROMPT
+
+
+def test_search_api_finds_the_step_for_a_job():
+    import json
+
+    from ewald.llm.reference import reference_chunks, search_reference
+
+    first = lambda q: search_reference(q, 1)[0]["text"]
+    assert first("Li site occupancy, hops between sites and residence times").startswith("- `SiteHopping(")
+    assert first("ring statistics of an amorphous network").startswith("- `FindRings(")
+    assert first("isosurface of a charge density grid").startswith("- `CreateIsosurface(")
+    assert search_reference("zzzz qqqq") == []
+    # every reference line is in some piece, and a recipe keeps its title with its cells
+    chunks = reference_chunks()
+    assert any(t.startswith("MD trajectory: diffusion coefficient:") and "```python" in t for _, t in chunks)
+    out = Toolset().call("search_api", {"query": "residence time of hopping ions"}).content
+    assert out["results"][0]["text"].startswith("- `SiteHopping(")
+    # a result carries the whole docstring: options explained after its first paragraph too
+    assert "site_radius` > 0 it changes site only once" in out["results"][0]["text"]
+
+
+def test_questions_carry_the_steps_that_match_their_words():
+    from ewald.llm.evals import _gui_question
+    from ewald.llm.notebook_prompt import related_part
+
+    part = related_part("Li6PS5Cl AIMD /data/run1/XDATCAR.gz: Li가 자리 사이를 몇 번 hopping 했는지")
+    assert part.startswith("Steps and functions of ewald") and "- `SiteHopping(" in part
+    assert "(from ewald import bond_angles)" in related_part("bond angle distribution")
+    assert part.count("\n- `") <= 4 and "Site occupancy, hops between sites" in part
+    assert related_part("안녕하세요") == "" and related_part("Again") == ""   # no matching words, or only common ones
+    q = _gui_question(Toolset(), "ring size distribution", "ring size distribution")
+    assert "- `FindRings(" in q and q.endswith("ring size distribution")
+    plain = _gui_question(Toolset(), "ring size distribution")
+    assert plain.endswith("ring size distribution") and "FindRings" not in plain
+
+
+def test_plugin_functions_are_in_the_reference_and_found(monkeypatch):
+    from ewald import plugins
+
+    def fes_from_hills(hills, bins=None, *, kt: float = 2.5):
+        """Free energy surface from metadynamics hills, like plumed sum_hills.
+
+        Well-tempered runs are rescaled by (bias factor) / (bias factor - 1)."""
+
+    fes_from_hills.__module__ = "ewald_plumed"
+    monkeypatch.setattr(plugins, "functions",
+                        lambda: {"fes_from_hills": plugins.FunctionPlugin("fes_from_hills", fes_from_hills,
+                                                                          "ewald_plumed", "ewald-plumed")})
+    ref = Toolset().call("python_api").content
+    assert "`from ewald_plumed import fes_from_hills`" in ref
+    assert "- `fes_from_hills(hills, bins=None, *, kt: float = 2.5)`: Free energy surface" in ref
+    hit = Toolset().call("search_api", {"query": "free energy surface from metadynamics hills"}).content
+    found = [r["text"] for r in hit["results"] if r["text"].startswith("- `fes_from_hills(")]
+    assert found and "Well-tempered" in found[0]
+
+
+def test_api_function_decorator_registers(monkeypatch):
+    from ewald import plugins
+
+    monkeypatch.setattr(plugins._registry, "functions", {})
+    monkeypatch.setattr(plugins, "load_plugins", lambda *a, **k: None)
+
+    @plugins.api_function
+    def my_helper(x):
+        """Double x."""
+        return 2 * x
+
+    assert plugins.functions()["my_helper"].function is my_helper and my_helper(2) == 4
+
+
 def test_python_api_cells_run_as_documented(tmp_path, monkeypatch):
     """The notebook section of the API reference the AI reads: its cell kinds run on the default
     imports and the GUI recognizes them (step and view cells)."""
@@ -807,6 +893,11 @@ def test_notebook_tools_read_insert_edit_move_delete(tmp_path):
 
     ts.call("move_cell", {"index": 3, "to": 1})
     assert nb.cells[1].source == "print('hi')"
+    before = [c.source for c in nb.cells]
+    ts.call("move_cell", {"index": 1, "count": 2, "to": 99})            # a block, like a dragged selection
+    assert [c.source for c in nb.cells] == before[:1] + before[3:] + before[1:3]
+    ts.call("move_cell", {"index": len(nb.cells) - 2, "count": 2, "to": 1})
+    assert [c.source for c in nb.cells] == before
     ts.call("delete_cell", {"index": 1})
     assert len(nb.cells) == 3 and ts.call("read_cell", {"index": 9}).is_error
     ts.call("insert_cell", {"source": "# Notes", "kind": "markdown"})
@@ -922,7 +1013,7 @@ def test_failed_cells_lists_errors():
 READ_ONLY_TOOLS = {"describe_frame", "describe_selection", "describe_trajectory", "event_details", "list_modifiers",
                    "show_pipeline", "set_frame", "evaluate_expression", "compute_rdf", "analyze_symmetry",
                    "compute_diffraction", "compute_msd", "check_run", "render_image", "get_view", "list_visuals",
-                   "list_overlays", "list_styles", "get_script", "python_api", "list_cells", "read_cell"}
+                   "list_overlays", "list_styles", "get_script", "python_api", "search_api", "list_cells", "read_cell"}
 WORKFLOW_TOOLS = {"list_workflows", "describe_workflow"}   # read-only; offered with a workflow source (test_workflow.py)
 CELL_WRITING_TOOLS = set(tools_mod.CELL_WRITERS)
 CELL_EDITING_TOOLS = {"insert_cell", "edit_cell", "move_cell", "delete_cell", "run_cell"}
@@ -961,7 +1052,7 @@ def test_read_only_tools_change_nothing(cu_file, fake_render):
     calls = {"describe_selection": {"indices": [0], "image": False}, "event_details": {"frame": 1},
              "evaluate_expression": {"expression": "Coordination > 0"}, "compute_rdf": {"cutoff": 4.0},
              "set_frame": {"frame": 2}, "render_image": {"theme": "VESTA", "direction": "x"},
-             "read_cell": {"index": 0}}
+             "read_cell": {"index": 0}, "search_api": {"query": "coordination"}}
     for name in sorted(READ_ONLY_TOOLS):
         r = ts.call(name, calls.get(name, {}))
         assert not r.is_error, (name, r.content)

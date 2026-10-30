@@ -42,7 +42,7 @@ from types import SimpleNamespace
 from typing import Callable
 
 from ..notebook import Cell, Notebook
-from .notebook_prompt import code_blocks, errors_part, notebook_part, notebook_system
+from .notebook_prompt import code_blocks, errors_part, notebook_part, notebook_system, related_part
 from .tools import Toolset
 
 #: Where the example plugins of a source checkout are (``Task.plugins``).
@@ -799,12 +799,14 @@ _FATAL = ("AuthenticationError", "PermissionDeniedError", "NotFoundError", "Impo
 
 def run_task(task: Task, *, agent_options: dict | None = None, client=None, allow_code: bool = False,
              dry_run: bool = False, max_turns: int = 30, prices: dict | None = None,
-             fetch: bool = True, on_event: Callable | None = None, context: str = "gui") -> TaskResult:
+             fetch: bool = True, on_event: Callable | None = None, context: str = "gui",
+             related: bool = True) -> TaskResult:
     """Run one task with the model in ``agent_options`` (``provider``, ``model``, ``effort``,
     ``base_url``: what :func:`ewald.llm.providers.from_settings` returns) or ``client``, or the
     task's reference solution with ``dry_run``; grade it. ``context`` is 'gui' (as the AI chat
-    side bar asks) or 'plain' (the bare agent); see the module docstring."""
-    from .agent import SYSTEM_PROMPT, Agent
+    side bar asks) or 'plain' (the bare agent); see the module docstring. ``related`` adds the
+    matching steps to each 'gui' question, as Preferences › AI › Show the AI related steps does."""
+    from .agent import Agent, system_prompt
 
     if context not in ("gui", "plain"):
         raise ValueError(f"context is 'gui' or 'plain', not {context!r}")
@@ -876,16 +878,17 @@ def run_task(task: Task, *, agent_options: dict | None = None, client=None, allo
             if on_event:
                 on_event(kind, payload)
 
-        question, system = task.prompt + ANSWER_HINT, SYSTEM_PROMPT
+        question, system = task.prompt + ANSWER_HINT, system_prompt(ts.coding)
         if context == "gui":
-            question, system = _gui_question(ts, question), notebook_system(SYSTEM_PROMPT, run_cells=ts.allow_code)
+            question, system = (_gui_question(ts, question, task.prompt if related else ""),
+                                notebook_system(system_prompt(ts.coding), run_cells=ts.allow_code))
         agent = Agent(ts, client=meter, max_turns=max_turns, on_event=event, system=system,
                       fallbacks=not dry_run and options.get("fallbacks", True),
                       **{k: v for k, v in options.items() if k in ("provider", "model", "effort")})
         turns = []
         for turn, prompt in enumerate([task.prompt] + list(task.followups)):
             if turn:                          # a follow-up question in the same conversation
-                question = _gui_question(ts, prompt) if context == "gui" else prompt
+                question = _gui_question(ts, prompt, prompt if related else "") if context == "gui" else prompt
             seen = len(result.tools)
             answer = agent.ask(question)
             if context == "gui" and not any(t in ("insert_cell", "edit_cell") for t in result.tools[seen:]):
@@ -966,9 +969,10 @@ def place_answer_code(ts: Toolset, code: str):
     return ts.call("edit_cell", {"index": k, "source": code, "run": ts.allow_code})
 
 
-def _gui_question(ts: Toolset, question: str) -> str:
-    """``question`` as the AI chat side bar sends the first one: after the notebook's code and the
-    errors of its failed cells (the 3D view's coloring, which the GUI also sends, is left out)."""
+def _gui_question(ts: Toolset, question: str, related: str = "") -> str:
+    """``question`` as the AI chat side bar sends the first one: after the notebook's code, the
+    errors of its failed cells and the steps matching ``related`` (the user's words) when given
+    (the 3D view's coloring, which the GUI also sends, is left out)."""
     from .notebook_tools import failed_cells, notebook_context
 
     nb = ts.notebook
@@ -978,7 +982,8 @@ def _gui_question(ts: Toolset, question: str) -> str:
         errors = failed_cells(nb)
         if errors:
             parts.append(errors_part(errors))
-    return "\n\n".join(parts + [question])
+    hint = related_part(related) if related else ""
+    return "\n\n".join(parts + ([hint] if hint else []) + [question])
 
 
 def _load_plugins(names) -> list:
@@ -1016,7 +1021,7 @@ def _grade(check: Check, outcome: Outcome) -> tuple[bool, str]:
 def run(tasks: list[Task] | None = None, *, agent_options: dict | None = None, client=None,
         allow_code: bool = False, dry_run: bool = False, repeat: int = 1, max_turns: int = 30,
         prices: dict | None = None, fetch: bool = True, progress: Callable | None = None,
-        context: str = "gui") -> dict:
+        context: str = "gui", related: bool = True) -> dict:
     """Run ``tasks`` (default: every built-in one) ``repeat`` times; returns the report
     (:func:`summarize` plus every :class:`TaskResult`), ready for :func:`save`."""
     import ewald
@@ -1031,7 +1036,7 @@ def run(tasks: list[Task] | None = None, *, agent_options: dict | None = None, c
     for r in range(repeat):
         for task in tasks:
             res = run_task(task, agent_options=options, client=client, allow_code=allow_code, dry_run=dry_run,
-                           max_turns=max_turns, prices=prices, fetch=fetch, context=context)
+                           max_turns=max_turns, prices=prices, fetch=fetch, context=context, related=related)
             res_dict = asdict(res)
             res_dict["repeat"] = r
             results.append(res_dict)
