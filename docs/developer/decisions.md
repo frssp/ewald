@@ -76,6 +76,8 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** splitting it by topic (`python_api(topic=...)`), cheaper per call but the
   model may skip the part it needs; keeping the old size (about 36 KB) with only a reordering.
 - **Landed:** PR #242.
+- **Changed by D85 (2026-10-29):** when the AI may run cells it searches the reference
+  (`search_api`) instead of reading it first; `python_api` still returns all of it.
 
 ### D5. Any AI provider, named "Ask AI" (2026-10-20)
 
@@ -1111,6 +1113,21 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   docstrings in `search_api`, plugin functions in the reference); public PR #113 (`sensitivity()`);
   public PR #114 (the matching steps carried in each question); public PR #116
   (OVITO's `data.particles.count`/`.positions`); the rest follows.
+
+### D85. Ask AI is a coding agent when it may run cells (2026-10-29)
+
+- **Decision:** with permission to run cells, Ask AI works as a coding agent: it computes and
+  changes results by writing and running cells, looks up the API with `search_api`, and is
+  offered only the cell tools, `search_api`, `python_api`, `render_image`, `get_view`,
+  `describe_trajectory`, `describe_selection`, `check_run` and plugin tools. Without that
+  permission it keeps every tool, since it cannot run code of its own.
+- **Why:** the owner: "근데 이거는 코딩 에이전트라고 봐야하지 않아? 툴이라니 좀 어색하네". Asked
+  whether to change D31, the owner chose to compare the two ways in an A/B run first, then picked
+  the switch from the numbers (Sonnet 5.5: 15/15 against 13/15 research analyses, about the same
+  cost; full eval suite 65/69 against 66/69 at 16% less cost).
+- **Considered:** fewer tools but the whole reference read first (D31 kept); keeping every tool
+  and only adding the matching steps to each question.
+- **Landed:** public PR #115.
 
 ## Adding an entry
 

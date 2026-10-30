@@ -79,10 +79,11 @@ def agent_from_settings(get_settings: Callable[[], object], notebook: bool = Fal
 
     def system() -> str:
         """The system prompt for the settings now (asked again before every question)."""
-        from ..llm.agent import SYSTEM_PROMPT
+        from ..llm.agent import system_prompt
 
         settings = get_settings()
-        return notebook_system(SYSTEM_PROMPT, run_cells=run_cells(settings), code_cells=code_cells_mode(settings))
+        run = run_cells(settings)
+        return notebook_system(system_prompt(coding=run), run_cells=run, code_cells=code_cells_mode(settings))
 
     def assistant() -> str:
         from ..llm import providers

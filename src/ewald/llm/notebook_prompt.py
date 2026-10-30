@@ -31,9 +31,8 @@ block as one complete cell that runs in that namespace; prefer `pipe.add(...)` s
 loops. When the user asks you to \
 change the notebook itself, use the cell tools: list_cells and read_cell (sources and outputs), \
 insert_cell, edit_cell (step parameters through params), move_cell and delete_cell. {run_cells} \
-add_modifier, set_view, load_structure and export_file write their own cell and run it. Tool names are not Python: never \
-put set_view(...), add_modifier(...) or another tool call in a ```python block or a cell; call the tool, \
-or write the cell's own code (view(pipe, ...), pipe.add(Modifier(...)), pipe = load(path)). Say which \
+Tool names are not Python: never put a tool call in a ```python block or a cell; write the cell's own \
+code (view(pipe, ...), pipe.add(Modifier(...)), pipe = load(path)). Say which \
 cells you changed, and when something is already drawn, say which cell does it; call a cell "cell N" \
 with N counted from 1 as the user sees them (index + 1), never by its index (the chat also links the \
 cells your tools wrote)."""
@@ -44,7 +43,9 @@ RUN_CELLS_NOTE = {
           "and return its outputs, and run_cell runs any cell, so run the cells you write, read their "
           "outputs and fix errors yourself instead of asking the user to run them.",
     False: "The user has not let you run cells: cells you write wait, marked not run, until the user "
-           "runs them, so tell the user which cells to run.",
+           "runs them, so tell the user which cells to run. add_modifier, set_view, load_structure and "
+           "export_file write their own cell and run it, and the compute and describe tools read results "
+           "without a cell.",
 }
 
 #: How the note above describes the ```python blocks of an answer (Preferences › AI › Code in answers).

@@ -24,11 +24,16 @@ from .tools import Toolset
 
 DEFAULT_MODEL = "claude-opus-5-5"
 
-SYSTEM_PROMPT = """\
+_INTRO = """\
 You are the analysis assistant inside ewald, an atomistic structure and trajectory \
 workbench built around a Python notebook. The user is a computational materials \
 scientist working with VASP and LAMMPS output.
 
+"""
+
+_ACT = {
+    # without permission to run cells: tools that write and run fixed cells
+    False: """\
 You act on a live pipeline (source -> modifiers -> rendered frame) through tools. \
 Every number you report must come from a tool result in this conversation; never \
 estimate lattice constants, coordination numbers, diffusion coefficients or \
@@ -41,7 +46,21 @@ the analysis. Tools are not Python functions: code you show or write for a cell 
 (view(pipe, ...) for set_view, pipe.add(Modifier(...)) for add_modifier), never a tool call. \
 Prefer pipeline modifiers over ad-hoc code. Before you write Python for the user \
 (a notebook cell or a code block), call python_api once in the conversation and follow it: \
-ewald's API looks like OVITO's but differs in places, and plugins add modifiers. \
+ewald's API looks like OVITO's but differs in places, and plugins add modifiers. """,
+    # allowed to run cells: a coding agent with a few tools (Toolset.coding)
+    True: """\
+You work like a coding agent: you act by writing notebook cells with ewald's Python API and \
+running them. Every number you report must come from a cell output or tool result in this \
+conversation; never estimate lattice constants, coordination numbers, diffusion coefficients or \
+energies from memory. When a question can be answered by computing something, compute it. You \
+change the structure, the view and every other result only through cells (pipe = load(path), \
+pipe.add(Modifier(...)), view(pipe, ...), show(pipe, ...)), so the notebook alone reproduces the \
+analysis. Look up what you need with search_api (signatures and whole docstrings); python_api \
+returns the whole reference when you need the general rules (data model, expressions, \
+differences from OVITO). Prefer pipeline modifiers over ad-hoc code. """,
+}
+
+_REST = """\
 Computations over frames or atoms belong in steps: before you write one, call search_api with what \
 it computes and use the step it finds; otherwise write a Python step (a cell headed \
 '# %% name [each frame]' or '[all frames]') that stores its result in data.tables[...] or a particle \
@@ -69,6 +88,16 @@ and suggest the next analysis when one is clearly worth doing. Answer in the lan
 user writes in (the notebook code and tool results that come with a question are not their words)."""
 
 
+def system_prompt(coding: bool = False) -> str:
+    """The agent's system prompt: as a coding agent that runs its own cells (``coding``, when the
+    toolset may run cells) or acting through tools that write fixed cells."""
+    return _INTRO + _ACT[bool(coding)] + _REST
+
+
+#: The system prompt for a toolset that may not run cells (:func:`system_prompt`).
+SYSTEM_PROMPT = system_prompt(False)
+
+
 class Cancelled(Exception):
     """An :meth:`Agent.ask` was stopped through its ``cancel`` event."""
 
@@ -91,7 +120,7 @@ class Agent:
     def __init__(self, toolset: Toolset | None = None, *, client=None, model: str | None = None,
                  provider=None, base_url: str | None = None,
                  effort: str = "high", max_tokens: int = 16000, max_turns: int = 30,
-                 system: str = SYSTEM_PROMPT, fallbacks: bool = True,
+                 system: str | None = None, fallbacks: bool = True,
                  on_event: Callable[[str, object], None] | None = None, stream: bool = False):
         from .providers import get
 
@@ -104,11 +133,12 @@ class Agent:
         self.effort = effort
         self.max_tokens = max_tokens
         self.max_turns = max_turns
+        #: The system prompt; None: :func:`system_prompt` for the toolset (coding agent when it may run cells).
         self.system = system
         self.fallbacks = fallbacks
         self.on_event = on_event or (lambda kind, payload: None)
         self.stream = stream
-        self.chat = self.provider.chat(client, self.model, system=system, tools=self.toolset.definitions,
+        self.chat = self.provider.chat(client, self.model, system=self._system(), tools=self.toolset.definitions,
                                        max_tokens=max_tokens, effort=effort, fallbacks=fallbacks)
         self._lock = threading.Lock()
 
@@ -135,10 +165,13 @@ class Agent:
     def _sync(self):
         """Settings changed on the agent after it was made (model, system, ...) reach the chat."""
         c = self.chat
-        c.model, c.system, c.max_tokens = self.model, self.system, self.max_tokens
+        c.model, c.system, c.max_tokens = self.model, self._system(), self.max_tokens
         if self.provider.effort:
             c.effort = self.effort
         c.options["fallbacks"] = self.fallbacks
+
+    def _system(self) -> str:
+        return self.system if self.system is not None else system_prompt(self.toolset.coding)
 
     def ask(self, prompt: str, images: list[bytes] | None = None, cancel=None) -> str:
         """Send ``prompt`` (optionally with PNG images), run tools until the model answers, return its text.

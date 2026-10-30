@@ -110,6 +110,13 @@ CELL_WRITERS = frozenset({"load_structure", "open_workflow", "add_modifier", "re
                           "add_visual", "remove_visual", "add_overlay", "remove_overlay", "export_file",
                           "add_analysis"})
 
+#: The tools offered when the toolset may run cells (:attr:`Toolset.coding`): the model works as a
+#: coding agent, computing and changing results by writing and running cells, so the tools that
+#: compute or write fixed cells are left out (still callable, e.g. by plugin tools). Plugin tools stay.
+CODING_TOOLS = frozenset({"list_cells", "read_cell", "insert_cell", "edit_cell", "run_cell", "delete_cell",
+                          "move_cell", "search_api", "python_api", "render_image", "get_view",
+                          "describe_trajectory", "describe_selection", "check_run"})
+
 #: Modifiers that run code or take Python objects: only PythonScript, and only with allow_code.
 _CODE_MODIFIERS = {"PythonScript"}
 _OBJECT_MODIFIERS = {"OvitoModifier"}
@@ -200,9 +207,18 @@ class Toolset:
         return nb.pipeline_name if nb is not None else "pipe"
 
     # ------------------------------------------------------------- public API
+    @property
+    def coding(self) -> bool:
+        """Whether the model may run cells (``run_cell`` offered): then it works as a coding agent
+        and only :data:`CODING_TOOLS` and plugin tools are offered."""
+        tool = self.tools.get("run_cell")
+        return tool is not None and tool.offered()
+
     def definitions(self) -> list[dict]:
-        """Tool definitions in Anthropic Messages API format."""
-        return [t.definition() for t in self.tools.values() if t.offered()]
+        """Tool definitions in Anthropic Messages API format (fewer as a coding agent: :attr:`coding`)."""
+        coding = self.coding
+        return [t.definition() for name, t in self.tools.items()
+                if t.offered() and (not coding or t.plugin or name in CODING_TOOLS)]
 
     def attach_notebook(self, notebook):
         """Add the notebook cell tools over ``notebook`` (see the class docstring); returns the access."""

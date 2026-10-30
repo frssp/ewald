@@ -806,7 +806,7 @@ def run_task(task: Task, *, agent_options: dict | None = None, client=None, allo
     task's reference solution with ``dry_run``; grade it. ``context`` is 'gui' (as the AI chat
     side bar asks) or 'plain' (the bare agent); see the module docstring. ``related`` adds the
     matching steps to each 'gui' question, as Preferences › AI › Show the AI related steps does."""
-    from .agent import SYSTEM_PROMPT, Agent
+    from .agent import Agent, system_prompt
 
     if context not in ("gui", "plain"):
         raise ValueError(f"context is 'gui' or 'plain', not {context!r}")
@@ -878,10 +878,10 @@ def run_task(task: Task, *, agent_options: dict | None = None, client=None, allo
             if on_event:
                 on_event(kind, payload)
 
-        question, system = task.prompt + ANSWER_HINT, SYSTEM_PROMPT
+        question, system = task.prompt + ANSWER_HINT, system_prompt(ts.coding)
         if context == "gui":
             question, system = (_gui_question(ts, question, task.prompt if related else ""),
-                                notebook_system(SYSTEM_PROMPT, run_cells=ts.allow_code))
+                                notebook_system(system_prompt(ts.coding), run_cells=ts.allow_code))
         agent = Agent(ts, client=meter, max_turns=max_turns, on_event=event, system=system,
                       fallbacks=not dry_run and options.get("fallbacks", True),
                       **{k: v for k, v in options.items() if k in ("provider", "model", "effort")})
