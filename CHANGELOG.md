@@ -14,7 +14,7 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
   and z with the fit window and how much it moves; sp/sp2/sp3 fractions over six carbon
   densities with the bond cutoff; an NEB barrier and the energy used), graded per subtask. Every
   result now has a `score` (share of checks passed) and `code_lines` (code the model wrote), and
-  the summary and `--compare` report both. (D84, #PR)
+  the summary and `--compare` report both. (D84, #119)
 - Code written the OVITO way or from the check_run tool's output reads the same numbers:
   `data.cell[...]` is OVITO's 3 x 4 cell matrix (read-only), `Table.attribute(name)`,
   `RunCheck.equilibrated_from_frame` and `finding["level"]`; new notebooks also import

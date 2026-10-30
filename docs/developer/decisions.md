@@ -1113,7 +1113,8 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   docstrings in `search_api`, plugin functions in the reference); public PR #113 (`sensitivity()`);
   public PR #114 (the matching steps carried in each question); public PR #116
   (OVITO's `data.particles.count`/`.positions`); public PR #118 (OVITO's cell matrix,
-  `Table.attribute`, the check_run tool's field names); the rest follows.
+  `Table.attribute`, the check_run tool's field names); public PR #119 (the `research` eval
+  category, graded per subtask with the code lines the model wrote); the rest follows.
 
 ### D85. Ask AI is a coding agent when it may run cells (2026-10-29)
 
