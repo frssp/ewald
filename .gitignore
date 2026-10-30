@@ -7,3 +7,6 @@ dist/
 *.so
 site/
 visual-diffs/
+
+# output of examples/notebooks/srtio3_octahedra.py when run from the repository root
+/srtio3.png
