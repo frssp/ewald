@@ -24,7 +24,7 @@ def fake_render(monkeypatch):
 def test_tasks_are_well_formed():
     ids = [t.id for t in TASKS]
     assert len(ids) == len(set(ids)) and 30 <= len(TASKS) <= 80
-    assert set(CATEGORIES) == {"answer", "step", "view", "export", "code", "notebook", "recipe", "plugin", "paper",
+    assert set(CATEGORIES) == {"answer", "step", "view", "export", "code", "notebook", "recipe", "plugin", "paper", "research",
                                "study"}
     for t in TASKS:
         assert t.checks and t.solution and t.answer, t.id
@@ -290,3 +290,26 @@ def test_follow_up_questions_continue_the_conversation():
     calls = calls[:1] + [(evals.ANSWER_TURN, {"text": "Done."}), ("insert_cell", calls[1][1])]
     r = _play("study-redo", calls=calls, answer="ANSWER: 0.237", allow_code=True)
     assert not r.passed and "fit cells added" in " ".join(c[0] for c in r.checks if not c[1])
+
+
+def test_research_tasks_are_graded_per_subtask_with_the_code_written():
+    import re
+
+    from ewald.llm.eval_tasks import _KOREAN
+    from ewald.notebook import IMPORTS, Cell, Notebook
+
+    nb = Notebook([Cell(IMPORTS + "\n# a comment\n\nx = 1\nprint(x)"), Cell("# Notes", kind="markdown")])
+    assert evals.code_lines(nb) == 2          # the import header, blanks and comments do not count
+
+    r = _play("sto-count", answer="ANSWER: 40, 20")
+    assert r.score == 0.5 and "FAIL 1/2" in evals.format_result(r)
+    a = evals.run(evals.select(TASKS, "sto-count,sto-white"), dry_run=True)
+    b = json.loads(json.dumps(a))
+    b["results"][0]["score"] = 0.5
+    b["summary"] = evals.summarize(b["results"])
+    assert b["summary"]["score"] == 0.75 and b["summary"]["by_category"]["answer"]["score"] == 0.5
+    assert "subtasks 75.0%" in evals.format_summary(b) and "subtasks" in evals.compare(a, b)
+    research = [t for t in TASKS if t.category == "research"]
+    assert research and all(t.allow_code and any(c.label() == "Matches answers in Korean" for c in t.checks)
+                            for t in research)
+    assert re.search(_KOREAN, research[0].answer) and not re.search(_KOREAN, "The barrier is 0.33 eV.\nANSWER: 0.33")

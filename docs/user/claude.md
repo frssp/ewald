@@ -284,8 +284,8 @@ ewald narrate dump.lammpstrj --type-map 1=Cu --no-llm        # event timeline, r
 
 ## Scoring a model (AI eval suite)
 
-`ewald eval` measures how well a model drives ewald: it asks 68 questions with known answers about
-the shipped example files (and two paper datasets), runs the normal AI loop on a fresh notebook for
+`ewald eval` measures how well a model drives ewald: it asks 74 questions with known answers about
+the shipped example files (and four paper datasets), runs the normal AI loop on a fresh notebook for
 each, and grades the result automatically. The tasks ask for values (lattice constants, counts,
 energies, a diffusion coefficient, graded from the reply's final `ANSWER:` line within a
 tolerance), for analysis steps (coordination coloring, octahedra, CNA, deleting atoms), for view
@@ -303,6 +303,13 @@ T900 whose INCAR says 600 K, a run whose SCF never converged, runs that store fr
 intervals. Two have a wrong premise (four runs at one temperature, a run where Li does not diffuse)
 and pass only when the model says so instead of giving a number, and one asks a follow-up question
 ("leave the 500 K run out and redo it") that should edit the fit cell, not add a second one.
+The `research` tasks are long requests in Korean, as a researcher writes them, each with several
+subtasks: Li diffusion coefficients along x, y and z with the fit window and how much it moves, sp,
+sp2 and sp3 fractions of six amorphous carbon densities with the bond cutoff used, an NEB barrier and
+reaction energy with the energy taken from the OUTCARs. Each result also has a score, the share of
+its checks that passed, so a long analysis that gets four of five subtasks right is told apart from
+one that gets none, and the number of code lines the model left in the notebook (without the
+import header and comments): the code a reader has to review.
 Every state check is graded twice: on the session, and again after
 the cells that ran are re-run from the top in a fresh namespace, so an answer only counts as
 reproducible when the notebook alone makes it.
@@ -334,9 +341,9 @@ accuracy overall and per category. `--out` saves everything, including each answ
 the model left, as JSON. Costs come from list prices for the current Claude models; for any other
 model give `--price IN,OUT` in USD per million tokens (optionally `,CACHE_READ,CACHE_WRITE`). A full
 run makes a few hundred requests; try `--category view` or a few `--tasks` first. The paper tasks
-download their data (0.8 MB and 29 MB; the LLZO one also needs MDAnalysis, `pip install
+download their data (0.8 to 33 MB each, about 90 MB in all; the LLZO one also needs MDAnalysis, `pip install
 "ewald[formats]"`) once; `--no-download` skips them. `--category study` runs the studies alone
-(about $4 with Opus, $0.20 with Haiku).
+(about $4 with Opus, $0.20 with Haiku), `--category research` the research requests.
 
 Run it before and after changing the system prompt, a tool description or a tool, and compare the
 two files. The runs with real models (Opus, Sonnet and Haiku 5.5: all 53 single-step tasks passed; the study tasks before and after public PR #73) and
