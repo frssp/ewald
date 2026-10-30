@@ -10,6 +10,10 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- `SiteHopping(sites="density")` finds the sites in the run itself, as the maxima of the ions'
+  time-averaged density (empty sites the ions visit included), and `min_stay` counts a hop only
+  when the ion stays at the new site that long; the occupancy table carries the site positions.
+  The AI hand-wrote both in 80-170 line notebooks. Eval task `research-li-sites`. (D84, #PR)
 - AI eval category `research`: long requests in Korean with several subtasks (Li D along x, y
   and z with the fit window and how much it moves; sp/sp2/sp3 fractions over six carbon
   densities with the bond cutoff; an NEB barrier and the energy used), graded per subtask. Every

@@ -282,6 +282,33 @@ def test_site_hopping_default_sites_radius_and_file(rng, tmp_path):
     assert a["SiteHopping.sites"] == 64 and a["SiteHopping.hops"] == 3
 
 
+def test_site_hopping_density_sites_and_min_stay(rng):
+    sites, occupied, true = _hopping_trajectory(rng)
+    pipe = _pipeline(true, ["Li"] * 8)
+    # sites from the time-averaged density: the 8 start sites and the 2 empty ones visited
+    pipe.modifiers.append(SiteHopping(sites="density"))
+    data = pipe.compute(0)
+    a = data.attributes
+    assert a["SiteHopping.sites"] == 10 and a["SiteHopping.hops"] == 3
+    occ = data.tables["site-occupancy"]
+    found = np.column_stack([occ["X"], occ["Y"], occ["Z"]])
+    d = found[:, None] - sites[None]
+    d -= BOX * np.round(d / BOX)
+    assert np.linalg.norm(d, axis=2).min(axis=1).max() < 0.25      # every site found is a lattice site
+    # a one-frame visit to the next site is no hop with min_stay; nor is one at the very end
+    true[3, 2, 2] += 1.6
+    true[-1, 3, 0] += 3.0
+    pipe = _pipeline(true, ["Li"] * 8)
+    pipe.modifiers.append(SiteHopping(sites=sites, time_per_frame=0.5))
+    assert pipe.compute(0).attributes["SiteHopping.hops"] == 6
+    pipe.modifiers[:] = [SiteHopping(sites=sites, time_per_frame=0.5, min_stay=1.0)]
+    a = pipe.compute(0).attributes
+    assert a["SiteHopping.hops"] == 3 and a["SiteHopping.mean_residence_time"] == pytest.approx(3.5)
+    from ewald.modifiers.transport import _drop_short_visits
+
+    assert list(_drop_short_visits(np.array([0, 0, 1, 0, 0, 2, 2, 2, 3]), 2)) == [0, 0, 0, 0, 0, 2, 2, 2, 2]
+
+
 def test_transport_modifiers_construct_with_defaults_and_cache(rng):
     T, n = 12, 20
     true = _walk(rng, T, n, 0.2)

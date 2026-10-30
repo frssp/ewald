@@ -284,7 +284,7 @@ ewald narrate dump.lammpstrj --type-map 1=Cu --no-llm        # event timeline, r
 
 ## Scoring a model (AI eval suite)
 
-`ewald eval` measures how well a model drives ewald: it asks 74 questions with known answers about
+`ewald eval` measures how well a model drives ewald: it asks 75 questions with known answers about
 the shipped example files (and four paper datasets), runs the normal AI loop on a fresh notebook for
 each, and grades the result automatically. The tasks ask for values (lattice constants, counts,
 energies, a diffusion coefficient, graded from the reply's final `ANSWER:` line within a
@@ -305,7 +305,8 @@ and pass only when the model says so instead of giving a number, and one asks a 
 ("leave the 500 K run out and redo it") that should edit the fit cell, not add a second one.
 The `research` tasks are long requests in Korean, as a researcher writes them, each with several
 subtasks: Li diffusion coefficients along x, y and z with the fit window and how much it moves, sp,
-sp2 and sp3 fractions of six amorphous carbon densities with the bond cutoff used, an NEB barrier and
+sp2 and sp3 fractions of six amorphous carbon densities with the bond cutoff used, Li site hops with
+how sites and hops were defined, an NEB barrier and
 reaction energy with the energy taken from the OUTCARs. Each result also has a score, the share of
 its checks that passed, so a long analysis that gets four of five subtasks right is told apart from
 one that gets none, and the number of code lines the model left in the notebook (without the
