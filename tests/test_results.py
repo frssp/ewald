@@ -200,3 +200,32 @@ def test_session_keeps_explicit_thermo(thermo_dir, md_dir, tmp_path):
     assert src.thermo.sources == [str(log)]
     save_session(tmp_path / "b.ewald", import_file(md_dir / "XDATCAR", thermo=None))
     assert load_session(tmp_path / "b.ewald").pipeline.source.thermo is None
+
+
+def test_load_table_reads_files_without_a_structure(thermo_dir, tmp_path, monkeypatch):
+    import matplotlib.pyplot as plt
+
+    from ewald import load, load_table, show
+
+    monkeypatch.setattr(plt, "show", lambda *a, **k: None)     # an X display would open a window
+
+    t = load_table(thermo_dir / "log.lammps")
+    assert t.name == "log.lammps" and t.columns[:2] == ["Step", "Temp"] and len(t.x) == 9
+    hills = tmp_path / "HILLS"
+    hills.write_bytes(b"#! FIELDS time phi psi height\r\n#! SET multivariate false\r\n"
+                      b"1.0 -1.4 2.8 1.2\r\n2.0 -2.5 2.79 1.2\r\n3.0 -2.4 2.7 1.1\r\n")   # CRLF, as from Windows
+    t = load_table(hills)
+    assert t.columns == ["time", "phi", "psi", "height"] and t["psi"][1] == pytest.approx(2.79)
+    runs = tmp_path / "runs.csv"
+    runs.write_text("T,D,D\n500,1e-6,2e-6\n600,3e-6,4e-6\n", encoding="utf-8", newline="\n")
+    t = load_table(runs)
+    assert t.columns == ["T", "D", "D 3"] and list(t["T"]) == [500, 600]
+    bare = tmp_path / "out.dat"
+    bare.write_text("# energies\n0 1.5\n1 1.25\nnot a row\n", encoding="utf-8", newline="\n")
+    assert load_table(bare).columns == ["column 1", "column 2"]
+    assert show(load_table(hills), y="phi").figure is not None
+    with pytest.raises(ValueError, match=r"load_table\("):
+        load(hills)
+    (tmp_path / "words.txt").write_text("no numbers here\n", encoding="utf-8", newline="\n")
+    with pytest.raises(ValueError, match="no rows of numbers"):
+        load_table(tmp_path / "words.txt")

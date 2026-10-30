@@ -49,8 +49,31 @@ def verb_cell(verb: str, data=None) -> str:
     return f"from ewald import {verb}\n{code}"
 
 
-__all__ = ["Table", "bond_angles", "clusters", "cna", "msd", "ptm", "rdf", "sensitivity", "sq", "vacf", "voronoi",
-           "xrd"]
+def load_table(path) -> Table:
+    """A file that holds no structure, as a :class:`Table` to plot with ``show(table, y=...)``
+    or use as ``table["column"]``: a LAMMPS log or VASP OSZICAR (the per-step thermo output;
+    a log with several runs is one table joined by ``Step``), or a plain text table (columns of
+    numbers, whitespace or comma separated, named by a header line or the last ``#`` comment
+    with one word per column, as in ``#! FIELDS time phi psi``: CV and energy logs, analysis
+    output, a table of runs). Relative paths are found as :func:`ewald.load` finds them."""
+    import os
+
+    from .io.text_table import read_text_table
+    from .io.thermo import read_thermo
+    from .notebook import resolve_data_path
+
+    path = resolve_data_path(path)
+    try:
+        columns = read_thermo(path)
+    except Exception:          # not a thermo log: a plain table (raises if it is not one either)
+        columns = None
+    if not columns:
+        columns = read_text_table(path)
+    return Table(os.path.basename(str(path)), columns)
+
+
+__all__ = ["Table", "bond_angles", "clusters", "cna", "load_table", "msd", "ptm", "rdf", "sensitivity", "sq", "vacf",
+           "voronoi", "xrd"]
 
 
 class Table(dict):

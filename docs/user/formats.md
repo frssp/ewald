@@ -182,6 +182,18 @@ pipe.source.thermo.table["Step"], pipe.source.thermo.table["Press"]   # the whol
 from ewald.io import read_lammps_log, read_oszicar     # the parsers alone, as {column: array}
 ```
 
+A file with no structure in it opens with `load_table` instead of `load`: a LAMMPS log or OSZICAR
+on its own, or a plain text table (columns of numbers separated by spaces or commas, named by a
+header line or by the last `#` comment with one word per column, such as PLUMED's
+`#! FIELDS time phi psi`). It returns a `Table`, which `show` plots like an analysis result.
+`load` on such a file stops with an error that names `load_table` and the columns it found.
+
+```python
+t = load_table("log.lammps")        # or "OSZICAR", "COLVAR", "runs.csv", "fes.dat"
+show(t, y="Temp")                   # the first column is x
+t["PotEng"].mean(), t.columns
+```
+
 OUTCAR and vasprun.xml are indexed by searching only for the lines that matter, so a large
 OUTCAR opens about three times faster than with ASE and holds one ionic step in memory at a
 time; over SSH the search runs as `grep` on the host. `format="vasp-out"` / `"vasp-xml"`

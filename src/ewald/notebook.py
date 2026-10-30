@@ -1083,7 +1083,7 @@ def _worth_checking(pipeline) -> bool:
 # The import cell of every notebook: new ones, a file opened from the menu and the AI's session
 # (python_api promises numpy as np, the analysis verbs and the run functions; without them the
 # AI's cells failed with a NameError).
-IMPORTS = ("import numpy as np\nfrom ewald import all_frames, each_frame, import_file, load\nfrom ewald.modifiers import *\n"
+IMPORTS = ("import numpy as np\nfrom ewald import all_frames, each_frame, import_file, load, load_table\nfrom ewald.modifiers import *\n"
            "from ewald.views import show, view, snapshot\nfrom ewald.paint import paint, hide, isolate, fade, resize\n"
            "from ewald import rdf, msd, vacf, sq, xrd, load_runs, check_run, run_info, arrhenius\n"
            "from ewald import sensitivity, export_file")
