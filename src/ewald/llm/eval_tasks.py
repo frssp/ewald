@@ -9,9 +9,9 @@ the way python_api's recipes do it), ``plugin`` (a plugin modifier or ``@ai_tool
 ``examples/plugins``), ``paper`` (published data, downloaded once) and ``study`` (a whole study
 from one sentence: a series of MD runs written by :mod:`ewald.llm.eval_data`, compared, fitted,
 plotted and written up, some with a trap a careful analyst catches or a premise that is wrong) and
-``research`` (a long request in Korean with several subtasks, as a researcher writes it, graded
-per subtask: values, the analysis choices reported, the figure, no failed cell, the language and
-how much code the model wrote).
+``research`` (a long request in Korean with several subtasks, as a researcher writes it, some
+about a file without a structure, graded per subtask: values, the analysis choices reported, the
+figure, no failed cell, the language and how much code the model wrote).
 
 Reference values are computed from the files with ewald itself when a task runs (the
 ``ref_*`` functions), so they follow the example files if those are regenerated; physical
@@ -444,6 +444,14 @@ print(f"{a['SiteHopping.sites']} sites, {a['SiteHopping.hops']} hops, "
       f"mean residence {a['SiteHopping.mean_residence_time']:.2f} ps")
 show(pipe, table="residence-times")"""
 
+_OSZICAR_CELL = """\
+info = run_info(pipe)                      # POTIM and NBLOCK from the INCAR
+t = load_table("T500/OSZICAR")
+start = check_run(pipe).equilibrated_from_frame * info.time_per_frame   # ps
+time = t["Step"] * info.timestep / 1000    # ps
+print(f"equilibrated from {start:.2f} ps; mean T after: {t['Temperature'][time >= start].mean():.1f} K")
+show(t, y="Temperature")"""
+
 #: Research requests: several subtasks in one Korean message, as a researcher writes them; graded
 #: per subtask (TaskResult.score) besides pass/fail, with the analysis choices reported.
 RESEARCH = [
@@ -472,6 +480,15 @@ RESEARCH = [
          solution=[("insert_cell", {"source": _LI_SITES_CELL})],
          answer="site는 Li의 time-averaged density 극대점에서 찾았습니다 (빈 site 포함 314개). site_radius 0.8 Å 안에 "
                 "들어오고 0.3 ps 이상 머물러야 hop으로 셌기 때문에 경계에서 왕복하는 진동은 빠집니다."),
+    Task("research-oszicar", "T500 폴더는 500 K로 돌린 VASP MD야. OSZICAR의 온도와 에너지를 보고 언제부터 평형인지 "
+         "판단해서 그래프로 보여줘. 평형이 시작되는 시간(ps)과 평형 구간의 평균 온도(K)를 알려줘.",
+         "series:li-series-hot/T500/XDATCAR",
+         [Number(1.2, tol=0.3, index=0, name="equilibrated from (ps)"),
+          Number(500.0, tol=10.0, index=1, name="mean T after (K)")] + _research_checks(max_lines=40),
+         category="research", allow_code=True,
+         solution=[("insert_cell", {"source": _OSZICAR_CELL})],
+         answer="처음 약 1.2 ps 동안은 온도가 2000 K 근처로 높고 에너지도 4 eV 높습니다. 그 뒤로는 500 K 근처에서 "
+                "안정합니다.\nANSWER: {0}, {1}"),
     Task("research-carbon-sp3", "같은 폴더의 density-*-T-3000.extxyz 파일들은 밀도(g/cm^3)별로 3000 K에서 quench한 "
          "비정질 탄소야. 각 밀도의 마지막 frame에서 sp, sp2, sp3 비율을 밀도에 따라 비교하는 그래프를 그려주고, "
          "3.0 g/cm^3에서 sp3 비율을 %로 알려줘. bond cutoff는 어떻게 정했는지도 말해줘.",

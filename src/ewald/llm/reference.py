@@ -143,12 +143,14 @@ curve); `ewald.display.options` sets size/renderer/quality, `options["enabled"] 
 ## Notebook cells (the GUI notebook, `ewald notebook`, `.ewd`)
 
 A notebook is a percent-format `.py` file (`# %%` cells, one namespace). New notebooks import
-`numpy as np`, `all_frames, each_frame, import_file, load` (from `ewald`), every modifier (`from ewald.modifiers import *`), `show, view, snapshot`
+`numpy as np`, `all_frames, each_frame, import_file, load, load_table` (from `ewald`), every modifier (`from ewald.modifiers import *`), `show, view, snapshot`
 (from `ewald.views`), `paint, hide, isolate, fade, resize` (from `ewald.paint`) and `rdf, msd, vacf, sq, xrd, load_runs,
 check_run, run_info, arrhenius, sensitivity, export_file` (from `ewald`); import anything else in the cell.
 `pipe` is the pipeline. Write each change as its own cell, in the kinds the GUI recognizes:
 
 - load cell: `pipe = load("XDATCAR")`.
+- a file without a structure (`log.lammps`, OSZICAR, a CV or energy log, a text table of runs): `t = load_table(path)`,
+  a Table to plot with `show(t, y="Temp")` or read as `t["Temp"]`; `load()` refuses it and names `load_table`.
 - step cell: exactly one `pipe.add(CoordinationAnalysis(cutoff=3.0))` with literal arguments (the GUI shows a form for
   it and edits the call); several steps are several cells. A Python step is a cell headed `# %% name [each frame]`
   (body sees `frame`, `data`) or `[all frames]` (`frames`, `data`), or a function under

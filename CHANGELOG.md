@@ -10,6 +10,11 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- `load_table(path)` opens files without a structure as a `Table` for `show(t, y=...)`: a LAMMPS
+  log or OSZICAR on its own, or a plain text table (whitespace or comma separated, named by a
+  header line or a `#` comment such as `#! FIELDS ...`). `load()` on such a file names
+  `load_table` and its columns instead of failing inside ASE. New notebooks import it. Eval task
+  `research-oszicar`. (D84, #PR)
 - `SiteHopping(sites="density")` finds the sites in the run itself, as the maxima of the ions'
   time-averaged density (empty sites the ions visit included), and `min_stay` counts a hop only
   when the ion stays at the new site that long; the occupancy table carries the site positions.

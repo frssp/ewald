@@ -33,14 +33,18 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   hysteresis, because the reference cut the paragraph that explains it) and plugin functions
   marked `@api_function`. The steps and functions that match a question's words go into the
   question itself (`llm.related_steps`). The `research` eval category (long Korean requests, graded per subtask, with the reported analysis
-  choices and the code lines the model wrote) has four tasks; more should come from the
+  choices and the code lines the model wrote) has five tasks; more should come from the
   owner's own requests. With permission to run cells Ask AI works as a coding agent (few tools,
   reference searched; A/B on 15 research tasks 15/15 vs 13/15, full suite 65/69 vs 66/69 at 16%
   less cost, D85), and the OVITO habits seen in its cell errors read the same numbers (#118).
   Next (review against related work, 2026-10-29): more steps could record the choices they make,
-  as the MSD records its fit window; analysis metadata (temperature, timestep, composition) as variables at the top of
-  the notebook; sources without a structure
-  (PLUMED HILLS, thermo logs, a table of runs). `StructureFactor` needs a memory bound (100k atoms
+  as the MSD records its fit window. Analysis metadata (temperature, time step) typed into several
+  cells, planned as variables at the top of the notebook, turned out rare in the coding-agent
+  notebooks (1 of 15 research runs), so nothing changed for it. Files without a structure open with
+  `load_table` (Sonnet used it in both `research-oszicar` runs, but then wrote its own
+  equilibration test and matplotlib figure, 25-34 lines, instead of `check_run` and `show(t, ...)`; a
+  time column in thermo tables may help); table readers from plugins (a `@table_reader` kind) are
+  still open. `StructureFactor` needs a memory bound (100k atoms
   took 325 s and 6.6 GB).
 
 ## Next
