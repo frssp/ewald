@@ -10,6 +10,10 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- Code written the OVITO way or from the check_run tool's output reads the same numbers:
+  `data.cell[...]` is OVITO's 3 x 4 cell matrix (read-only), `Table.attribute(name)`,
+  `RunCheck.equilibrated_from_frame` and `finding["level"]`; new notebooks also import
+  `export_file` and `snapshot`. The AI's cells failed on each of these in the eval suite. (D84, #117)
 - `show(pipe, table=..., frame=[...])` and `y=[...]` compare frames or columns in one plot:
   over each other (default), `layout="offset"` (waterfall) or `layout="stack"` (one panel each,
   shared x); in the GUI drawn under the cell for now. (D82, D86, #108)

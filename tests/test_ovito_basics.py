@@ -240,3 +240,14 @@ def test_particles_answer_ovito_count_and_positions():
     new.particles = {k: v[:2] for k, v in data.particles.items()}
     assert new.particles.count == 2 and isinstance(new.particles, dict) and data.count == 3
     assert DataCollection().particles.count == 0
+
+
+def test_cell_reads_like_ovitos_3x4_matrix():
+    """data.cell[...] is OVITO's cell matrix (columns a, b, c, origin), read-only."""
+    from ewald.data import Cell
+
+    cell = Cell(np.diag([2.0, 3.0, 4.0]) + np.triu(np.ones((3, 3)), 1), origin=[1.0, 2.0, 3.0])
+    assert cell[...].shape == (3, 4) and np.array_equal(cell[:, :3], cell.matrix.T)
+    assert np.array_equal(cell[:, 0], cell.matrix[0]) and np.array_equal(cell[:, 3], cell.origin)
+    with pytest.raises(ValueError):
+        cell[...][0, 0] = 5.0

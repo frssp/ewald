@@ -514,6 +514,12 @@ class Finding:
     title: str
     detail: str = ""
 
+    def __getitem__(self, key: str):
+        """``finding["level"]`` as well as ``finding.level`` (the check_run tool shows findings as dicts)."""
+        if key not in ("level", "title", "detail"):
+            raise KeyError(f"{key!r}: a finding has level, title and detail")
+        return getattr(self, key)
+
     def __str__(self):
         mark = {"ok": "ok  ", "info": "info", "warning": "WARN", "error": "FAIL"}.get(self.level, self.level)
         return f"[{mark}] {self.title}" + (f": {self.detail}" if self.detail else "")
@@ -528,6 +534,11 @@ class RunCheck:
     findings: list = field(default_factory=list)
     equilibrated: int | None = None
     num_frames: int = 0
+
+    @property
+    def equilibrated_from_frame(self) -> int | None:
+        """``equilibrated`` under the name :meth:`to_dict` (and the check_run tool) gives it."""
+        return self.equilibrated
 
     @property
     def ok(self) -> bool:

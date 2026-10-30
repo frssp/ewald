@@ -151,6 +151,12 @@ def test_check_run_on_a_healthy_vasp_md(tmp_path):
     assert "Energy drift small" in titles
     assert check.equilibrated is not None and check.to_dict()["ok"]
     assert "Run check" in check._repr_markdown_()
+    # read as the check_run tool shows it (a dict) too: the AI writes code from that view
+    assert check.equilibrated_from_frame == check.to_dict()["equilibrated_from_frame"] == check.equilibrated
+    first = check.findings[0]
+    assert first["level"] == first.level and first["title"] == first.title
+    with pytest.raises(KeyError, match="level, title and detail"):
+        first["message"]
 
 
 def test_check_run_flags_nelm_and_a_slow_start(tmp_path):

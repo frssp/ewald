@@ -75,6 +75,14 @@ class Table(dict):
         keys = self.labels if self.labels is not None else [k.item() for k in self.x]
         return {k: int(v) for k, v in zip(keys, self[col])}
 
+    def attribute(self, name: str):
+        """One of the step's global results in :attr:`attributes` (as ``Runs.attribute`` names them)."""
+        try:
+            return self.attributes[name]
+        except KeyError:
+            raise KeyError(f"{self.name!r} has no attribute {name!r}; it has: "
+                           f"{', '.join(self.attributes) or 'none'}") from None
+
     @property
     def x(self) -> np.ndarray:
         return next(iter(self.values()))

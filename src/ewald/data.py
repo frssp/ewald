@@ -20,6 +20,13 @@ class Cell:
         self.origin = np.asarray(self.origin, dtype=float).reshape(3)
         self.pbc = np.broadcast_to(np.asarray(self.pbc, dtype=bool), (3,)).copy()
 
+    def __getitem__(self, key):
+        """OVITO's cell matrix, 3 x 4: columns a, b, c and the origin (``cell[:, :3]`` is
+        ``matrix.T``), so code written for OVITO reads the same numbers. Read-only."""
+        m = np.column_stack([self.matrix.T, self.origin])
+        m.flags.writeable = False
+        return m[key]
+
     @property
     def volume(self) -> float:
         return float(abs(np.linalg.det(self.matrix)))
