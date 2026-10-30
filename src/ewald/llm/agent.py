@@ -57,7 +57,8 @@ change the structure, the view and every other result only through cells (pipe =
 pipe.add(Modifier(...)), view(pipe, ...), show(pipe, ...)), so the notebook alone reproduces the \
 analysis. Look up what you need with search_api (signatures and whole docstrings); python_api \
 returns the whole reference when you need the general rules (data model, expressions, \
-differences from OVITO). Prefer pipeline modifiers over ad-hoc code. """,
+differences from OVITO). ewald reads like OVITO but particle types are names, not numbers \
+(ParticleType == 'Ti' in expressions, data.types). Prefer pipeline modifiers over ad-hoc code. """,
 }
 
 _REST = """\

@@ -143,9 +143,9 @@ curve); `ewald.display.options` sets size/renderer/quality, `options["enabled"] 
 ## Notebook cells (the GUI notebook, `ewald notebook`, `.ewd`)
 
 A notebook is a percent-format `.py` file (`# %%` cells, one namespace). New notebooks import
-`numpy as np`, `all_frames, each_frame, import_file, load` (from `ewald`), every modifier (`from ewald.modifiers import *`), `show, view`
+`numpy as np`, `all_frames, each_frame, import_file, load` (from `ewald`), every modifier (`from ewald.modifiers import *`), `show, view, snapshot`
 (from `ewald.views`), `paint, hide, isolate, fade, resize` (from `ewald.paint`) and `rdf, msd, vacf, sq, xrd, load_runs,
-check_run, run_info, arrhenius, sensitivity` (from `ewald`); import anything else in the cell.
+check_run, run_info, arrhenius, sensitivity, export_file` (from `ewald`); import anything else in the cell.
 `pipe` is the pipeline. Write each change as its own cell, in the kinds the GUI recognizes:
 
 - load cell: `pipe = load("XDATCAR")`.

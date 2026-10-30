@@ -208,6 +208,9 @@ def test_sensitivity_shows_how_a_result_moves_with_a_choice(rng):
     spread = t.attributes["sensitivity.spread.MeanSquaredDisplacement.diffusion_coefficient"]
     assert spread == pytest.approx((d.max() - d.min()) / abs(before))
     assert pipe.modifiers[-1] is msd_step and msd_step.fit_time == (2.0, 8.0)   # put back as it was
+    assert t.attribute("sensitivity.parameter") == "fit_time"   # as Runs.attribute names them
+    with pytest.raises(KeyError, match="it has: sensitivity.parameter"):
+        t.attribute("diffusion")
     assert pipe.compute(0).attributes["MeanSquaredDisplacement.diffusion_coefficient"] == pytest.approx(before)
     numeric = sensitivity(pipe, msd_step, "stop", [30, 60])     # numbers stay numbers; every attribute
     assert list(numeric.x) == [30.0, 60.0] and "MeanSquaredDisplacement.fit_end" in numeric
