@@ -435,6 +435,15 @@ E = [pipe.compute(i).attributes["NEB.Relative Energy"] for i in range(pipe.num_f
 print(f"barrier = {max(E):.3f} eV, reaction energy = {E[-1]:.4f} eV (energy(sigma->0) of each image's OUTCAR)")
 show(pipe, table="NEB")"""
 
+_LI_SITES_CELL = """\
+pipe.add(ExpressionSelection("ParticleType == 'Li'"))
+# sites: maxima of the time-averaged Li density, so empty sites count; a hop needs a 0.3 ps stay
+pipe.add(SiteHopping(sites="density", only_selected=True, time_per_frame=0.1, site_radius=0.8, min_stay=0.3))
+a = pipe.compute(0).attributes
+print(f"{a['SiteHopping.sites']} sites, {a['SiteHopping.hops']} hops, "
+      f"mean residence {a['SiteHopping.mean_residence_time']:.2f} ps")
+show(pipe, table="residence-times")"""
+
 #: Research requests: several subtasks in one Korean message, as a researcher writes them; graded
 #: per subtask (TaskResult.score) besides pass/fail, with the analysis choices reported.
 RESEARCH = [
@@ -452,6 +461,17 @@ RESEARCH = [
          answer="x, y, z 방향 확산계수는 서로 30% 이내로 비슷해서 이 짧은 AIMD로는 방향 의존성이 있다고 보기 어렵습니다. "
                 "fit 구간은 2.1-8.6 ps (lag의 20-80%)이고, 구간을 10-70%에서 30-90%로 옮기면 D가 약 15% 달라집니다.\n"
                 "ANSWER: {0}, {1}, {2}"),
+    Task("research-li-sites", "Li6PS5Cl argyrodite AIMD 결과야 (frame 간격 0.1 ps). Li가 site 사이를 얼마나 자주 "
+         "hop하는지 알고 싶어. site는 몇 개로 잡혔고 hop은 몇 번인지, 평균 체류 시간은 몇 ps인지 알려주고 체류 시간 "
+         "분포를 그려줘. site와 hop을 어떻게 정의했는지도 설명해줘.", "paper:li6ps5cl-aimd/XDATCAR.gz",
+         [Step("SiteHopping"),
+          Matches(r"(?i)densit|밀도|48h|24g|vacan|빈 ?site|빈 ?자리", name="says where the sites come from"),
+          Matches(r"(?i)min_stay|site_radius|체류.{0,30}(이상|넘|최소)|rattl|왕복|flicker|되돌아", name="says what counts as a hop")]
+         + _research_checks(max_lines=40),
+         category="research", allow_code=True,
+         solution=[("insert_cell", {"source": _LI_SITES_CELL})],
+         answer="site는 Li의 time-averaged density 극대점에서 찾았습니다 (빈 site 포함 314개). site_radius 0.8 Å 안에 "
+                "들어오고 0.3 ps 이상 머물러야 hop으로 셌기 때문에 경계에서 왕복하는 진동은 빠집니다."),
     Task("research-carbon-sp3", "같은 폴더의 density-*-T-3000.extxyz 파일들은 밀도(g/cm^3)별로 3000 K에서 quench한 "
          "비정질 탄소야. 각 밀도의 마지막 frame에서 sp, sp2, sp3 비율을 밀도에 따라 비교하는 그래프를 그려주고, "
          "3.0 g/cm^3에서 sp3 비율을 %로 알려줘. bond cutoff는 어떻게 정했는지도 말해줘.",

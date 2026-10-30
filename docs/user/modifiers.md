@@ -420,12 +420,15 @@ default in every modifier, as in OVITO, D55).
   default q is 2π/d for the mean spacing d of the analyzed particles.
 - `NonGaussianParameter()`: α₂(t) = 3⟨Δr⁴⟩ / 5⟨Δr²⟩² − 1, zero for Fickian motion and
   peaked at the hopping time scale.
-- `SiteHopping(sites=None, site_type="", site_radius=0.0)`: assigns each mobile ion to a
-  site (its own position at `start`, an array of positions, or the atoms of a structure file
-  such as the ideal Li sublattice) and records hops (`tables["site-hops"]`), residence times,
-  site occupancy, per-ion `Site Index` and `Hop Count`, the hop rate and the jump diffusion
-  coefficient Σl²/6Nt. `site_radius` > 0 counts a hop only once the ion reaches the new site,
-  so rattling across a site boundary is not a hop.
+- `SiteHopping(sites=None, site_type="", site_radius=0.0, min_stay=0.0)`: assigns each mobile
+  ion to a site (its own position at `start`, an array of positions, the atoms of a structure
+  file such as the ideal Li sublattice, or `sites="density"`: the maxima of the ions'
+  time-averaged density in the run, empty sites included) and records hops
+  (`tables["site-hops"]`), residence times, site occupancy with the site positions, per-ion
+  `Site Index` and `Hop Count`, the hop rate and the jump diffusion coefficient Σl²/6Nt.
+  `site_radius` > 0 counts a hop only once the ion reaches the new site, so rattling across a
+  site boundary is not a hop; `min_stay` > 0 (in units of `time_per_frame`) counts it only when
+  the ion then stays there that long, so a quick visit and return is not a hop either.
 
 ```python
 pipe = import_file("XDATCAR")                     # e.g. Li6PS5Cl at 600 K, 2 fs steps
@@ -433,7 +436,7 @@ pipe.modifiers.append(IonicConductivity(temperature=600, time_per_frame=0.002,
                                         charges={"Li": 1, "P": 5, "S": -2, "Cl": -1}))
 pipe.modifiers.append(SelectType("Li"))
 pipe.modifiers.append(SelfIntermediateScattering(time_per_frame=0.002))
-pipe.modifiers.append(SiteHopping(site_radius=0.8, time_per_frame=0.002))
+pipe.modifiers.append(SiteHopping(sites="density", site_radius=0.8, min_stay=0.2, time_per_frame=0.002))
 data = pipe.compute(0)
 data.attributes["IonicConductivity.conductivity"]     # S/cm
 data.attributes["IonicConductivity.haven_ratio"]

@@ -313,6 +313,61 @@ class NonGaussianParameter(_TrajectoryModifier):
                        "NonGaussianParameter.peak_time": float(t[k]) if ok.any() else float("nan")}
 
 
+def _drop_short_visits(seq, frames: int):
+    """``seq`` (one ion's site per frame) with every stay shorter than ``frames`` after the first
+    one counted at the site before it."""
+    if frames <= 1 or len(seq) < 2:
+        return seq
+    out = seq.copy()
+    change = np.flatnonzero(np.diff(seq)) + 1
+    starts, ends = np.r_[0, change], np.r_[change, len(seq)]
+    current = seq[0]
+    for a, b in zip(starts[1:], ends[1:]):
+        if b - a >= frames:
+            current = seq[a]
+        out[a:b] = current
+    return out
+
+
+def density_sites(positions, cells, pbc, min_distance: float = 1.5, resolution: float = 0.2,
+                  smoothing: float = 0.3, threshold: float = 0.02) -> np.ndarray:
+    """Sites of mobile ions from their time-averaged density: ``positions`` ``(T, n, 3)`` in the
+    cells ``(T, 3, 3)``; the maxima of the density on a ``resolution`` grid (fractional
+    coordinates, so a changing cell is followed), smoothed by ``smoothing`` (A), at least
+    ``threshold`` times the highest and ``min_distance`` apart; Cartesian positions in the first
+    cell, highest first."""
+    from scipy import ndimage
+
+    x = np.asarray(positions, float)
+    cells = np.asarray(cells, float)
+    pbc = np.asarray(pbc, bool)
+    frac = np.einsum("tnj,tjk->tnk", x, np.linalg.inv(cells)).reshape(-1, 3)
+    frac[:, pbc] %= 1.0
+    lengths = np.linalg.norm(cells[0], axis=1)
+    lo = np.where(pbc, 0.0, frac.min(0) if len(frac) else 0.0)
+    hi = np.where(pbc, 1.0, frac.max(0) + 1e-9 if len(frac) else 1.0)
+    bins = np.maximum(4, np.ceil(lengths * (hi - lo) / resolution).astype(int))
+    hist, _ = np.histogramdd(frac, bins=bins, range=list(zip(lo, hi)))
+    sigma = smoothing / np.maximum(lengths * (hi - lo) / bins, 1e-9)
+    modes = ["wrap" if p else "constant" for p in pbc]
+    rho = hist
+    for axis in range(3):
+        rho = ndimage.gaussian_filter1d(rho, sigma[axis], axis=axis, mode=modes[axis])
+    peaks = (rho == ndimage.maximum_filter(rho, size=3, mode=modes)) & (rho >= threshold * rho.max()) & (rho > 0)
+    idx = np.argwhere(peaks)
+    order = np.argsort(-rho[peaks])
+    centers = lo + (idx[order] + 0.5) * (hi - lo) / bins
+    chosen = []
+    for f in centers:
+        if chosen:
+            d = np.asarray(chosen) - f
+            d[:, pbc] -= np.round(d[:, pbc])
+            if np.min(np.linalg.norm(d @ cells[0], axis=1)) < min_distance:
+                continue
+        chosen.append(f)
+    return np.asarray(chosen, float).reshape(-1, 3) @ cells[0]
+
+
 class SiteHopping(_TrajectoryModifier):
     """Site occupancy, hops between sites and residence times of mobile ions.
 
@@ -320,9 +375,15 @@ class SiteHopping(_TrajectoryModifier):
     selected). ``sites`` are the positions of those ions at ``start`` (None), an ``(M, 3)``
     array of Cartesian positions in the cell of frame ``start``, or a structure file whose atoms
     (of type ``site_type`` when given) are the sites, e.g. the ideal Li sublattice with its
-    vacancies. Sites keep their fractional coordinates when the cell changes. An ion belongs to
+    vacancies. ``sites="density"`` finds the sites in the run itself: the maxima of the ions'
+    time-averaged density over the analyzed frames (a 0.2 A grid smoothed by 0.3 A, maxima at least
+    2 % of the highest and ``min_site_distance`` apart), so empty sites the ions visit count too.
+    Sites keep their fractional coordinates when the cell changes. An ion belongs to
     its nearest site; with ``site_radius`` > 0 it changes site only once it comes closer than
-    ``site_radius`` to a new one, which ignores rattling across the boundary between sites.
+    ``site_radius`` to a new one, which ignores rattling across the boundary between sites. With
+    ``min_stay`` > 0 (units of ``time_per_frame``, frames without it) a visit to another site
+    counts only when the ion stays there that long (also at the end of the run); a shorter one
+    is counted at the site it came from, which drops back-and-forth flickers between close sites.
 
     Writes ``tables['site-hops']`` (one row per hop: ``Frame``, ``Time``, ``Particle
     Identifier``, ``From Site``, ``To Site``, ``Distance``), ``tables['residence-times']``
@@ -339,10 +400,12 @@ class SiteHopping(_TrajectoryModifier):
 
     def __init__(self, sites=None, site_type: str = "", site_radius: float = 0.0, time_per_frame: float = 0.0,
                  start: int = 0, stop: int | None = None, step: int = 1, only_selected: bool = False,
-                 bins: int = 50):
+                 bins: int = 50, min_stay: float = 0.0, min_site_distance: float = 1.5):
         self.sites = sites
         self.site_type = site_type
         self.site_radius = site_radius
+        self.min_stay = min_stay
+        self.min_site_distance = min_site_distance
         self.time_per_frame = time_per_frame
         self.start = start
         self.stop = stop
@@ -365,6 +428,9 @@ class SiteHopping(_TrajectoryModifier):
         cell0 = traj["cells"][0]
         if self.sites is None:
             return np.asarray(traj["Position"][0][ions], float)
+        if isinstance(self.sites, str) and self.sites.lower() == "density":
+            return density_sites(traj["Position"][:, ions], traj["cells"], traj["pbc"],
+                                 getattr(self, "min_site_distance", 1.5))
         if isinstance(self.sites, (str, bytes)) or hasattr(self.sites, "__fspath__"):
             from .. import import_file
 
@@ -405,6 +471,11 @@ class SiteHopping(_TrajectoryModifier):
                 near = np.where(dist < self.site_radius, near, assign[k - 1])
             assign[k] = near
         dt, _ = self._dt()
+        min_stay = getattr(self, "min_stay", 0.0) or 0.0
+        if min_stay > 0:
+            frames_needed = int(np.ceil(min_stay / dt - 1e-9))
+            assign = np.stack([_drop_short_visits(assign[:, i], frames_needed) for i in range(n)], axis=1) \
+                if n else assign
         frames = np.asarray(list(self._frames(ctx)))
         moved = assign[1:] != assign[:-1]                       # (T-1, n)
         step_k, ion_k = np.nonzero(moved)
@@ -438,4 +509,5 @@ class SiteHopping(_TrajectoryModifier):
                  "Index": np.asarray(traj["Index"])[ions]}
         return {"site-hops": hops, "attributes": attrs, "assign": assign, "hops": moved.sum(0),
                 "index": index, "residence-times": {"Time": 0.5 * (edges[1:] + edges[:-1]), "Count": counts},
-                "site-occupancy": {"Site": np.arange(M), "Occupancy": occupied / T}}
+                "site-occupancy": {"Site": np.arange(M), "Occupancy": occupied / T,
+                                   "X": sites[:, 0], "Y": sites[:, 1], "Z": sites[:, 2]}}
