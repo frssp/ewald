@@ -1166,6 +1166,19 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Considered:** name order as the default (the list before this change).
 - **Landed:** public PR #124.
 
+### D89. Cells drag from any free spot, no grip, and tight card margins (2026-11-02)
+
+- **Decision:** a press anywhere on a cell that is not code, a button or an output (the left
+  column, the card's margins, a step's title) selects the cell, and press-and-move drags it or
+  its selection; the dotted grip at the top right is gone. The card's margins around the code
+  are tight (3 px top and bottom, 4 px right at 100 %), and step cells drop the empty rows under
+  their code.
+- **Why:** after trying D87 on Windows the owner asked: "점 6개 남아있음", "코드 영역이 아닌
+  부분, 기능성 영역이 아닌 어디를 잡아도 드래그 되게 만들면?" and to check the margin between
+  the cell border and the code. Shown four margin sets at 200 %, the owner picked the tight one.
+- **Considered:** keeping 5/8/6 px, an even 8 px (recommended), a roomy 10/12/10 px.
+- **Landed:** public PR #NN.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

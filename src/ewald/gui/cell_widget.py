@@ -515,7 +515,7 @@ GUTTER_WIDTH = 26   # run button and counter
 class _Gutter(QtWidgets.QWidget):
     """A cell's left column (run button, counter and the space under them). Like JupyterLab's
     prompt area it reads as a handle: tinted with an open hand on hover. The press itself goes on
-    to the cell, which drags from any spot that is not code, a button or an output (D87, D88)."""
+    to the cell, which drags from any spot that is not code, a button or an output (D87, D89)."""
 
     def __init__(self, parent=None):
         super().__init__(parent, objectName="cellGutter")
@@ -883,7 +883,7 @@ class CellWidget(QtWidgets.QFrame):
         self.setFrameShape(QtWidgets.QFrame.StyledPanel)
         self.setFocusPolicy(QtCore.Qt.ClickFocus)   # Esc from the editor lands here (command keys)
         outer = QtWidgets.QHBoxLayout(self)
-        outer.setContentsMargins(2, 5, 8, 6)
+        outer.setContentsMargins(2, 3, 4, 3)   # tight, so the code nearly fills the card (D89)
         outer.setSpacing(4)
         self.gutter = _Gutter()
         self.gutter.setFixedWidth(GUTTER_WIDTH)
@@ -1540,7 +1540,7 @@ class CellWidget(QtWidgets.QFrame):
             self._repolish()
 
     # a press that no child takes (the gutter, the card's margins, titles and labels) selects the
-    # cell, and pressing and moving drags it, or the selection it is part of (D87, D88)
+    # cell, and pressing and moving drags it, or the selection it is part of (D87, D89)
     _drag_start = None
     _select_on_release = False
 

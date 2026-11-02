@@ -4436,7 +4436,7 @@ def test_notebook_drag_moves_the_selection_and_scrolls(app, monkeypatch):
     view.select(b, extend=True)
     assert view.selected_cells == [a, b] and view.drag_group(b) == [a, b] and view.drag_group(cells[0]) == [cells[0]]
 
-    started = []                                       # a press and move on the card's margin starts a drag (D88)
+    started = []                                       # a press and move on the card's margin starts a drag (D89)
     monkeypatch.setattr(QtGui.QDrag, "exec", lambda self, *args: started.append(self.mimeData()) or 0)
 
     def drag(widget, at):
@@ -4454,7 +4454,7 @@ def test_notebook_drag_moves_the_selection_and_scrolls(app, monkeypatch):
 
     card = view.widget_for(b)
     assert not hasattr(card, "drag_handle")            # no separate grip any more
-    drag(card, lambda c: QtCore.QPoint(c.width() // 2, c.height() - 3))
+    drag(card, lambda c: QtCore.QPoint(c.width() // 2, c.height() - 2))
     assert started and bytes(started[0].data(CELL_MIME)).decode() == b.id
     assert view.selected_cells == [a, b]               # the press did not collapse the selection
     started.clear()
