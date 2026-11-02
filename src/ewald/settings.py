@@ -241,9 +241,9 @@ OPTIONS = (
     Option("python.plugin_catalogs", "", "Plugin catalogs",
            "URLs or paths of plugin index files (JSON) listed in the Plugins panel, separated by ';', "
            "after the default index (EWALD_PLUGIN_INDEX overrides it; empty turns it off)."),
-    Option("python.installed_plugin_order", "name", "Installed plugins order",
-           "How the Plugins side bar lists installed plugins: by name, or the most recently installed "
-           "or updated first.", choices=("name", "recent")),
+    Option("python.installed_plugin_order", "recent", "Installed plugins order",
+           "How the Plugins side bar lists installed plugins: the most recently installed or updated "
+           "first, or by name.", choices=("recent", "name")),
     Option("python.startup_script", "", "Console startup script", "Run in the Python console when the GUI starts.",
            kind="file"),
     Option("python.extra_paths", "", "Extra module paths", "Folders added to sys.path, separated by ';'.", kind="dir"),

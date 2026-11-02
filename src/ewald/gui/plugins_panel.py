@@ -198,7 +198,7 @@ class PluginsPanel(QtWidgets.QWidget):
         self._updates = 0
         self._before = None                  # pc.loaded_versions() while pip runs
         self.restart_reasons: list[str] = []  # why ewald should restart, shown on the restart bar
-        self._order = "name"                 # the installed list's order when there are no settings
+        self._order = "recent"               # the installed list's order when there are no settings
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(6)
@@ -409,13 +409,13 @@ class PluginsPanel(QtWidgets.QWidget):
         self.list_layout.addWidget(QtWidgets.QLabel(title, objectName="section"))
 
     #: the orders of the installed list, as the ``python.installed_plugin_order`` setting stores them
-    ORDERS = {"name": "Name", "recent": "Recently installed"}
-    SHORT = {"name": "By name", "recent": "Recent first"}     # the button's own text, in a narrow side bar
+    ORDERS = {"recent": "Recently installed", "name": "Name"}
+    SHORT = {"recent": "Recent first", "name": "By name"}     # the button's own text, in a narrow side bar
 
     @property
     def installed_order(self) -> str:
         order = self.settings["python.installed_plugin_order"] if self.settings is not None else self._order
-        return order if order in self.ORDERS else "name"
+        return order if order in self.ORDERS else "recent"
 
     def set_installed_order(self, order: str):
         """List the installed plugins by name or most recently installed first (kept in settings)."""
