@@ -1177,7 +1177,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   부분, 기능성 영역이 아닌 어디를 잡아도 드래그 되게 만들면?" and to check the margin between
   the cell border and the code. Shown four margin sets at 200 %, the owner picked the tight one.
 - **Considered:** keeping 5/8/6 px, an even 8 px (recommended), a roomy 10/12/10 px.
-- **Landed:** public PR #NN.
+- **Landed:** public PR #125.
 
 ## Adding an entry
 
