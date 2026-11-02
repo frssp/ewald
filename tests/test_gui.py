@@ -4466,7 +4466,7 @@ def test_notebook_drag_moves_the_selection_and_scrolls(app, monkeypatch):
 
     started.clear()                                    # the left column is a handle too (D87)
     gutter = view.widget_for(a).gutter
-    assert gutter.cursor().shape() == QtCore.Qt.OpenHandCursor
+    assert gutter.cursor().shape() == QtCore.Qt.ArrowCursor and type(gutter) is QtWidgets.QWidget   # no hover mark (D90)
     drag(gutter, lambda g: QtCore.QPoint(g.width() // 2, g.height() - 4))   # under the counter
     assert started and bytes(started[0].data(CELL_MIME)).decode() == a.id
     assert view.selected_cells == [a, b]

@@ -405,7 +405,7 @@ The ⋯ menu of a cell has Run and Run this and below (Edit for text), Cell type
 views), Runs, Clear output, *Ask AI about this cell* (opens the AI chat with the cell quoted), then Insert cell
 above/below, Move up/down and Delete. Notebook › Clear cell output (Ctrl+Shift+Backspace) and Clear all outputs
 (Ctrl+Alt+Shift+Backspace) remove printed text, values, figures and run counts, as Jupyter's Clear outputs; the
-pipeline and its results stay, and the next save leaves the outputs out of the `.ipynb` or `.ewd`. Drag a cell by any spot that is not code, a button or an output (its left column with the run button and count, tinted on hover as JupyterLab's prompt area, its margins or a step's title) to move it;
+pipeline and its results stay, and the next save leaves the outputs out of the `.ipynb` or `.ewd`. Drag a cell by any spot that is not code, a button or an output (its left column with the run button and count, its margins or a step's title) to move it;
 a line shows where it lands, and holding the drag near the top or bottom edge scrolls the notebook. When the
 cell is part of a selection (Shift+click or Shift+Up/Down) the whole selection moves as one block, and one Undo
 puts it back. Steps move with their cells in the pipeline. The AI moves cells the same way, through its

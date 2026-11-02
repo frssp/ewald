@@ -1149,6 +1149,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Decision:** a cell's left column (run button, count and the space under them) is a drag
   handle: press and move drags the cell (or the selection), a click selects it, and the column
   shows a faint tint and an open-hand cursor on hover. The dotted grip at the top right stays.
+  (The hover tint and cursor were removed by D90, the grip by D89.)
 - **Why:** on Windows the owner found that cells did drag by the grip but asked whether a small
   grip at the top right was good UI and how Jupyter does it ("주피터 랩 방식 아니면 점 여섯개가
   왼쪽으로 오던지?"); shown both at 200 %, the owner picked the JupyterLab way.
@@ -1178,6 +1179,14 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   the cell border and the code. Shown four margin sets at 200 %, the owner picked the tight one.
 - **Considered:** keeping 5/8/6 px, an even 8 px (recommended), a roomy 10/12/10 px.
 - **Landed:** public PR #125.
+
+### D90. No hover mark on the cell's left column (2026-11-02)
+
+- **Decision:** the left column of a cell no longer shows a tint and an open-hand cursor on
+  hover; it drags like every other free spot of the card. This replaces that part of D87.
+- **Why:** "어디를 잡아도 드래그 되는데 셀 오른쪽 앞부분만 쉐이드가 생기니 이상하네, 그 부분도
+  그냥 반응 안 오게 할까?"
+- **Landed:** public PR #NN.
 
 ## Adding an entry
 
