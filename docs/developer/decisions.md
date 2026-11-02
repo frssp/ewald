@@ -1186,7 +1186,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   hover; it drags like every other free spot of the card. This replaces that part of D87.
 - **Why:** "어디를 잡아도 드래그 되는데 셀 오른쪽 앞부분만 쉐이드가 생기니 이상하네, 그 부분도
   그냥 반응 안 오게 할까?"
-- **Landed:** public PR #NN.
+- **Landed:** public PR #126.
 
 ## Adding an entry
 
