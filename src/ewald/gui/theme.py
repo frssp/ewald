@@ -390,8 +390,6 @@ QFrame#runBar {{ border-bottom: 1px solid {border}; }}
 QFrame#runBar QLabel {{ color: {secondary}; background: transparent; }}
 QToolButton#cellFold {{ padding: 0; border: none; }}
 QLabel#cellFolded {{ color: {secondary}; font-style: italic; padding: 3px 0; }}
-/* the left column is a drag handle too (D87): a faint tint says it can be grabbed */
-QWidget#cellGutter[hover="true"] {{ background: {hover}; border-radius: 6px; }}
 QFrame#cellDropLine {{ background: {accent}; border-radius: 1px; }}
 QFrame#cell[current="true"] QLabel#cellCounter {{ color: {accent}; }}
 QPlainTextEdit#cellEditor {{ background: {panel}; border: none; border-radius: 6px; padding: 4px 6px; }}

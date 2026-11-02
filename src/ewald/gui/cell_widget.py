@@ -512,31 +512,6 @@ CELL_MIME = "application/x-ewald-cell"
 GUTTER_WIDTH = 26   # run button and counter
 
 
-class _Gutter(QtWidgets.QWidget):
-    """A cell's left column (run button, counter and the space under them). Like JupyterLab's
-    prompt area it reads as a handle: tinted with an open hand on hover. The press itself goes on
-    to the cell, which drags from any spot that is not code, a button or an output (D87, D89)."""
-
-    def __init__(self, parent=None):
-        super().__init__(parent, objectName="cellGutter")
-        self.setAttribute(QtCore.Qt.WA_StyledBackground, True)   # the hover tint is a QSS background
-        self.setCursor(QtCore.Qt.OpenHandCursor)
-        self.setToolTip("Drag to move the cell")
-
-    def _set_hover(self, on: bool):
-        self.setProperty("hover", on)
-        self.style().unpolish(self)
-        self.style().polish(self)
-
-    def enterEvent(self, event):
-        self._set_hover(True)
-        super().enterEvent(event)
-
-    def leaveEvent(self, event):
-        self._set_hover(False)
-        super().leaveEvent(event)
-
-
 def drag_pixmap(pix: QtGui.QPixmap, count: int = 1, width: int = 360, height: int = 160) -> QtGui.QPixmap:
     """What a dragged cell shows under the pointer: its top, at most ``width`` x ``height`` px,
     with a badge when ``count`` selected cells move together."""
@@ -885,7 +860,7 @@ class CellWidget(QtWidgets.QFrame):
         outer = QtWidgets.QHBoxLayout(self)
         outer.setContentsMargins(2, 3, 4, 3)   # tight, so the code nearly fills the card (D89)
         outer.setSpacing(4)
-        self.gutter = _Gutter()
+        self.gutter = QtWidgets.QWidget(objectName="cellGutter")   # no hover mark: the whole card drags (D90)
         self.gutter.setFixedWidth(GUTTER_WIDTH)
         gutter = QtWidgets.QVBoxLayout(self.gutter)
         gutter.setContentsMargins(0, 0, 0, 0)
@@ -1540,7 +1515,7 @@ class CellWidget(QtWidgets.QFrame):
             self._repolish()
 
     # a press that no child takes (the gutter, the card's margins, titles and labels) selects the
-    # cell, and pressing and moving drags it, or the selection it is part of (D87, D89)
+    # cell, and pressing and moving drags it, or the selection it is part of (D87, D89, D90)
     _drag_start = None
     _select_on_release = False
 
