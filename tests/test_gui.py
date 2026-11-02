@@ -4450,6 +4450,26 @@ def test_notebook_drag_moves_the_selection_and_scrolls(app, monkeypatch):
     assert started and bytes(started[0].data(CELL_MIME)).decode() == b.id
     assert view.selected_cells == [a, b]               # the press did not collapse the selection
 
+    started.clear()                                    # the left column is a handle too (D87)
+    gutter = view.widget_for(a).gutter
+    assert gutter.cursor().shape() == QtCore.Qt.OpenHandCursor
+    p = gutter.mapTo(w, QtCore.QPoint(gutter.width() // 2, gutter.height() - 4))   # under the counter
+    QTest.mousePress(w.windowHandle(), QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, p)
+    for d in range(2, 40, 4):
+        QTest.mouseMove(w.windowHandle(), p + QtCore.QPoint(0, d))
+        app.processEvents()
+    QTest.mouseRelease(w.windowHandle(), QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, p + QtCore.QPoint(0, 40))
+    assert started and bytes(started[0].data(CELL_MIME)).decode() == a.id
+    assert view.selected_cells == [a, b]
+    gutter = view.widget_for(cells[5]).gutter        # a click without a move selects the cell
+    view.scroll.ensureWidgetVisible(gutter)
+    app.processEvents()
+    QTest.mouseClick(gutter, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, QtCore.QPoint(gutter.width() // 2, gutter.height() - 4))
+    app.processEvents()
+    assert view.current is cells[5] and view.selected_cells in ([], [cells[5]])
+    view.select(a)
+    view.select(b, extend=True)
+
     pix = drag_pixmap(view.widget_for(b).grab(), 2)
     assert pix.width() / pix.devicePixelRatio() <= 360 and pix.height() / pix.devicePixelRatio() <= 160
 
@@ -4468,6 +4488,10 @@ def test_notebook_drag_moves_the_selection_and_scrolls(app, monkeypatch):
     assert [c.source for c in view.notebook.cells] == [c.source for c in order]   # one undo puts both back
 
     bar = view.scroll.verticalScrollBar()
+    for _ in range(40):                                # the rebuilt cells lay out on a later tick
+        if bar.maximum() > 0:
+            break
+        QTest.qWait(25)
     assert bar.maximum() > 0
     bar.setValue(0)
     vp = view.scroll.viewport()
