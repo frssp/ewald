@@ -102,6 +102,9 @@ def test_notebook_has_a_variable_per_step_and_pipe_on_the_main_result():
     assert sources[3] == "pipe = relax"   # its own cell: the side bar's step switch rewrites only it
     assert nb.run_all()
     assert nb.pipeline is nb.namespace["relax"] and nb.namespace["scf"].num_frames == 1
+    grouped = demo_workflow()
+    grouped.group = "Si study\nsecond line"   # the group joins the heading's facts, on one line
+    assert "# Group: Si study second line  " in workflow.notebook_text(grouped).splitlines()
     assert workflow.step_variables(demo_workflow()) == {
         "demo:7/relax": "relax", "demo:7/bands/scf": "scf", "demo:7/output_structure": "output_structure"}
 

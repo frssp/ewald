@@ -518,7 +518,7 @@ def notebook_text(wf: Workflow, pipeline_name: str = "pipe") -> str:
     line = _one_line
     head = [f"# # {line(wf.label or wf.kind or wf.name)}", "#"]
     facts = [("Kind", wf.kind), ("Formula", wf.formula), ("Id", wf.id), ("State", wf.mark() or wf.state),
-             ("Created", wf.ctime), ("Source", wf.source)]
+             ("Created", wf.ctime), ("Group", wf.group), ("Source", wf.source)]
     head += [f"# {k}: {line(v)}  " for k, v in facts if v]
     if wf.description:
         head += ["#", f"# {line(wf.description)}"]
