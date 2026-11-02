@@ -1144,6 +1144,18 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   compared, overlay for more.
 - **Landed:** public PR #108.
 
+### D87. Cells drag by their left column, as in JupyterLab (2026-11-02)
+
+- **Decision:** a cell's left column (run button, count and the space under them) is a drag
+  handle: press and move drags the cell (or the selection), a click selects it, and the column
+  shows a faint tint and an open-hand cursor on hover. The dotted grip at the top right stays.
+- **Why:** on Windows the owner found that cells did drag by the grip but asked whether a small
+  grip at the top right was good UI and how Jupyter does it ("주피터 랩 방식 아니면 점 여섯개가
+  왼쪽으로 오던지?"); shown both at 200 %, the owner picked the JupyterLab way.
+- **Considered:** moving the six-dot grip to the left of the run button (12 px more left margin
+  on every cell).
+- **Landed:** public PR #123.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
