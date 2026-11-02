@@ -260,6 +260,7 @@ QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 QStatusBar {{ background: {bg}; color: {muted}; border-top: 1px solid {border}; }}
 QLabel#muted {{ color: {muted}; }}
 QLabel#section {{ color: {muted}; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }}
+QToolButton#pluginSort {{ color: {muted}; font-size: 11px; padding: 0 2px; }}
 QLabel#welcomeTitle {{ font-size: 20px; font-weight: 600; }}
 QToolButton#welcomeRecent {{ color: {accent}; border: none; padding: 3px 0px; text-align: left; }}
 QToolButton#welcomeRecent:hover {{ color: {accent_hover}; text-decoration: underline; }}

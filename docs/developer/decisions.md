@@ -1156,6 +1156,16 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   on every cell).
 - **Landed:** public PR #123.
 
+### D88. Installed plugins are listed most recently installed first (2026-11-02)
+
+- **Decision:** the Plugins side bar lists installed plugins with the most recently installed or
+  updated one first; a menu on the INSTALLED title switches to name order and the choice is kept
+  (`python.installed_plugin_order`).
+- **Why:** the owner asked "플러그인 설치된 것 리스트는 최신 설치 순으로 정렬가능?" and, shown name
+  order as the default, chose "기본을 최근 순으로".
+- **Considered:** name order as the default (the list before this change).
+- **Landed:** public PR #124.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
