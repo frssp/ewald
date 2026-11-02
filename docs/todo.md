@@ -772,8 +772,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
-- Dragging a notebook cell (or a selection) by its left column on Windows at 200 % scaling (the grip
-  works there, 2026-11-02) and by either handle on macOS:
+- Dragging a notebook cell (or a selection) by its margins and step titles on Windows at 200 %
+  scaling (the left column works there, 2026-11-02) and on macOS:
   the drag picture, the drop line and the edge scroll (only synthetic drops and a patched
   `QDrag.exec` are tested under xvfb).
 - The frozen Windows app from `windows-release.yml` (setup.exe, portable zip) on the owner's
