@@ -1154,7 +1154,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   왼쪽으로 오던지?"); shown both at 200 %, the owner picked the JupyterLab way.
 - **Considered:** moving the six-dot grip to the left of the run button (12 px more left margin
   on every cell).
-- **Landed:** public PR #NN.
+- **Landed:** public PR #123.
 
 ## Adding an entry
 
