@@ -404,3 +404,18 @@ def test_bundled_constraints_pin_what_the_app_ships(monkeypatch, tmp_path):
     monkeypatch.setattr(pc, "addons_prefix", lambda: tmp_path / "python")
     pins = pc.bundled_constraints().read_text(encoding="utf-8").split()
     assert f"numpy=={numpy.__version__}" in pins and all("==" in p for p in pins)
+
+
+def test_installed_plugins_by_name_or_most_recent_install(tmp_path):
+    import os
+
+    a = tmp_path / "zeta.py"
+    b = tmp_path / "alpha.py"
+    for f, age in ((a, 10), (b, 100)):
+        f.write_text("x = 1\n", encoding="utf-8", newline="\n")
+        os.utime(f, (1e9 - age, 1e9 - age))
+    items = [pc.Installed(name=f.stem, origin=str(f), installed_at=pc.installed_time(origin=str(f))) for f in (b, a)]
+    items.append(pc.Installed(name="This session", origin="python"))      # no time: last
+    assert [i.name for i in pc.ordered(items)] == ["alpha", "This session", "zeta"]
+    assert [i.name for i in pc.ordered(items, "recent")] == ["zeta", "alpha", "This session"]
+    assert pc.installed_time(package="no-such-package-here") == 0.0

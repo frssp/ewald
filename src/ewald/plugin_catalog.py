@@ -129,6 +129,7 @@ class Installed:
     summary: str = ""
     publisher: str = ""
     state: str = "loaded"            # "loaded", "disabled", "incompatible", "failed", "not loaded"
+    installed_at: float = 0.0        # when it was installed or last updated (file time), 0 if unknown
 
     @property
     def removable(self) -> bool:
@@ -160,10 +161,11 @@ def installed() -> list[Installed]:
             path = str(src) if src.resolve().parent == folder else ""
             if path and not version:          # a catalog file without __ewald__: the version it was installed as
                 version = installed_version(path)
+        package = p.origin if p.kind == "package" else ""
         items.append(Installed(
             name=p.name or pid, origin=p.origin, id=pid, version=version, summary=p.description,
             publisher=p.publisher, state=p.state, error="; ".join(p.errors),
-            package=p.origin if p.kind == "package" else "", path=path,
+            package=package, path=path, installed_at=installed_time(package, p.origin),
             provides={k.rstrip("s"): list(v) for k, v in p.contributions.items() if v}))
     session = Installed(name="This session", origin="python")
     status = plugins.status()
@@ -174,6 +176,32 @@ def installed() -> list[Installed]:
     if session.provides:
         items.append(session)
     return sorted(items, key=lambda i: i.name.lower())
+
+
+def installed_time(package: str = "", origin: str = "") -> float:
+    """When a plugin was installed or last updated: the modification time of its package's
+    metadata (pip rewrites it on every install or upgrade), or of its plugin file or folder; 0.0
+    when neither can be read."""
+    try:
+        if package:
+            dist = importlib.metadata.distribution(package)
+            for name in ("METADATA", "PKG-INFO"):
+                for f in dist.files or ():
+                    if f.name == name:
+                        return Path(dist.locate_file(f)).stat().st_mtime
+            return 0.0
+        return Path(origin).stat().st_mtime if origin else 0.0
+    except (OSError, ValueError, ImportError):   # PackageNotFoundError is an ImportError
+        return 0.0
+
+
+def ordered(items: list, order: str = "name") -> list:
+    """``items`` (:func:`installed`) by name, or with ``order="recent"`` the most recently
+    installed or updated first (unknown times last, then by name)."""
+    by_name = sorted(items, key=lambda i: i.name.lower())
+    if order != "recent":
+        return by_name
+    return sorted(by_name, key=lambda i: -i.installed_at)
 
 
 def set_enabled(item: Installed, enabled: bool):

@@ -198,6 +198,7 @@ class PluginsPanel(QtWidgets.QWidget):
         self._updates = 0
         self._before = None                  # pc.loaded_versions() while pip runs
         self.restart_reasons: list[str] = []  # why ewald should restart, shown on the restart bar
+        self._order = "name"                 # the installed list's order when there are no settings
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(8, 8, 8, 8)
         lay.setSpacing(6)
@@ -379,7 +380,8 @@ class PluginsPanel(QtWidgets.QWidget):
             installed = []
         if "installed" in filters:
             available = []
-        self._section(f"INSTALLED  {len(installed)}")
+        installed = pc.ordered(installed, self.installed_order)
+        self._installed_header(len(installed))
         for item in installed:
             self._row(item, True, pc.update_for(item, self.entries) if item.id else None)
         if not installed:
@@ -405,6 +407,45 @@ class PluginsPanel(QtWidgets.QWidget):
 
     def _section(self, title):
         self.list_layout.addWidget(QtWidgets.QLabel(title, objectName="section"))
+
+    #: the orders of the installed list, as the ``python.installed_plugin_order`` setting stores them
+    ORDERS = {"name": "Name", "recent": "Recently installed"}
+    SHORT = {"name": "By name", "recent": "Recent first"}     # the button's own text, in a narrow side bar
+
+    @property
+    def installed_order(self) -> str:
+        order = self.settings["python.installed_plugin_order"] if self.settings is not None else self._order
+        return order if order in self.ORDERS else "name"
+
+    def set_installed_order(self, order: str):
+        """List the installed plugins by name or most recently installed first (kept in settings)."""
+        if self.settings is not None:
+            self.settings["python.installed_plugin_order"] = order
+            try:
+                self.settings.save()
+            except OSError:
+                pass
+        self._order = order              # without settings (tests, scripts) for this panel only
+        self._fill()
+
+    def _installed_header(self, count: int):
+        """The INSTALLED section title, with the menu that picks the list's order on its right."""
+        header = QtWidgets.QWidget()
+        row = QtWidgets.QHBoxLayout(header)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(QtWidgets.QLabel(f"INSTALLED  {count}", objectName="section"), 1)
+        sort = QtWidgets.QToolButton(text=self.SHORT[self.installed_order], autoRaise=True,
+                                     objectName="pluginSort", popupMode=QtWidgets.QToolButton.InstantPopup,
+                                     toolTip="Order of the installed plugins")
+        menu = QtWidgets.QMenu(sort)
+        for key, label in self.ORDERS.items():
+            act = menu.addAction(label, lambda key=key: self.set_installed_order(key))
+            act.setCheckable(True)
+            act.setChecked(key == self.installed_order)
+        sort.setMenu(menu)
+        row.addWidget(sort)
+        self.sort_button = sort
+        self.list_layout.addWidget(header)
 
     def _row(self, item, installed, update=None):
         busy = self._busy.get(_key(item)) or (update is not None and self._busy.get(_key(update))) or ""
