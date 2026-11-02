@@ -199,6 +199,9 @@ class OutputText(FittedText):
         self.document().setDocumentMargin(2)
         self.setLineWrapMode(QtWidgets.QPlainTextEdit.WidgetWidth)
         self.setWordWrapMode(QtGui.QTextOption.WrapAtWordBoundaryOrAnywhere)
+        # every line wraps, so a horizontal scroll bar could only appear at a rounding edge of the
+        # width, and it would cover the last line the height was fitted to
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
         self.setTextInteractionFlags(QtCore.Qt.TextSelectableByMouse | QtCore.Qt.TextSelectableByKeyboard)
         self.setFocusPolicy(QtCore.Qt.ClickFocus)
         self.viewport().setCursor(QtCore.Qt.IBeamCursor)
