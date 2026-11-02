@@ -512,8 +512,46 @@ CELL_MIME = "application/x-ewald-cell"
 GUTTER_WIDTH = 26   # run button, counter, grip and fold chevron
 
 
-class _DragHandle(QtWidgets.QLabel):
-    """The dotted grip in a cell's gutter: drag it to move the cell (the notebook view drops it)."""
+class _CellDrag:
+    """Press and move to drag the cell this widget sits in (the notebook view drops it)."""
+
+    _start = None
+
+    def _cell_widget(self):
+        cell = self.parent()
+        while cell is not None and not isinstance(cell, CellWidget):
+            cell = cell.parent()
+        return cell
+
+    def _press(self, event) -> bool:
+        if event.button() != QtCore.Qt.LeftButton:
+            return False
+        self._start = event.position().toPoint()
+        return True
+
+    def _move(self, event):
+        if self._start is None or (event.position().toPoint() - self._start).manhattanLength() < \
+                QtWidgets.QApplication.startDragDistance():
+            return
+        self._start = None
+        cell = self._cell_widget()
+        if cell is None:
+            return
+        mime = QtCore.QMimeData()
+        mime.setData(CELL_MIME, cell.cell.id.encode())
+        drag = QtGui.QDrag(self)
+        drag.setMimeData(mime)
+        view = cell.parent()
+        while view is not None and not hasattr(view, "drag_group"):
+            view = view.parent()
+        count = len(view.drag_group(cell.cell)) if view is not None else 1
+        drag.setPixmap(drag_pixmap(cell.grab(), count))
+        drag.setHotSpot(QtCore.QPoint(12, 12))
+        drag.exec(QtCore.Qt.MoveAction)
+
+
+class _DragHandle(_CellDrag, QtWidgets.QLabel):
+    """The dotted grip at a cell's top right: drag it to move the cell."""
 
     def __init__(self, cell_id: str, parent=None):
         super().__init__(parent, objectName="cellDrag")
@@ -522,7 +560,6 @@ class _DragHandle(QtWidgets.QLabel):
         self.setToolTip("Drag to move the cell")
         self.setCursor(QtCore.Qt.OpenHandCursor)
         self.setAlignment(QtCore.Qt.AlignCenter)
-        self._start = None
 
     def _paint_grip(self, token: str):
         from .icons import _pixmap
@@ -541,32 +578,53 @@ class _DragHandle(QtWidgets.QLabel):
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):
-        if event.button() == QtCore.Qt.LeftButton:
-            self._start = event.position().toPoint()
+        if self._press(event):
             event.accept()   # kept here: the cell would take it as a click and drop a selection
             return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if self._start is None or (event.position().toPoint() - self._start).manhattanLength() < \
-                QtWidgets.QApplication.startDragDistance():
+        self._move(event)
+
+
+class _Gutter(_CellDrag, QtWidgets.QWidget):
+    """A cell's left column (run button, counter and the space under them). Like JupyterLab's
+    prompt area it is a handle: a click selects the cell, press and move drags it (D87)."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent, objectName="cellGutter")
+        self.setAttribute(QtCore.Qt.WA_StyledBackground, True)   # the hover tint is a QSS background
+        self.setCursor(QtCore.Qt.OpenHandCursor)
+        self.setToolTip("Drag to move the cell")
+
+    def _set_hover(self, on: bool):
+        self.setProperty("hover", on)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def enterEvent(self, event):
+        self._set_hover(True)
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._set_hover(False)
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event):
+        if self._press(event):
+            event.accept()   # the moves come here, so a drag can start; a selection stays for it
             return
-        self._start = None
-        mime = QtCore.QMimeData()
-        mime.setData(CELL_MIME, self.cell_id.encode())
-        drag = QtGui.QDrag(self)
-        drag.setMimeData(mime)
-        cell = self.parent()
-        while cell is not None and not isinstance(cell, CellWidget):
-            cell = cell.parent()
-        if cell is not None:
-            view = cell.parent()
-            while view is not None and not hasattr(view, "drag_group"):
-                view = view.parent()
-            count = len(view.drag_group(cell.cell)) if view is not None else 1
-            drag.setPixmap(drag_pixmap(cell.grab(), count))
-            drag.setHotSpot(QtCore.QPoint(12, 12))
-        drag.exec(QtCore.Qt.MoveAction)
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        self._move(event)
+
+    def mouseReleaseEvent(self, event):
+        clicked, self._start = self._start is not None, None
+        cell = self._cell_widget()
+        if clicked and cell is not None:
+            cell.mousePressEvent(event)   # a click without a drag selects the cell, as on the card
+        super().mouseReleaseEvent(event)
 
 
 def drag_pixmap(pix: QtGui.QPixmap, count: int = 1, width: int = 360, height: int = 160) -> QtGui.QPixmap:
@@ -917,7 +975,7 @@ class CellWidget(QtWidgets.QFrame):
         outer = QtWidgets.QHBoxLayout(self)
         outer.setContentsMargins(2, 5, 8, 6)
         outer.setSpacing(4)
-        self.gutter = QtWidgets.QWidget(objectName="cellGutter")
+        self.gutter = _Gutter()
         self.gutter.setFixedWidth(GUTTER_WIDTH)
         gutter = QtWidgets.QVBoxLayout(self.gutter)
         gutter.setContentsMargins(0, 0, 0, 0)

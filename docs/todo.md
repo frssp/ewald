@@ -65,7 +65,7 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   (`GridSlice` is a 3D cross-section only).
 
 - Cell drag: a cell cannot be dragged into another notebook tab yet (cut and paste with X / V
-  works across tabs), and the grip is the only drag handle (no drag by the cell gutter).
+  works across tabs).
 - Running-cell marks in a kernel notebook: when a cell rebinds `pipe` and the cells below run
   again inside the kernel, only the first cell is marked as running (the kernel reports the rest
   when they are all done); the kernel bridge could send a start message per cell.
@@ -772,7 +772,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
-- Dragging a notebook cell (or a selection) by its grip on Windows at 200 % scaling and on macOS:
+- Dragging a notebook cell (or a selection) by its left column on Windows at 200 % scaling (the grip
+  works there, 2026-11-02) and by either handle on macOS:
   the drag picture, the drop line and the edge scroll (only synthetic drops and a patched
   `QDrag.exec` are tested under xvfb).
 - The frozen Windows app from `windows-release.yml` (setup.exe, portable zip) on the owner's
