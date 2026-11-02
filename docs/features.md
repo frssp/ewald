@@ -565,6 +565,7 @@ One section per simulation code (`ewald.codes`; plugins add codes with `@simulat
 | Key | Label | Default |
 |---|---|---|
 | `python.plugin_catalogs` | Plugin catalogs | `''` |
+| `python.installed_plugin_order` | Installed plugins order | `'recent'` |
 
 <!-- gui:start -->
 ## Desktop GUI
