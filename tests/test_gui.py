@@ -4413,8 +4413,8 @@ def test_notebook_cells_sit_at_the_top(app):
 
 
 def test_notebook_drag_moves_the_selection_and_scrolls(app, monkeypatch):
-    """Dragging a cell's grip moves the whole selection as one block (one undo step), pressing the
-    grip keeps the selection, the drag picture is capped and counts the cells, and holding the drag
+    """Dragging a cell by its card or left column moves the whole selection as one block (one undo
+    step), pressing a selected cell keeps the selection, the drag picture is capped and counts the cells, and holding the drag
     near the top or bottom edge scrolls the cells."""
     from PySide6.QtTest import QTest
 
@@ -4436,29 +4436,38 @@ def test_notebook_drag_moves_the_selection_and_scrolls(app, monkeypatch):
     view.select(b, extend=True)
     assert view.selected_cells == [a, b] and view.drag_group(b) == [a, b] and view.drag_group(cells[0]) == [cells[0]]
 
-    started = []                                       # a real press and move on the grip starts a drag
+    started = []                                       # a press and move on the card's margin starts a drag (D89)
     monkeypatch.setattr(QtGui.QDrag, "exec", lambda self, *args: started.append(self.mimeData()) or 0)
-    grip = view.widget_for(b).drag_handle
-    view.scroll.ensureWidgetVisible(grip)
-    app.processEvents()
-    p = grip.mapTo(w, grip.rect().center())
-    QTest.mousePress(w.windowHandle(), QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, p)
-    for d in range(2, 40, 4):
-        QTest.mouseMove(w.windowHandle(), p + QtCore.QPoint(0, d))
+
+    def drag(widget, at):
+        view.scroll.ensureWidgetVisible(widget)
         app.processEvents()
-    QTest.mouseRelease(w.windowHandle(), QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, p + QtCore.QPoint(0, 40))
+        for _ in range(5):
+            QTest.qWait(20)
+        p = widget.mapTo(w, at(widget))
+        QTest.mousePress(w.windowHandle(), QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, p)
+        for d in range(2, 40, 4):
+            QTest.mouseMove(w.windowHandle(), p + QtCore.QPoint(0, d))
+            app.processEvents()
+        QTest.mouseRelease(w.windowHandle(), QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, p + QtCore.QPoint(0, 40))
+        app.processEvents()
+
+    card = view.widget_for(b)
+    assert not hasattr(card, "drag_handle")            # no separate grip any more
+    drag(card, lambda c: QtCore.QPoint(c.width() // 2, c.height() - 2))
     assert started and bytes(started[0].data(CELL_MIME)).decode() == b.id
     assert view.selected_cells == [a, b]               # the press did not collapse the selection
+    started.clear()
+    editor = view.widget_for(b).editor                 # a press in the code selects text, no drag
+    drag(editor, lambda e: QtCore.QPoint(30, 8))
+    assert not started
+    view.select(a)
+    view.select(b, extend=True)
 
     started.clear()                                    # the left column is a handle too (D87)
     gutter = view.widget_for(a).gutter
     assert gutter.cursor().shape() == QtCore.Qt.OpenHandCursor
-    p = gutter.mapTo(w, QtCore.QPoint(gutter.width() // 2, gutter.height() - 4))   # under the counter
-    QTest.mousePress(w.windowHandle(), QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, p)
-    for d in range(2, 40, 4):
-        QTest.mouseMove(w.windowHandle(), p + QtCore.QPoint(0, d))
-        app.processEvents()
-    QTest.mouseRelease(w.windowHandle(), QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, p + QtCore.QPoint(0, 40))
+    drag(gutter, lambda g: QtCore.QPoint(g.width() // 2, g.height() - 4))   # under the counter
     assert started and bytes(started[0].data(CELL_MIME)).decode() == a.id
     assert view.selected_cells == [a, b]
     gutter = view.widget_for(cells[5]).gutter        # a click without a move selects the cell
@@ -4509,7 +4518,7 @@ def test_notebook_drag_moves_the_selection_and_scrolls(app, monkeypatch):
 
 
 def test_notebook_cell_controls_add_bar_and_running_mark(app):
-    """Grip and fold show on hover or on the current cell, the add-cell buttons wrap instead of
+    """The fold chevron shows on hover or on the current cell, the add-cell buttons wrap instead of
     clipping at a narrow width, and a cell shows ``*`` while it runs."""
     from ewald.gui.app import MainWindow
 
@@ -4523,11 +4532,11 @@ def test_notebook_cell_controls_add_bar_and_running_mark(app):
     cw = view.widget_for(cell)
     other = next(c for c in view.widgets if c is not cw and c.cell.kind == "code")
     other.set_current(False)
-    assert other.drag_handle.isHidden() and other.fold_button.isHidden()
+    assert other.fold_button.isHidden()
     app.sendEvent(other, QtGui.QEnterEvent(QtCore.QPointF(5, 5), QtCore.QPointF(5, 5), QtCore.QPointF(5, 5)))
-    assert not other.drag_handle.isHidden() and not other.fold_button.isHidden()
+    assert not other.fold_button.isHidden()
     app.sendEvent(other, QtCore.QEvent(QtCore.QEvent.Leave))
-    assert other.drag_handle.isHidden()
+    assert other.fold_button.isHidden()
 
     bar = view.add_bar
     buttons = bar.findChildren(QtWidgets.QPushButton)
