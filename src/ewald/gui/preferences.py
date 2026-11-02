@@ -80,7 +80,8 @@ LAYOUT = {
         ("Files", ["llm.read_folders", "llm.confirm_hosts"]),
         ("Saved connections", ["llm.profiles"])]),
     "Plugins": ("Where the Plugins side bar finds plugins; each plugin's own settings follow as pages.", [
-        ("Catalogs", ["python.plugin_catalogs"])]),
+        ("Catalogs", ["python.plugin_catalogs"]),
+        ("Side bar", ["python.installed_plugin_order"])]),
 }
 
 QSS = """
