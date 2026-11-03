@@ -78,6 +78,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- A new trajectory frame's 3D scene (atoms, bonds, polyhedra) is built on the compute worker, so the
+  window stays responsive while big frames change; the GUI thread only adds the actors and draws
+  (D96, #136).
 - `FindRings` leaves out chains that close only through the periodic boundary (counted in
   `FindRings.periodic_rings`; `periodic_rings=True` keeps them, as OVITO does). (D84, #110)
 - Step cells are edited in Python only: the *Form* button and its generated parameter form are
