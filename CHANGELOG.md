@@ -83,6 +83,13 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Fixed
 
+- "Plot bands" in a workflow notebook (relax, scf and bands loaded, `pipe` the relaxation) could
+  draw the relaxation's k-mesh eigenvalues as a band structure. A VASP run on a uniform k-mesh
+  (Gamma, Monkhorst-Pack, automatic) no longer gets a `Bands` table (`ElectronicStructure.kmesh`;
+  `show(..., table="Bands")` says to open the band-structure step), and the notebook Ask AI gets
+  ends with what each pipeline variable holds (path, what a workflow path opened through the new
+  `FrameReader.opened`, DOS, band path or k-mesh), with a note to use the step the user names.
+  Eval tasks `nb-workflow-bands`, `nb-workflow-scf-dos`. (#134)
 - Reading a file over SSH while another thread used the same connection (the GUI's compute
   worker and the Remotes side bar, say) could break the SFTP session with "Garbage packet
   received": every SFTP call now holds the connection lock, and a broken session is reopened on
