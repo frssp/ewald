@@ -775,8 +775,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - Reading a LAMMPS dump over SSH from the GUI on the owner's Windows PC against the real cluster
   while browsing the Remotes side bar (SFTP calls now hold the connection lock and a broken
   SFTP session is reopened, 2026-11-03; tested with threads against the in-process server only).
-- Dragging a notebook cell (or a selection) by its margins and step titles on Windows at 200 %
-  scaling (the left column works there, 2026-11-02) and on macOS:
+- Dragging a notebook cell (or a selection) on macOS (fine on the owner's Windows PC at 200 %,
+  2026-11-03):
   the drag picture, the drop line and the edge scroll (only synthetic drops and a patched
   `QDrag.exec` are tested under xvfb).
 - Dragging a notebook tab past either end of the tab row on Windows at 200 % scaling and on
@@ -795,8 +795,6 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   (`device="cuda"` on the RTX through `cupy-cuda12x[ctk]`, unverified in CI).
 - Plugins side bar in the Windows exe (D76): install ewald-mp and ewald-plumed, restart, use
   them; once with git on PATH and once without (GitHub zip); update and remove.
-- The running-cell marks on the owner's Windows PC at 200 % scaling: the elapsed time fits
-  under the stop button, the ring turns smoothly, the tab's play icon shows.
 - Plugins side bar on the owner's Windows environment (2026-10-26): installing, updating and
   removing a pip plugin (ewald-mp) keeps the window responsive (it froze for seconds when the
   package metadata was read on the GUI thread), no console window flashes, and *Update to 0.1.x*
