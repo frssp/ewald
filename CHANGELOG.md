@@ -78,6 +78,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- Opening a big LAMMPS dump, XDATCAR or extxyz file again skips the frame scan: the index of local
+  files of 32 MB or more is kept in the cache folder while the file is unchanged (340 MB XDATCAR
+  3.9 s -> 0.02 s; `EWALD_INDEX_CACHE=0` turns it off) (D96, #137).
 - A new trajectory frame's 3D scene (atoms, bonds, polyhedra) is built on the compute worker, so the
   window stays responsive while big frames change; the GUI thread only adds the actors and draws
   (D96, #136).

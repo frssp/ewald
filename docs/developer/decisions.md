@@ -1263,7 +1263,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   them skips the scan.
 - **Alternatives:** only one of the two; a battery saver mode for the 3D view (lower resolution
   or frame rate on battery), which changes what the view looks like.
-- **Landed:** public PR #136 (scene build on the worker).
+- **Landed:** public PR #136 (scene build on the worker), public PR #137 (frame indexes on disk).
 
 ## Adding an entry
 
