@@ -87,7 +87,7 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
   worker and the Remotes side bar, say) could break the SFTP session with "Garbage packet
   received": every SFTP call now holds the connection lock, and a broken session is reopened on
   the same SSH connection and the call retried once. Double-clicking a computer in the Remotes
-  side bar no longer raises an AttributeError. (#127)
+  side bar no longer raises an AttributeError. (#128)
 
 ## [0.2.0] - 2026-10-28
 
