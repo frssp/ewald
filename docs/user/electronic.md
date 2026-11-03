@@ -56,6 +56,13 @@ Two tables are added, so the DOS and bands can also be saved or plotted like any
 - `Bands`: `Distance` along the path and one column per band (E − E_F), `Band n (up)` and
   `Band n (down)` for ISPIN = 2.
 
+Only a run along a band path (line-mode KPOINTS, an explicit list, the zero-weight points of a
+hybrid band run, KPOINTS_OPT) gets the `Bands` table. A relaxation or SCF on a uniform mesh
+(KPOINTS Gamma, Monkhorst-Pack or automatic) keeps its eigenvalues and band gap in
+`Electronic Structure` (`kmesh` is True) but has no band structure, so `show(relax, table="Bands")`
+says to open the band-structure calculation instead: drawn one after another, mesh points look like
+bands but mean nothing.
+
 ## In the GUI
 
 The Plots tab opens the `DOS` table first. With "y" set to "(all)" it draws the total DOS

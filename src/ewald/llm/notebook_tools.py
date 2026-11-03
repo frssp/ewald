@@ -158,7 +158,9 @@ def notebook_context(nb: Notebook) -> str:
     """The notebook as the AI chat sends it with a question: percent-format Python like
     :meth:`Notebook.to_py`, each cell preceded by a ``# [cell N · index k · kind · state]`` line
     and followed by a ``# [output: ...]`` line, so the model knows which cell is which, what ran
-    and what it showed, without calling list_cells first."""
+    and what it showed, without calling list_cells first. When the cells made more than one
+    pipeline variable, a last ``# [pipelines: ...]`` block says what each holds
+    (:func:`pipeline_variables`)."""
     parts = []
     for k, c in enumerate(nb.cells):
         info = cell_summary(nb, k)
@@ -170,7 +172,84 @@ def notebook_context(nb: Notebook) -> str:
         if out:
             text += f"\n# [output: {out}]"
         parts.append(text)
+    variables = pipeline_variables(nb)
+    if variables:
+        parts.append("# [pipelines: what each variable holds now]\n" + "\n".join(f"#   {ln}" for ln in variables.splitlines()))
     return "\n\n".join(parts) + "\n"
+
+
+def _readers(pipe) -> list:
+    src = getattr(pipe, "source", None)
+    readers = getattr(src, "readers", None)
+    return list(readers) if isinstance(readers, (list, tuple)) else []
+
+
+def pipeline_line(pipe) -> str:
+    """What one pipeline holds, read from its source without computing a frame: the path, what
+    it opened when the path does not say (:attr:`ewald.io.base.FrameReader.opened`), the frames
+    and, for a VASP run, whether it has a DOS and a band structure or only a k-point mesh."""
+    from ..electronic import ElectronicStructure
+
+    src = getattr(pipe, "source", None)
+    path = getattr(src, "path", None)
+    bits = []
+    if isinstance(path, (list, tuple)):
+        bits.append(f"{len(path)} files from {str(path[0])!r}" if path else "no files")
+    elif path:
+        bits.append(repr(str(path)))
+    readers = _readers(pipe)
+    opened = [str(r.opened) for r in readers if getattr(r, "opened", "")]
+    if opened:
+        bits.append("opened " + "; ".join(dict.fromkeys(opened)))
+    try:
+        n = pipe.num_frames
+        bits.append(f"{n} frame{'s' if n != 1 else ''}")
+    except Exception:   # noqa: BLE001 - a source that cannot count is left out
+        pass
+    es = next((r.electronic for r in readers if isinstance(getattr(r, "electronic", None), ElectronicStructure)), None)
+    if es is not None:
+        what = []
+        if es.has_dos:
+            what.append("DOS")
+        if es.has_band_path:
+            what.append(f"band structure along a k-path ({es.eigenvalues.shape[1]} k-points; table 'Bands')")
+        elif es.has_bands and es.kmesh:
+            what.append("eigenvalues on a uniform k-mesh only (no band structure, no 'Bands' table)")
+        if what:
+            bits.append("electronic: " + ", ".join(what))
+    if getattr(pipe, "modifiers", None):
+        bits.append(f"{len(pipe.modifiers)} step{'s' if len(pipe.modifiers) != 1 else ''}")
+    return ", ".join(bits)
+
+
+#: pipelines :func:`pipeline_variables` lists at most
+MAX_VARIABLES = 20
+
+
+def pipeline_variables(nb: Notebook) -> str:
+    """The notebook's pipelines by variable name, one line each (:func:`pipeline_line`), with
+    which names are the same pipeline (``pipe`` is ``result``); "" with fewer than two names, where
+    there is nothing to choose between. The AI chat sends it with each question so that "plot the
+    bands" goes to the variable that has them, not to whatever ``pipe`` is."""
+    from ..pipeline import Pipeline
+
+    names: dict = {}
+    for name, value in list(nb.namespace.items()):
+        if isinstance(value, Pipeline) and not name.startswith("_"):
+            names.setdefault(id(value), (value, []))[1].append(name)
+    if sum(len(v[1]) for v in names.values()) < 2:
+        return ""
+    lines = []
+    for value, same in list(names.values())[:MAX_VARIABLES]:
+        main = nb.pipeline_name if nb.pipeline_name in same else same[0]
+        others = [n for n in same if n != main]
+        alias = f" (the same pipeline as {', '.join(others)})" if others else ""
+        try:
+            what = pipeline_line(value)
+        except Exception as exc:  # noqa: BLE001 - one odd source must not stop the question
+            what = f"({type(exc).__name__})"
+        lines.append(f"- {main}{alias}: {what}")
+    return "\n".join(lines)
 
 
 #: Keyword arguments that make two steps of the same modifier do different jobs.

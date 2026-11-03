@@ -139,6 +139,12 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   Fermi energy and no gap from vasprun.xml or DOSCAR (EIGENVAL only, up to 32 MB). The side bar's step switch (●/○) and
   "Plot <table>" rows exist; a step picker on top of the Plots panel itself does not, and the
   rows list the tables of a step's first frame only.
+- Workflow step choice for Ask AI: the question lists what each pipeline variable holds (path,
+  what a workflow path opened, DOS / band path / k-mesh) and a k-mesh run has no `Bands` table,
+  so "plot bands" in a relax/scf/bands notebook goes to `bands` (eval tasks `nb-workflow-bands`,
+  `nb-workflow-scf-dos`, played with the reference solution only; a real-model run is open). The
+  list says nothing yet about other step kinds (a phonon step, NEB images, a MD run vs a relaxation)
+  beyond frames and the electronic structure.
 - Workflow folders (`ewald/workflow_folder.py`, docs/user/workflows.md): a killed VASP or LAMMPS
   step shows as running (no mtime or queue check); Quantum ESPRESSO, CP2K, ABINIT folders are not
   recognized; no "remove from list" in the Workflows side bar; a large tree on an SSH host is

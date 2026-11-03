@@ -235,7 +235,11 @@ since the last question of that chat:
   its number, index, kind (step, view, code, markdown) and state, and a short line about its
   outputs (the start of printed text, the last line of an error, "plot/image"), cut at 24,000
   characters. It includes file paths, anything typed into the cells and the start of what they
-  printed; images are not sent with it (`read_cell` returns them).
+  printed; images are not sent with it (`read_cell` returns them). When the cells made more than
+  one pipeline variable, it ends with what each holds (`pipeline_variables`: its path, what a
+  workflow path opened, the frames, whether it has a DOS, a band path or only a k-mesh, and which
+  names are the same pipeline), read from the open files without computing a frame, so "plot the
+  bands" goes to `bands` rather than to whatever `pipe` is.
 - The errors of cells whose last run failed (`failed_cells`: the last 25 lines of each, at most
   6,000 characters), or a note that there are none any more.
 - How the 3D view colors the atoms (the color rule: which step or setting, which property,

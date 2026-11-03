@@ -34,6 +34,9 @@ class FrameReader:
     #: why the file is incomplete (a calculation still running or stopped), or None when it is
     #: complete or that cannot be told; set by the readers, shown by the GUI
     incomplete: str | None = None
+    #: what the path opened when the path alone does not say (``simagent:7`` -> "step relax of
+    #: vasp_bands 7"): the AI chat lists it with the notebook's variables; "" when the path says it
+    opened: str = ""
 
     def _set_incomplete(self, note: str | None, warn: bool = True, stacklevel: int = 3):
         """Record (and by default warn about, as :class:`IncompleteFileWarning`) an incomplete file."""

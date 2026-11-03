@@ -316,13 +316,15 @@ ewald narrate dump.lammpstrj --type-map 1=Cu --no-llm        # event timeline, r
 
 ## Scoring a model (AI eval suite)
 
-`ewald eval` measures how well a model drives ewald: it asks 76 questions with known answers about
+`ewald eval` measures how well a model drives ewald: it asks 78 questions with known answers about
 the shipped example files (and four paper datasets), runs the normal AI loop on a fresh notebook for
 each, and grades the result automatically. The tasks ask for values (lattice constants, counts,
 energies, a diffusion coefficient, graded from the reply's final `ANSWER:` line within a
 tolerance), for analysis steps (coordination coloring, octahedra, CNA, deleting atoms), for view
 changes (background, colors, camera, legends), for exported files, for edits to a notebook the
-user already has (change a step's cutoff, take a step out, fix a failing cell), for recipes
+user already has (change a step's cutoff, take a step out, fix a failing cell, plot the bands or the
+DOS of the step the user names in a relax/scf/bands workflow notebook where `pipe` is the
+relaxation), for recipes
 written as python_api shows them (a plot cell, an `[each frame]` step) and for plugins (the
 example `LocalComposition` modifier and the `bond_valence_sums` AI tool of `examples/plugins`,
 loaded for the task only). The `study` tasks ask for a whole study in one sentence, as "find the
@@ -350,7 +352,7 @@ reproducible when the notebook alone makes it.
 
 The questions are asked as the AI chat side bar asks them (`--context gui`, the default): the
 notebook note follows the system prompt, each question starts with the notebook (its code with
-cell numbers, states and outputs) and its failing cells, and the Python blocks of an answer
+cell numbers, states and outputs, and what each pipeline variable holds) and its failing cells, and the Python blocks of an answer
 become cells or replace the cell doing the same job, run with `--allow-code` (which
 plays Preferences › AI › Let the AI run cells). `--context plain` asks the bare agent, as
 `ewald ask` does.
