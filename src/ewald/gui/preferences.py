@@ -36,7 +36,7 @@ LAYOUT = {
         ("Startup", ["general.startup_workspace", "general.restore_layout"]),
         ("Appearance", ["general.ui_theme", "general.font_size", "general.toolbar_style", "general.activity_hidden"]),
         ("Running jobs", ["general.live_reload", "general.live_reload_interval"]),
-        ("Help", ["general.docs_url"])]),
+        ("Help", ["general.docs_url", "general.freeze_report"])]),
     "Codes": ("Simulation codes EWALD reads: their files, formats and settings. Plugins add more codes.", []),
     "3D view": ("Defaults for the interactive structure view.", [
         ("View", ["viewport.follow_theme", "viewport.background", "viewport.projection", "viewport.initial_view", "viewport.style_preset"]),
