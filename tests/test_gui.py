@@ -5658,7 +5658,7 @@ def test_ai_chat_per_notebook_tab(app, pipe):
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_ai_chat_tabs_follow_the_notebook_tabs(app, pipe):
-    """The AI chat side bar's title bar is a tab row with the notebook tabs (D92): the same names
+    """The AI chat side bar's title bar is a tab row with the notebook tabs (D94): the same names
     and order, the same current tab from either row, a dot where a notebook has a chat (another
     while an answer is on its way, which also marks the notebook tab), renames, moves and closes
     followed."""
@@ -5725,7 +5725,7 @@ def test_ai_chat_tabs_follow_the_notebook_tabs(app, pipe):
 def test_ai_chat_new_chat_keeps_the_old_one_in_history(app, pipe):
     """New chat puts the chat into the notebook's earlier chats (``Notebook.chats``, saved in .ewd);
     History opens one again (the current one takes its place), Delete this chat throws the current
-    one away; History and New chat sit in the chat tab row, the pick line above the input (D93)."""
+    one away; History and New chat sit in the chat tab row, the pick line above the input (D95)."""
     from ewald.gui.app import MainWindow
 
     asked = []

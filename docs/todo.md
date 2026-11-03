@@ -251,9 +251,11 @@ GUI
   sharing the energy axis, once the panel layout can place plots side by side); a scatter view
   of two particle properties where a brushed box selects atoms; the `show()` script path draws
   DOS/bands like the GUI (it plots the raw table columns now).
-- AI chat side bar (`gui/ask_panel.py`, activity bar): chats are per notebook tab and saved only in
+- AI chat side bar (`gui/ask_panel.py`, activity bar): chats are per notebook tab (the side bar's
+  tab row mirrors the notebook tabs, D94; History keeps earlier chats, D95) and saved only in
   `.ewd` (not `.py`/`.ipynb`), and a chat changes no "unsaved" mark, so closing without saving
-  loses it; a saved chat reaches a new model as a text transcript (no tool results or images);
+  loses it; a narrow side bar elides the chat tabs' names (no tab width or icon-only mode yet);
+  History has no search, rename or export of a chat; a saved chat reaches a new model as a text transcript (no tool results or images);
   a streamed answer is drawn as Markdown a few times a second, so an unclosed code fence shows as
   text until it closes; `ewald ask` and the MCP server do not stream; show tool images inline, insert as a step cell when the block is one `pipe.add(...)`,
   edit or regenerate a sent message. Cells the AI changed are linked from

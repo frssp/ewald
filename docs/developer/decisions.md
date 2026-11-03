@@ -1224,6 +1224,36 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   behind the OpenAI-compatible provider cannot share.
 - **Landed:** public PR #132.
 
+### D94. The AI chat side bar has the notebook tabs as its own tab row (2026-11-03)
+
+- **Decision:** the AI chat side bar's title bar is a tab row that mirrors the notebook tabs (same
+  notebooks, order and names); clicking a tab in either row switches both. A gray dot marks a
+  notebook with a chat, an orange one an answer on its way, which also puts the AI icon on that
+  notebook's own tab.
+- **Why:** each notebook already had its own chat, but the side bar showed no tab or name: "chat은
+  탭이 안나오잖아", "노트북과 챗 탭들을 싱크해야해".
+- **Alternatives (rendered in Graphite and Paper):** the notebook's name in the chat header only;
+  a notebook dropdown in the chat header; the chat as a pane inside each notebook tab, beside the
+  cells. The owner picked the mirrored tab row.
+- **Landed:** public PR #PR_NUM.
+
+### D95. New chat keeps the old chat in a per-notebook History (2026-11-03)
+
+- **Decision:** a notebook shows one chat at a time; *New chat* puts the current one into the
+  notebook's earlier chats (`Notebook.chats`, saved with the chat in `.ewd`) instead of deleting
+  it, and *History* lists them to open one again (the current one takes its place) or to delete
+  the current chat. History and New chat are icon buttons at the right end of the chat tab row,
+  like the notebook row's **+**, and the pick line moves from the old header row to a chip above
+  the input.
+- **Why:** asked "new chat 이 어떻게 동작할지 생각해봐. 한 노트북에 두가지 챗을 허용할지?", the
+  owner picked keeping one visible chat per notebook with a History, which keeps the chat tabs one
+  to one with the notebook tabs and never loses a conversation.
+- **Alternatives:** New chat clearing the chat as before; several chats open at once in one
+  notebook (more chat tabs than notebook tabs, two AIs editing the same cells). For the buttons
+  (rendered): text buttons in the header row; icons in the tab row with the pick line kept in
+  its own row.
+- **Landed:** public PR #PR_NUM.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

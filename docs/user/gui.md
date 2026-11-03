@@ -185,11 +185,18 @@ switches to that notebook's tab, scrolls to the cell and lights it up for a mome
 from the tools' results, not from the model's text, and they are saved with the chat in an
 `.ewd`; a deleted cell's link is greyed out, and one whose cell is gone since says so in the
 status bar.
-Each notebook tab has its own chat: switching tabs switches the chat, an answer still on its way
-finishes in its own tab's chat (and its cell tools act on that notebook), and *New chat* starts
-over in the current tab only. Saving the notebook as `.ewd` saves its chat; opening the file shows
-it again, and the next question sends it to the model as an earlier conversation (for a restricted
-notebook, only after you trust it).
+Each notebook tab has its own chat, and the side bar's title bar is a row of tabs with the same
+notebooks, in the same order and under the same names: clicking a tab in either row switches both
+the notebook and the chat. A gray dot on a chat tab marks a notebook with a chat, an orange one an
+answer on its way; such a notebook's own tab shows the AI icon until the answer arrives. An answer
+still on its way finishes in its own tab's chat (and its cell tools act on that notebook).
+At the right end of that row, **+** (*New chat*) starts over in the current notebook and keeps the
+old chat under the clock button (*History*): it lists the notebook's earlier chats, newest first,
+and opens one again (the current one takes its place), and *Delete this chat* throws the current
+one away. What the next question is about (*Nothing picked* or *N atoms selected*) shows above the
+input. Saving the notebook as `.ewd` saves its chat and its earlier chats; opening the file shows
+them again, and the next question sends the chat to the model as an earlier conversation (for a
+restricted notebook, only after you trust it); so does a chat opened from History.
 Each question also sends the current notebook (its code, with each cell's number, state and a
 short line about its outputs) and the errors of cells that failed when they last ran (each only
 when it changed since the last question). Python blocks of an answer go into the notebook at
