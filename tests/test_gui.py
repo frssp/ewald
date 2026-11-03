@@ -5590,6 +5590,71 @@ def test_ai_chat_per_notebook_tab(app, pipe):
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_ai_chat_tabs_follow_the_notebook_tabs(app, pipe):
+    """The AI chat side bar's title bar is a tab row with the notebook tabs (D92): the same names
+    and order, the same current tab from either row, a dot where a notebook has a chat (another
+    while an answer is on its way, which also marks the notebook tab), renames, moves and closes
+    followed."""
+    import threading
+
+    from ewald.gui.app import MainWindow
+
+    release = threading.Event()
+
+    class SlowAgent(_FakeAgent):
+        def ask(self, question):
+            release.wait(5)
+            return "done"
+
+    w = MainWindow(pipe)
+    w.settings["llm.code_cells"] = "button"
+    panel, tabs = w.ask_panel, w.panel.tabs
+    panel.agent_factory = lambda p, ev: SlowAgent(p, ev)
+    assert w.ask_dock.titleBarWidget().embedded is panel.tabs
+    first = w.panel.view
+    second = w.panel.new_notebook()
+    third = w.panel.new_notebook()
+    app.processEvents()
+    bar = panel.tabs.bar
+    names = lambda: [bar.tabText(i) for i in range(bar.count())]  # noqa: E731
+    assert names() == [v.notebook.name for v in (first, second, third)] and bar.currentIndex() == 2
+    assert panel.tabs.title.isHidden()
+
+    bar.setCurrentIndex(0)                       # a chat tab shows its notebook, and its chat
+    app.processEvents()
+    assert w.panel.view is first and panel.conversation.key is first.notebook
+    tabs.setCurrentWidget(second)                # a notebook tab moves the chat tab
+    app.processEvents()
+    assert bar.currentIndex() == 1 and panel.conversation.key is second.notebook
+
+    assert [panel.chat_mark(v.notebook) for v in (first, second, third)] == [None, None, None]
+    panel.ask("slow")
+    app.processEvents()
+    assert panel.chat_mark(second.notebook) == "answering" and not bar.tabIcon(1).isNull()
+    assert tabs.tabBar().tabData(1) == "ai" and not tabs.tabBar().tabIcon(1).isNull()
+    assert bar.tabIcon(0).isNull()
+    release.set()
+    _wait(app, panel)
+    assert panel.chat_mark(second.notebook) == "chat" and not bar.tabIcon(1).isNull()
+    assert tabs.tabBar().tabData(1) is None and tabs.tabBar().tabIcon(1).isNull()
+
+    third.notebook.name = "renamed"              # renames (the unsaved mark stays off the chat tab)
+    third.notebook.dirty = True
+    w.panel._retitle(third)
+    app.processEvents()
+    assert names()[2] == "renamed"
+    tabs.tabBar().moveTab(0, 2)                  # moves
+    app.processEvents()
+    assert names() == [v.notebook.name for v in w.panel.views()]
+    assert bar.currentIndex() == tabs.currentIndex()
+    for _ in range(3):                           # closes; with none left the row shows the panel name
+        w.panel.close_tab(0)
+        app.processEvents()
+    assert names() == [] and not panel.tabs.title.isHidden()
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_activity_bar_order_icons_and_tooltips(app, pipe, monkeypatch):
     """Work side bars on top, Plugins and Preferences at the bottom, the Window menu in the same
     order, and every tooltip names its shortcut (D35)."""

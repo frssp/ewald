@@ -1427,6 +1427,7 @@ class NotebookPanel(QtWidgets.QWidget):
         self.data = None
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
+        self.ai_answering: set[int] = set()   # ids of notebooks whose AI chat is answering (their tab marks it)
         self.tabs = NotebookTabs()
         self.tabs.newRequested.connect(lambda: self.new_notebook())
         self.tabs.tabCloseRequested.connect(self.close_tab)
@@ -1523,10 +1524,19 @@ class NotebookPanel(QtWidgets.QWidget):
         if i >= 0:
             self.tabs.setTabText(i, view.notebook.name + (" ●" if view.notebook.dirty else ""))
             self.tabs.setTabToolTip(i, (view.notebook.path or "not saved") + ("\nRunning" if view.running else ""))
-            running = bool(view.running)
-            if self.tabs.tabBar().tabData(i) != running:   # a play icon while its cells run
-                self.tabs.tabBar().setTabData(i, running)
-                self.tabs.tabBar().setTabIcon(i, icon("play", TOKENS["accent"]) if running else QtGui.QIcon())
+            # a play icon while its cells run, else the AI icon while an AI chat answer is on its way
+            mark = "run" if view.running else "ai" if id(view.notebook) in self.ai_answering else None
+            if self.tabs.tabBar().tabData(i) != mark:
+                self.tabs.tabBar().setTabData(i, mark)
+                self.tabs.tabBar().setTabIcon(i, icon("play", TOKENS["accent"]) if mark == "run"
+                                              else icon("ai", TOKENS["pick"]) if mark == "ai" else QtGui.QIcon())
+
+    def set_ai_answering(self, notebook, on: bool):
+        """Mark ``notebook``'s tab while an answer of its AI chat is on its way."""
+        (self.ai_answering.add if on else self.ai_answering.discard)(id(notebook))
+        view = next((v for v in self.views() if v.notebook is notebook), None)
+        if view is not None:
+            self._retitle(view)
 
     def _is_blank(self, view) -> bool:
         nb = view.notebook

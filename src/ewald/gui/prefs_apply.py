@@ -119,6 +119,8 @@ def apply_settings(win, s: Settings, startup: bool = False):
     from .console import restyle
 
     restyle(win.console)  # the console draws its own colors (background, syntax, selection)
+    if hasattr(win, "_mirror_chat_tabs"):
+        win._mirror_chat_tabs(restyle=True)   # the chat tabs' marks in the theme's colors
     tokens = dict(theme.TOKENS)
     if getattr(win, "_ui_tokens", tokens) != tokens:  # open figures keep the colors they were drawn in
         from .plots import PlotsPanel

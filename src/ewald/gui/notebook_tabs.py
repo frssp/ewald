@@ -79,6 +79,7 @@ class NotebookTabs(QtWidgets.QWidget):
     tabCloseRequested = QtCore.Signal(int)
     newRequested = QtCore.Signal()
     renameRequested = QtCore.Signal(int)
+    tabsChanged = QtCore.Signal()   # a tab was added, closed, renamed, moved or made current
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -135,6 +136,7 @@ class NotebookTabs(QtWidgets.QWidget):
         self.stack.addWidget(widget)  # first, so the bar's currentChanged finds the page
         i = self.bar.addTab(text)
         self._sync_empty()
+        self.tabsChanged.emit()
         return i
 
     def removeTab(self, index: int):
@@ -145,6 +147,7 @@ class NotebookTabs(QtWidgets.QWidget):
         self.bar.removeTab(index)
         self.stack.setCurrentIndex(self.bar.currentIndex())
         self._sync_empty()
+        self.tabsChanged.emit()
 
     def count(self) -> int:
         return self.bar.count()
@@ -173,7 +176,9 @@ class NotebookTabs(QtWidgets.QWidget):
         return self.bar.tabText(index)
 
     def setTabText(self, index: int, text: str):
-        self.bar.setTabText(index, text)
+        if self.bar.tabText(index) != text:
+            self.bar.setTabText(index, text)
+            self.tabsChanged.emit()
 
     def setTabToolTip(self, index: int, tip: str):
         self.bar.setTabToolTip(index, tip)
@@ -182,12 +187,14 @@ class NotebookTabs(QtWidgets.QWidget):
     def _current_changed(self, index: int):
         self.stack.setCurrentIndex(index)
         self.currentChanged.emit(index)
+        self.tabsChanged.emit()
 
     def _moved(self, frm: int, to: int):
         widget = self.stack.widget(frm)
         self.stack.removeWidget(widget)
         self.stack.insertWidget(to, widget)
         self.stack.setCurrentIndex(self.bar.currentIndex())
+        self.tabsChanged.emit()
 
     def _menu(self, pos):
         i = self.bar.tabAt(pos)
