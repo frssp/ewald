@@ -1196,7 +1196,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Why:** "노트북 탭을 드래그하니 그 패널을 넘어서 안 보이는 영역까지 가네. 그냥 바운더리를 못
   넘어가게 할까?"
 - **Alternatives:** Qt's default, where the dragged tab follows the mouse without a bound.
-- **Landed:** public PR #NNN.
+- **Landed:** public PR #127.
 
 ## Adding an entry
 
