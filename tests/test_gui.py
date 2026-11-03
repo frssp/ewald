@@ -5655,6 +5655,52 @@ def test_ai_chat_tabs_follow_the_notebook_tabs(app, pipe):
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_ai_chat_new_chat_keeps_the_old_one_in_history(app, pipe):
+    """New chat puts the chat into the notebook's earlier chats (``Notebook.chats``, saved in .ewd);
+    History opens one again (the current one takes its place), Delete this chat throws the current
+    one away; History and New chat sit in the chat tab row, the pick line above the input (D93)."""
+    from ewald.gui.app import MainWindow
+
+    asked = []
+
+    class Agent(_FakeAgent):
+        def ask(self, question):
+            asked.append(question)
+            return f"answer to {question.splitlines()[-1]}"
+
+    w = MainWindow(pipe)
+    w.settings["llm.code_cells"] = "button"
+    panel = w.ask_panel
+    panel.agent_factory = lambda p, ev: Agent(p, ev)
+    nb = w.panel.view.notebook
+    row = panel.tabs.layout()
+    assert {row.itemAt(i).widget() for i in range(row.count())} >= {panel.history_button, panel.new_button}
+    panel.reset()                                      # nothing to keep
+    assert nb.chats == []
+    panel.ask("first question")
+    _wait(app, panel)
+    panel.new_button.click()
+    assert panel.messages == [] and nb.chat == []
+    assert [c["title"] for c in nb.chats] == ["first question"] and len(nb.chats[0]["messages"]) == 2
+    panel.ask("second question")
+    _wait(app, panel)
+    menu = panel.history_menu()
+    texts = [a.text() for a in menu.actions() if a.text() and not a.isSeparator()]
+    assert texts[0] == "second question" and texts[1].startswith("first question\t")
+    assert texts[-1] == "Delete this chat"
+
+    panel.open_chat(0)                                 # back to the first; the second is kept
+    assert [m.text for m in panel.messages] == ["first question", "answer to first question"]
+    assert nb.chat[0]["text"] == "first question" and [c["title"] for c in nb.chats] == ["second question"]
+    panel.ask("more")                                  # a new agent: it gets the chat as a transcript
+    _wait(app, panel)
+    assert "<earlier_chat>" in asked[-1] and "User: first question" in asked[-1]
+    panel.delete_chat()                                # gone, not into the history
+    assert panel.messages == [] and nb.chat == [] and [c["title"] for c in nb.chats] == ["second question"]
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_activity_bar_order_icons_and_tooltips(app, pipe, monkeypatch):
     """Work side bars on top, Plugins and Preferences at the bottom, the Window menu in the same
     order, and every tooltip names its shortcut (D35)."""

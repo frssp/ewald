@@ -428,10 +428,8 @@ QTabBar#notebookTabBar::tab, QTabBar#chatTabBar::tab {{ font-family: "JetBrains 
 QTabBar#notebookTabBar::tab:selected, QTabBar#chatTabBar::tab:selected {{ color: {accent}; border-bottom: 2px solid {accent}; font-weight: 600; }}
 QWidget#notebookTabRow, QTabBar#notebookTabBar, QWidget#chatTabRow, QTabBar#chatTabBar {{ background: transparent; }}
 QWidget#chatPanel, QWidget#chatPage, QScrollArea#chatScroll, QWidget#chatWelcome {{ background: {bg}; }}
-QLabel#chatContext {{ color: {muted}; background: transparent; font-size: 11px; }}
+QLabel#chatContext {{ color: {muted}; background: {hover}; border-radius: 9px; padding: 2px 8px; font-size: 11px; }}
 QLabel#chatContext[picked="true"] {{ color: {pick}; }}
-QToolButton#chatHeaderButton {{ color: {secondary}; border-radius: 6px; padding: 3px 10px; }}
-QToolButton#chatHeaderButton:hover {{ background: {hover}; color: {text}; }}
 QFrame#chatUserBubble {{ background: {accent_soft}; border-radius: 14px; border-top-right-radius: 4px; }}
 QLabel#chatUserText {{ color: {text}; background: transparent; }}
 QLabel#chatMeta {{ color: {muted}; font-size: 10px; background: transparent; }}

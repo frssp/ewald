@@ -43,6 +43,7 @@ PATHS = {
     "next": '<path d="M17 5.5v13"/><path d="M6.5 6.5v11l7-5.5z" fill="currentColor"/>',
     "layers": '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
     "isosurface": '<path d="M12 3c5 0 8 4 8 9s-3 9-8 9-8-4-8-9 3-9 8-9z"/><path d="M8 12c2-3 6-3 8 0"/>',
+    "history": '<path d="M4 12a8 8 0 1 0 2.4-5.7L4 8.5"/><path d="M4 4v4.5h4.5"/><path d="M12 8v4.5l3 1.8"/>',
     "chart": '<path d="M4 20V4M4 20h16"/><path d="m7 15 4-5 3 3 5-7"/>',
     "ai": '<path d="M6.5 4h11A2.5 2.5 0 0 1 20 6.5v8a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 3.5V17A2.5 2.5 0 0 1 4 14.5v-8A2.5 2.5 0 0 1 6.5 4z"/>'
           '<path d="M12 6.9Q12.6 9.9 15.6 10.5Q12.6 11.1 12 14.1Q11.4 11.1 8.4 10.5Q11.4 9.9 12 6.9z" fill="currentColor" stroke-width="1"/>',

@@ -9,7 +9,7 @@ each cell, readable in Jupyter, VS Code and on GitHub. ewald keeps what Jupyter 
     analysis.ewd
     ├── notebook.ipynb   code, outputs and metadata (opens in Jupyter once unzipped)
     ├── manifest.json    ewald version, data files (path, size, fingerprint), plugins, viewer state
-    ├── chat.json        the AI chat beside the notebook (its messages as text; when there is one)
+    ├── chat.json        the AI chat beside the notebook and its earlier chats (messages as text)
     ├── figures/         every view cell as SVG and PNG, with the plotted data as CSV
     ├── data/            data files up to ``data_limit_mb`` (larger ones stay links)
     └── plugins/         plugin files the notebook uses, from the plugin folder
@@ -260,8 +260,11 @@ def save_ewd(nb, path, *, figures: bool = True, data_limit_mb: float = 50.0, plu
             manifest["figures"] = _write_figures(nb, z)
         if plugins:
             manifest["plugins"] = _write_plugins(nb, z, plugin_registry)
-        if getattr(nb, "chat", None):
-            z.writestr(CHAT_NAME, json.dumps({"messages": chat_messages(nb.chat)}, indent=1, ensure_ascii=False))
+        if getattr(nb, "chat", None) or getattr(nb, "chats", None):
+            saved = {"messages": chat_messages(nb.chat)}
+            if getattr(nb, "chats", None):
+                saved["history"] = chat_history(nb.chats)
+            z.writestr(CHAT_NAME, json.dumps(saved, indent=1, ensure_ascii=False))
         z.writestr(MANIFEST_NAME, json.dumps(manifest, indent=1, ensure_ascii=False))
     fileops.replace(tmp, path)
     return manifest
@@ -374,7 +377,9 @@ def load_ewd(path, cls=None, trusted: bool | None = None, **kwargs):
         chat_warning = []
         if CHAT_NAME in names:
             try:
-                nb.chat = chat_messages(json.loads(z.read(CHAT_NAME).decode("utf-8")).get("messages"))
+                saved = json.loads(z.read(CHAT_NAME).decode("utf-8"))
+                nb.chat = chat_messages(saved.get("messages"))
+                nb.chats = chat_history(saved.get("history"))
             except (ValueError, AttributeError):
                 chat_warning = ["the saved AI chat could not be read"]
         bundle = bundle_dir_for(path)
@@ -399,6 +404,22 @@ def load_ewd(path, cls=None, trusted: bool | None = None, **kwargs):
     if trusted:
         load_bundled_plugins(nb)
     return nb
+
+
+def chat_history(raw) -> list[dict]:
+    """A notebook's earlier AI chats (``Notebook.chats``), checked: each a ``title``, the time it was
+    put away (``saved``, ISO 8601 text) and its :func:`chat_messages`; empty ones are dropped."""
+    out = []
+    for c in raw if isinstance(raw, list) else []:
+        if not isinstance(c, dict):
+            continue
+        messages = chat_messages(c.get("messages"))
+        if not messages:
+            continue
+        out.append({"title": c["title"][:120] if isinstance(c.get("title"), str) else "",
+                    "saved": c["saved"][:40] if isinstance(c.get("saved"), str) else "",
+                    "messages": messages})
+    return out
 
 
 def chat_messages(raw) -> list[dict]:

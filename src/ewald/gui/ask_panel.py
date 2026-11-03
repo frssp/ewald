@@ -493,6 +493,27 @@ def history_prompt(entries: list[dict]) -> str:
             f"<earlier_chat>\n{text}\n</earlier_chat>") if text else ""
 
 
+def _elide(text: str, n: int = 60) -> str:
+    first = (text.strip().splitlines() or [""])[0]
+    return first[:n] + ("…" if len(first) > n else "")
+
+
+def _when(saved: str) -> str:
+    """When an earlier chat was put away, short: the time today, "yesterday", else the date."""
+    import datetime
+
+    try:
+        t = datetime.datetime.fromisoformat(saved)
+    except ValueError:
+        return ""
+    days = (datetime.date.today() - t.date()).days
+    if days == 0:
+        return t.strftime("%H:%M")
+    if days == 1:
+        return "yesterday"
+    return f"{t:%b} {t.day}" if t.year == datetime.date.today().year else f"{t:%Y-%m-%d}"
+
+
 class _Conversation:
     """The chat of one notebook tab: its messages (and the page that shows them), its agent and
     what was sent to it, and the answer on its way. ``key`` is the notebook (None: no notebook)."""
@@ -515,6 +536,7 @@ class _Conversation:
         self.sent_errors: str | None = None
         self.sent_view: str | None = None
         self.history = ""               # an earlier conversation the next question carries to a new agent
+        self._chats: list = []          # earlier chats while there is no notebook
         self.worker: _Worker | None = None
         self.pending: Message | None = None
         self.tools_used: list[str] = []
@@ -522,6 +544,13 @@ class _Conversation:
 
     def busy(self) -> bool:
         return self.worker is not None and self.worker.isRunning()
+
+    @property
+    def chats(self) -> list:
+        """The earlier chats (``Notebook.chats``; kept here while there is no notebook)."""
+        if self.key is not None and hasattr(self.key, "chats"):
+            return self.key.chats
+        return self._chats
 
     def forget_sent(self):
         self.sent_notebook = self.sent_errors = self.sent_view = None
@@ -576,13 +605,18 @@ class ChatTabs(QtWidgets.QWidget):
         lay = QtWidgets.QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(0)
-        lay.addWidget(self.title)
+        lay.setSpacing(2)
+        lay.addWidget(self.title, 1)   # in place of the tabs when there are none
         lay.addWidget(bar, 1)
         self.notebooks: list = []
         self._marks: list = []
         self._mirroring = False
         bar.currentChanged.connect(self._picked)
         self.mirror([], -1)
+
+    def add_button(self, button: QtWidgets.QAbstractButton):
+        """A panel button at the right end of the row (History, New chat)."""
+        self.layout().addWidget(button, 0, QtCore.Qt.AlignVCenter)
 
     def mirror(self, entries: list[tuple[object, str, str | None]], current: int, restyle: bool = False):
         """Show ``entries`` (notebook, tab name, mark: None, "chat" or "answering") as the tabs,
@@ -681,15 +715,15 @@ class AskPanel(QtWidgets.QWidget):
         self._tab_entries: list[tuple[object, str]] = []
         self._tab_current = -1
 
-        # --- header: what the question is about, New chat
+        # --- the tab row's buttons: History (the notebook's earlier chats) and New chat; what the
+        # question is about is a chip above the input
         self.selection_label = QtWidgets.QLabel(objectName="chatContext")
-        self.new_button = QtWidgets.QToolButton(text="New chat", objectName="chatHeaderButton",
-                                                toolTip="Start a new conversation")
+        self.history_button = header.button("history", "Earlier chats of this notebook")
+        self.history_button.clicked.connect(self._show_history)
+        self.new_button = header.button("plus", "New chat (this one goes into History)")
         self.new_button.clicked.connect(self.reset)
-        header = QtWidgets.QHBoxLayout()
-        header.setContentsMargins(10, 6, 6, 6)
-        header.addWidget(self.selection_label, 1)
-        header.addWidget(self.new_button)
+        self.tabs.add_button(self.history_button)
+        self.tabs.add_button(self.new_button)
 
         # --- messages: one page per conversation
         self.scroll = _FitWidthScrollArea(objectName="chatScroll")
@@ -723,11 +757,11 @@ class AskPanel(QtWidgets.QWidget):
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 8)
         lay.setSpacing(0)
-        lay.addLayout(header)
         lay.addWidget(self.scroll, 1)
         bottom = QtWidgets.QVBoxLayout()
         bottom.setContentsMargins(10, 6, 10, 0)
         bottom.setSpacing(4)
+        bottom.addWidget(self.selection_label, 0, QtCore.Qt.AlignLeft)
         bottom.addWidget(composer)
         bottom.addWidget(hint)
         lay.addLayout(bottom)
@@ -785,7 +819,9 @@ class AskPanel(QtWidgets.QWidget):
                 # a chat started before there was a notebook goes on in the first one
                 del self._conversations[id(None)]
                 conv = loose
-                conv.key = key
+                earlier, conv.key = loose._chats, key
+                if hasattr(key, "chats"):
+                    key.chats.extend(earlier)
                 conv.save()
             else:
                 conv = _Conversation(self, key)
@@ -922,10 +958,81 @@ class AskPanel(QtWidgets.QWidget):
             self.scroll.verticalScrollBar().setValue(hi)
 
     def reset(self):
-        """New chat: the current notebook's conversation starts over."""
+        """New chat: the current notebook's conversation starts over; the one it had goes into the
+        notebook's earlier chats (``Notebook.chats``, :meth:`open_chat` brings it back)."""
         conv = self._conv()
         if conv.busy():
             return
+        self._archive(conv)
+        self._clear(conv)
+
+    def delete_chat(self):
+        """Throw the current chat away (it does not go into the earlier chats) and start over."""
+        conv = self._conv()
+        if not conv.busy():
+            self._clear(conv)
+
+    def open_chat(self, index: int):
+        """Show the notebook's earlier chat ``index`` (in :meth:`chat_history`'s order) again; the
+        current one takes its place among the earlier chats. Its next question carries it to the
+        model as a transcript, as a chat saved with the notebook does."""
+        conv = self._conv()
+        chats = conv.chats
+        if conv.busy() or not 0 <= index < len(chats):
+            return
+        entry = chats.pop(index)
+        self._archive(conv)
+        self._clear(conv)
+        for message in entry["messages"]:
+            m = Message.from_dict(message, insert=self._insert)
+            conv.snippets += [b.code for b in m.code_blocks if b.insert_button is not None]
+            self._add(m, conv, save=False)
+        conv.save()
+        self.mirror_tabs()
+
+    def chat_history(self) -> list[dict]:
+        """The current notebook's earlier chats, newest first: ``title``, ``saved`` (ISO time) and
+        ``messages``."""
+        return list(self._conv().chats)
+
+    def history_menu(self) -> QtWidgets.QMenu:
+        """The History button's menu: the current chat, the notebook's earlier chats (open one) and
+        Delete this chat."""
+        conv = self._conv()
+        menu = QtWidgets.QMenu(self, objectName="chatHistoryMenu")
+        busy = conv.busy()
+        menu.addSection("Chats of this notebook" if conv.key is not None else "Chats")
+        first = next((m.text for m in conv.messages if m.role == "user"), None)
+        now = menu.addAction(_elide(first) if first else "New chat")
+        now.setCheckable(True)
+        now.setChecked(True)
+        now.setEnabled(False)
+        for i, entry in enumerate(conv.chats):
+            a = menu.addAction(f"{entry['title'] or 'Untitled'}\t{_when(entry.get('saved', ''))}",
+                               lambda i=i: self.open_chat(i))
+            a.setEnabled(not busy)
+        menu.addSeparator()
+        delete = menu.addAction("Delete this chat", self.delete_chat)
+        delete.setEnabled(bool(conv.messages) and not busy)
+        return menu
+
+    def _show_history(self):
+        menu = self.history_menu()
+        b = self.history_button
+        menu.exec(b.mapToGlobal(QtCore.QPoint(b.width() - menu.sizeHint().width(), b.height())))
+
+    def _archive(self, conv: _Conversation):
+        entries = [m.to_dict() for m in conv.messages if m is not conv.pending and m.role != "note"]
+        if not any(e["role"] == "user" for e in entries):
+            return
+        import datetime
+
+        first = next(e["text"] for e in entries if e["role"] == "user")
+        conv.chats.insert(0, {"title": _elide(first),
+                              "saved": datetime.datetime.now().isoformat(timespec="minutes"),
+                              "messages": entries})
+
+    def _clear(self, conv: _Conversation):
         conv.agent = None
         conv.history = ""
         conv.forget_sent()
