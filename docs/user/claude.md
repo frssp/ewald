@@ -158,6 +158,7 @@ Edit › Preferences › AI › Provider (the `llm.provider` setting, `--provide
 | OpenAI | `openai` | `gpt-5` | `OPENAI_API_KEY` or the keychain |
 | Google Gemini | `gemini` | `gemini-2.5-pro` | `GEMINI_API_KEY` or the keychain |
 | OpenAI-compatible server | `openai-compatible` | `llama3.1` | only if the server asks for one |
+| OpenCode (ACP) | `opencode` | OpenCode's own | none: OpenCode signs in by itself |
 
 The Model field suggests a few ids per provider and takes any other id the service offers;
 left empty, the provider's default is used. Server URL changes the address: for the
@@ -174,6 +175,32 @@ service becomes a provider through a plugin (`@ai_provider`, see
 
 The anthropic and openai packages are part of every ewald install; OpenAI, Gemini and the
 OpenAI-compatible servers all go through the `openai` package.
+
+### OpenCode
+
+The *OpenCode (ACP)* provider hands each question to the [OpenCode](https://opencode.ai) coding
+agent instead of calling a model API. EWALD starts `opencode acp` in the background and talks to
+it over the [Agent Client Protocol](https://agentclientprotocol.com) (ACP: JSON-RPC messages over
+the program's stdin and stdout, the way an editor talks to a language server). OpenCode brings
+its own models, sign-in and provider settings, including a company's OpenCode setup, so the only
+field is *Agent command*: the `opencode` program, empty for `opencode` on PATH, or its full path
+(`where.exe opencode` on Windows, `which opencode` on macOS and Linux). There is no API key
+field; sign in with `opencode auth login` or OpenCode's `/connect`.
+
+*Test connection* starts OpenCode, opens a session and lists the models it offers under *Model*;
+left empty, OpenCode's default model answers. The ewald tools are not offered to OpenCode: it
+answers with ```python blocks, which become notebook cells as with every provider (and run with
+*Let the AI run cells*). It reads ewald's API reference from `ewald-api.md` in its working folder,
+a fresh `ewald-acp-*` temporary folder. OpenCode's own tools that change something (edit, bash,
+web fetch, other folders) are switched off, and any permission it asks for is refused, so the AI
+still changes things only through cells.
+
+```python
+from ewald.llm import Agent
+
+agent = Agent.from_file("XDATCAR", provider="opencode")          # opencode on PATH
+print(agent.ask("What happens in this run?"))
+```
 
 ### API gateways and Azure OpenAI
 
@@ -197,7 +224,8 @@ its own `make_client` (see [AI providers](../plugins/tools.md#ai-providers)).
 
 Besides Server URL, every provider takes *Extra headers* (`Name: value` pairs separated by `;`,
 for a proxy or a server that wants more; `{uuid}` in a value becomes a new id per request) and a
-*Timeout*; the OpenAI-compatible provider also takes a *Model prefix* and an *API key header*. Put secrets in the API key field, not in the headers, which are stored
+*Timeout*; the OpenAI-compatible provider also takes a *Model prefix* and an *API key header*,
+and OpenCode only *Agent command* and *Timeout* (one whole answer). Put secrets in the API key field, not in the headers, which are stored
 in `settings.json`.
 
 Changes on the AI page (provider, model, key, address, headers, timeout, streaming) apply from
@@ -216,7 +244,11 @@ from ewald.llm import Agent, providers
 agent = Agent.from_file("XDATCAR", **providers.from_settings(profile="hub"))
 ```
 
-API keys stay one per provider in the keychain; a saved connection never holds one.
+Each provider has one API key in the keychain, the one Ask AI uses. A saved connection keeps a
+copy of the key its provider had when you saved it (also in the keychain, under
+`<provider key>@<name>`, never in `settings.json`). Picking the connection brings that key back,
+and Apply makes it the provider's key again, so two gateways behind the same provider each keep
+their own key. Deleting the connection deletes its copy.
 
 ## API key
 

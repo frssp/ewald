@@ -1539,6 +1539,73 @@ def test_preferences_ai_connection_rows_and_saved_connections(app, monkeypatch):
     dlg.close()
 
 
+def test_preferences_saved_connection_brings_its_own_key(app, monkeypatch):
+    from ewald import settings
+    from ewald.gui.preferences import PreferencesDialog
+    from ewald.llm import credentials, providers
+
+    monkeypatch.setattr(credentials, "_keyring", lambda: None)
+    dlg = PreferencesDialog(settings.load())
+    titles = [h.text() for h, _c, _k in dlg.cards]
+    ai = [t for t in titles if t.upper() in ("SAVED CONNECTIONS", "PROVIDER")]
+    assert [t.upper() for t in ai][:2] == ["SAVED CONNECTIONS", "PROVIDER"]   # saved connections first
+    dlg.set_value("llm.provider", "openai-compatible")
+    dlg.set_value("llm.base_url", "http://hub.example/v1")
+    dlg.set_value("llm.headers", "X-Team: md")
+    dlg.key_edit.setText("key-hub")
+    dlg.save_profile("hub")
+    dlg.set_value("llm.base_url", "http://other.example/v1")
+    dlg.key_edit.setText("key-other")
+    dlg.save_profile("other")
+    dlg.apply()
+    dlg.close()
+    p = providers.get("openai-compatible")
+    assert credentials.stored_api_key(p)[0] == "key-other"
+    assert (credentials.profile_key("hub", p), credentials.profile_key("other", p)) == ("key-hub", "key-other")
+    assert "key-hub" not in open(settings.load().path, encoding="utf-8").read()
+
+    dlg = PreferencesDialog(settings.load())
+    box = dlg.editors["llm.profiles"][0]
+    i = box.combo.findData("hub")
+    box.combo.setCurrentIndex(i)
+    box.combo.activated.emit(i)
+    assert dlg.work["llm.base_url"] == "http://hub.example/v1" and dlg.work["llm.headers"] == "X-Team: md"
+    assert "saved connection hub" in dlg.key_status.text()
+    dlg.apply()
+    assert credentials.stored_api_key(p)[0] == "key-hub"
+    box.remove("other")
+    dlg.apply()
+    assert credentials.profile_key("other", p) is None
+    dlg.close()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="the fake agent is a #! program, POSIX only")
+def test_preferences_ai_opencode_rows_and_models_from_test_connection(app, monkeypatch, tmp_path):
+    from ewald import settings
+    from ewald.gui.preferences import PreferencesDialog
+    from ewald.llm import acp, credentials
+    from helpers.acp_agent import write_agent
+
+    monkeypatch.setattr(credentials, "_keyring", lambda: None)
+    monkeypatch.setattr(acp, "KNOWN_MODELS", {})
+    dlg = PreferencesDialog(settings.load())
+    rows = {k: dlg.editors[k][2] for k in ("llm.command", "llm.base_url", "llm.headers", "llm.route_prefix",
+                                            "llm.key_header")}
+    assert rows["llm.command"].isHidden() and not rows["llm.base_url"].isHidden()   # Claude: no agent program
+    dlg.set_value("llm.provider", "opencode")
+    assert not rows["llm.command"].isHidden()
+    assert all(rows[k].isHidden() for k in ("llm.base_url", "llm.headers", "llm.route_prefix", "llm.key_header"))
+    assert dlg.editors["llm.model"][0].count() == 0          # the agent lists its models when asked
+    dlg.set_value("llm.command", write_agent(tmp_path, "opencode", program=True))
+    dlg.test_api_key(wait=True)
+    assert dlg._key_ok and "FakeAgent" in dlg.key_result.text()
+    combo = dlg.editors["llm.model"][0]
+    assert [combo.itemText(i) for i in range(combo.count())] == ["fake/a", "fake/b"]
+    dlg.set_value("llm.provider", "openai-compatible")
+    assert rows["llm.command"].isHidden() and not rows["llm.base_url"].isHidden()
+    dlg.close()
+
+
 def test_ask_panel_agent_uses_ai_preferences(app, monkeypatch):
     from ewald import settings
     from ewald.gui import ask_panel
@@ -5120,7 +5187,7 @@ def test_preferences_pages_after_menu_review(app):
     assert settings.OPTION["python.run_notebooks"].page == "Notebooks"
     assert settings.OPTION["python.plugin_catalogs"].page == "Plugins"
     assert settings.OPTION["viewport.target_fps"].page == "3D view"
-    assert [title for title, _keys in LAYOUT["AI"][1]][:2] == ["Provider", "Connection"]
+    assert [title for title, _keys in LAYOUT["AI"][1]][:2] == ["Saved connections", "Provider"]
     dlg = PreferencesDialog(settings.Settings(), page="Viewports")
     assert dlg.pages.currentItem().text() == "3D view"
     dlg.show_page("Elements")

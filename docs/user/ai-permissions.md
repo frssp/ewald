@@ -206,8 +206,17 @@ it is ordinary Python), so `llm.run_cells` is the setting that matters most. In 
 ## What is sent with a question
 
 Everything below goes to the provider chosen in Preferences › AI (Anthropic by default, or
-OpenAI, Gemini, an OpenAI-compatible server or a plugin's). With a local server (Ollama, LM
+OpenAI, Gemini, an OpenAI-compatible server, OpenCode or a plugin's). With a local server (Ollama, LM
 Studio) nothing leaves your machine.
+
+With OpenCode (`opencode`, over ACP) the questions go to the OpenCode program, which sends them
+to whichever model OpenCode is set up for. It gets no ewald tools: the system prompt and notebook
+note go with the first question of a session as text, followed by `ACP_NOTE` in `llm/acp.py`,
+and OpenCode reads `ewald-api.md` (the API reference) from its own temporary working folder. Its
+tools that change something (`edit`, `bash`, `webfetch`, `external_directory`) are set to deny
+through `OPENCODE_CONFIG_CONTENT`, and every permission request it sends is refused; it can still
+read and search that working folder. Changes reach the notebook only as the ```python blocks of
+its answers.
 
 **Once per conversation (every request):**
 
@@ -281,6 +290,7 @@ keychain).
 | `llm.effort`, `llm.stream` | how hard the model thinks; answers streamed as they arrive |
 | `llm.code_cells` | ```python blocks in answers: inserted as cells (`insert`, default) or offered with a button (`button`); run only with `llm.run_cells` |
 | `llm.run_cells` | whether the AI runs cells: `run_cell` offered, cells written by `insert_cell`/`edit_cell` and inserted code blocks run at once (off) |
+| `llm.command` | the OpenCode program the OpenCode (ACP) provider starts; OpenCode's own edit, bash and web tools are switched off and its permission requests refused |
 | `llm.read_folders`, `llm.confirm_hosts` | which folders and hosts the AI may open |
 | `llm.follow_cells` | how the notebook scrolls while the AI writes and runs cells: `follow` (default), `end`, `never`; no effect on what the AI may do |
 

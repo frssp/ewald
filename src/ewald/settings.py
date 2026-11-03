@@ -251,8 +251,8 @@ OPTIONS = (
     # the API key itself is not an option: it lives in the OS keychain (ewald.llm.credentials)
     Option("llm.provider", "anthropic", "Provider",
            "The AI service behind Ask AI, the AI chat and ewald ask: Anthropic (Claude), OpenAI, Google "
-           "Gemini, an OpenAI-compatible server (Ollama, LM Studio, vLLM, OpenRouter) "
-           "or a plugin's (an API gateway, for example).",
+           "Gemini, an OpenAI-compatible server (Ollama, LM Studio, vLLM, OpenRouter), the OpenCode "
+           "coding agent (its own models and sign-in) or a plugin's (an API gateway, for example).",
            kind="ai_provider"),
     Option("llm.model", "", "Model", "Empty: the provider's default. Any model id the service offers works.",
            kind="ai_model"),
@@ -272,6 +272,9 @@ OPTIONS = (
     Option("llm.headers", "", "Extra headers",
            "HTTP headers sent with every request, as Name: value pairs separated by ';' (proxies, gateways); "
            "{uuid} in a value becomes a new id in each request. Put secrets in the API key field, not here."),
+    Option("llm.command", "", "Agent command",
+           "The OpenCode program the OpenCode (ACP) provider starts as opencode acp: a full path, or empty "
+           "for opencode on PATH (where.exe opencode or which opencode shows the path)."),
     Option("llm.timeout", 0.0, "Timeout",
            "Seconds one request may take. 0: the provider's default.",
            minimum=0.0, maximum=3600.0),
