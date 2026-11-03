@@ -238,3 +238,74 @@ def test_neb_folders_over_ssh(server, vasp_dir, lammps_dir, tmp_path):
         assert a.attributes["NEB.Barrier"] == pytest.approx(b.attributes["NEB.Barrier"])
     pipe = import_file("hpc:/data/lneb/dump.neb.*", format="neb")  # wildcard, log.lammps found next to it
     assert pipe.num_frames == 7 and pipe.compute(3).attributes["Energy"] == ref.compute(3).attributes["Energy"]
+
+
+def test_threads_share_one_sftp_session(server, lammps_dir):
+    """The compute worker and the GUI read through one SFTP session at the same time; every
+    request holds the connection lock, so replies never interleave ("Garbage packet received")."""
+    import threading
+
+    raw = (lammps_dir / "dump.custom.lammpstrj").read_bytes()
+    errors, done = [], []
+
+    def reader():
+        try:
+            for _ in range(15):
+                f = remote.RemoteFile(remote.connect("hpc"), "/data/dump.custom.lammpstrj", block_size=211)
+                try:
+                    assert f.read() == raw
+                finally:
+                    f.close()
+            done.append(1)
+        except Exception as e:  # pragma: no cover - the failure being tested
+            errors.append(e)
+
+    def browser():
+        try:
+            for _ in range(40):
+                remote.listdir("hpc:/data")
+                remote.stat("hpc:/data/POSCAR")
+        except Exception as e:  # pragma: no cover
+            errors.append(e)
+
+    threads = [threading.Thread(target=reader) for _ in range(3)] + [threading.Thread(target=browser) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(60)
+    assert not errors, errors
+    assert len(done) == 3
+
+
+def test_broken_sftp_session_is_reopened(server, lammps_dir):
+    """A broken SFTP session (garbage packet, closed channel) is reopened on the same SSH
+    transport, and open files carry on with a fresh handle."""
+    raw = (lammps_dir / "dump.custom.lammpstrj").read_bytes()
+    conn = remote.connect("hpc")
+    f = remote.RemoteFile(conn, "/data/dump.custom.lammpstrj", block_size=97, cache_blocks=2)
+    try:
+        assert f.read(10) == raw[:10]
+        transport = conn.transport
+        conn.sftp.close()  # the session is gone, the SSH connection is not
+        assert remote.stat("hpc:/data/POSCAR").st_size > 0
+        assert conn.generation == 1 and conn.transport is transport
+        f.seek(len(raw) - 300)
+        assert f.read() == raw[-300:]  # reopened its handle on the new session
+
+        calls = []
+        real = conn.sftp.listdir_attr
+
+        def garbage_once(path):
+            calls.append(path)
+            if len(calls) == 1:
+                raise paramiko.SFTPError("Garbage packet received")
+            return real(path)
+
+        conn.sftp.listdir_attr = garbage_once
+        assert "POSCAR" in {r[0] for r in remote.listdir("hpc:/data")}
+        assert conn.generation == 2
+        with pytest.raises(FileNotFoundError):  # a missing file is not a broken session
+            remote.stat("hpc:/data/nothing")
+        assert conn.generation == 2
+    finally:
+        f.close()

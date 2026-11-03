@@ -216,8 +216,10 @@ class RemotesPanel(QtWidgets.QWidget):
         self.list = QtWidgets.QListWidget(objectName="remotesList")
         self.list.setContextMenuPolicy(QtCore.Qt.CustomContextMenu)
         self.list.customContextMenuRequested.connect(self._profile_menu)
-        self.list.itemActivated.connect(lambda it: self.connect_to(it.data(ROLE)[1]))
-        self.list.itemDoubleClicked.connect(lambda it: self.connect_to(it.data(ROLE)[1]))
+        # itemActivated alone: it already fires on double-click (and Enter). Connecting
+        # itemDoubleClicked too ran connect_to twice, and the first run's refresh() deletes the
+        # items, so the second signal got None (an AttributeError on Windows).
+        self.list.itemActivated.connect(self._profile_activated)
 
         self.path = QtWidgets.QLineEdit(placeholderText="pick a computer above", objectName="remotePath")
         self.path.returnPressed.connect(lambda: self.browse(self.path.text().strip()))
@@ -380,6 +382,13 @@ class RemotesPanel(QtWidgets.QWidget):
         return ok
 
     # ------------------------------------------------------------ browsing
+    def _profile_activated(self, item):
+        data = item.data(ROLE) if item is not None else None
+        if not data:  # the "No remote computers yet" row, or an item already deleted by refresh()
+            return
+        # connect after the signal returns: browse() refreshes (and so deletes) the list items
+        QtCore.QTimer.singleShot(0, lambda host=data[1]: self.connect_to(host))
+
     def connect_to(self, host: str):
         self.host = host
         p = profiles.get(host)
