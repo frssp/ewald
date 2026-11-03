@@ -1211,7 +1211,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Alternatives:** OpenCode Zen's OpenAI-compatible endpoint through the existing provider (needs a
   Zen key, not the company setup); reading OpenCode's provider settings and calling the model
   directly; growing `ewald mcp` so OpenCode drives the open GUI.
-- **Landed:** public PR #N.
+- **Landed:** public PR #132.
 
 ## Adding an entry
 

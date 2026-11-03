@@ -10,6 +10,10 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- Preferences › AI › Provider *OpenCode (ACP)*: Ask AI answered by the OpenCode coding agent
+  (`opencode acp`, Agent Client Protocol) with OpenCode's own models and sign-in, a company's
+  setup included; the only setting is the opencode command (`llm.command`). Its answers'
+  python blocks become cells; OpenCode's edit/bash tools are switched off. (D92, #132)
 - `load_table(path)` opens files without a structure as a `Table` for `show(t, y=...)`: a LAMMPS
   log or OSZICAR on its own, or a plain text table (whitespace or comma separated, named by a
   header line or a `#` comment such as `#! FIELDS ...`). `load()` on such a file names
