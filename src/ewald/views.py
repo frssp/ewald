@@ -53,12 +53,23 @@ def view_data(source, table: str | None = None, y: str | None = None, histogram:
             raise ValueError("no tables in this data: add an analysis step first, or pass histogram=")
         table = next(iter(data.tables))
     if table not in data.tables:
-        raise KeyError(f"no table {table!r}; this frame has: {', '.join(data.tables) or 'none'}")
+        raise KeyError(f"no table {table!r}; this frame has: {', '.join(data.tables) or 'none'}"
+                       + _no_bands_hint(data, table))
     columns = data.tables[table]
     names = list(columns)
     keep = [names[0]] + ([y] if y is not None else names[1:])
     return table, Table(table, {n: columns[n] for n in keep}, labels=getattr(columns, "labels", None),
                         attributes=getattr(columns, "attributes", None))
+
+
+def _no_bands_hint(data, table) -> str:
+    """Why a VASP run has no ``Bands`` table when its k-points are a uniform mesh ("" otherwise)."""
+    es = data.attributes.get("Electronic Structure")
+    if table != "Bands" or not getattr(es, "kmesh", False):
+        return ""
+    where = (data.attributes.get("sim-agent") or {}).get("step") or getattr(es, "source", "") or "this calculation"
+    return (f". {where} ran on a uniform k-point mesh (a relaxation or SCF), not along a band path, so it has no "
+            "band structure: open the band-structure calculation (the bands step of a workflow) and show that")
 
 
 COUNT_TABLES = {"structures": "Count", "voronoi-coordination": "Count", "clusters": "Cluster Size"}

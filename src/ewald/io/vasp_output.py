@@ -524,6 +524,9 @@ class VasprunReader(FrameReader):
                     es.eigenvalues, es.occupations = es.eigenvalues[:, band], es.occupations[:, band]
                     k, w, segment = k[band], w[band], None
                 es.kpoints, es.weights = k, w
+                # Gamma / Monkhorst-Pack / automatic: a uniform mesh (relax, scf), not a band path
+                es.kmesh = band is None and gen is not None and \
+                    gen.get("param", "").strip().lower()[:1] in ("g", "m", "a")
                 es.distances, es.breaks = path_distances(k, lattice, segment)
                 if segment:
                     labels = kpoints_file_labels(os.path.join(os.path.dirname(os.path.abspath(self.path)), "KPOINTS"))

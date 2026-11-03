@@ -206,6 +206,7 @@ class VaspoutReader(FrameReader):
         inp = f.get(f"input/kpoints{suffix}")
         mode = _text(inp["mode"][()]).lower()[:1] if inp is not None and "mode" in inp else ""
         segment = int(inp["number_kpoints"][()]) if mode == "l" and "number_kpoints" in inp else None
+        es.kmesh = band is None and mode in ("g", "m", "a")   # a uniform mesh (relax, scf), not a band path
         lattice = self._cell(f, _FINAL, 0).matrix
         es.distances, es.breaks = path_distances(k, lattice, segment)
         labels = [_text(x) for x in inp["labels_kpoints"][()]] if inp is not None and "labels_kpoints" in inp else []

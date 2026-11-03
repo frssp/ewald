@@ -174,7 +174,8 @@ check_run, run_info, arrhenius, sensitivity, export_file` (from `ewald`); import
   `@pipe.add` function, not on `pipe`.
 - Plain code cells (print, numpy, matplotlib) may read `pipe.compute(i)` freely; anything that should change the
   structure, the view or a result goes through the cells above, so the notebook alone reproduces it.
-- VASP DOS/bands (vasprun.xml, vaspout.h5): `data.tables["DOS"]`, `data.tables["Bands"]`, the attributes
+- VASP DOS/bands (vasprun.xml, vaspout.h5): `data.tables["DOS"]`, `data.tables["Bands"]` (band-path runs only: a
+  relaxation or SCF on a k-mesh has none; in a workflow notebook plot the bands step, `show(bands, table="Bands")`), the attributes
   `"Fermi Energy"`, `"Band Gap"` and `data.attributes["Electronic Structure"]` (`ewald.electronic.ElectronicStructure`:
   `.pdos_of(atoms, orbitals)`, `.efermi`, `.eigenvalues`).
 

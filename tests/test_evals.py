@@ -313,3 +313,40 @@ def test_research_tasks_are_graded_per_subtask_with_the_code_written():
     assert research and all(t.allow_code and any(c.label() == "Matches answers in Korean" for c in t.checks)
                             for t in research)
     assert re.search(_KOREAN, research[0].answer) and not re.search(_KOREAN, "The barrier is 0.33 eV.\nANSWER: 0.33")
+
+
+def test_workflow_bands_come_from_the_bands_step():
+    """'plot bands' in a relax/scf/bands notebook where pipe is the relaxation: show(pipe, ...) is
+    the relaxation's k-mesh (no 'Bands' table, so the cell fails), show(bands, ...) passes, and the
+    question the model gets says which variable holds the band structure."""
+    assert _play("nb-workflow-bands", allow_code=True).passed
+    r = _play("nb-workflow-bands", calls=[("insert_cell", {"source": "show(pipe, table='Bands')"})],
+              answer="Done.", allow_code=True)
+    assert not r.passed
+    r = _play("nb-workflow-bands", calls=[("insert_cell", {"source": "pipe = bands"}),
+                                          ("insert_cell", {"source": "show(pipe, table='Bands')"})],
+              answer="Done.", allow_code=True)
+    assert r.passed          # making bands the pipeline first is fine too
+    assert not _play("nb-workflow-scf-dos", calls=[("insert_cell", {"source": "show(pipe, table='DOS')"})],
+                     answer="Done.", allow_code=True).passed
+
+
+def test_the_question_says_what_each_pipeline_holds(tmp_path):
+    from ewald.llm import eval_data
+    from ewald.llm.notebook_tools import notebook_context
+    from ewald.notebook import IMPORTS, Notebook
+
+    eval_data.write_series("si-bands-workflow", tmp_path)
+    cells = [f"relax = load({str(tmp_path / 'relax' / 'vasprun.xml')!r})",
+             f"bands = load({str(tmp_path / 'bands' / 'vasprun.xml')!r})", "result = relax", "pipe = result"]
+    nb = Notebook.from_py("".join(f"# %%\n{c}\n\n" for c in [IMPORTS, *cells]))
+    assert nb.run_all()
+    text = notebook_context(nb)
+    block = text[text.index("# [pipelines"):]
+    assert "pipe (the same pipeline as relax, result)" in block
+    lines = {ln.split(":")[0].strip("# -").split(" (")[0]: ln for ln in block.splitlines()[1:]}
+    assert "uniform k-mesh only" in lines["pipe"] and "4 frames" in lines["pipe"]
+    assert "band structure along a k-path (30 k-points; table 'Bands')" in lines["bands"]
+    single = Notebook.from_py(f"# %%\n{IMPORTS}\n\n# %%\npipe = load({str(tmp_path / 'bands' / 'vasprun.xml')!r})\n")
+    assert single.run_all()
+    assert "# [pipelines" not in notebook_context(single)     # one pipeline: nothing to choose between

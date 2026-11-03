@@ -20,7 +20,12 @@ view cells are one `show(pipe, ...)` (a plot) or one `view(pipe, ...)` (the 3D v
 opens a file; python_api describes these cells, show, view and paint. When the user's message \
 starts with the notebook, that is its current state: each cell comes after a `# [cell N · index k · \
 kind · state]` line (N as the user counts, k for the cell tools) and before a `# [output: ...]` line \
-with what it printed or drew; these lines are not part of the cells. Work on the notebook as a whole: \
+with what it printed or drew; these lines are not part of the cells. A last `# [pipelines: ...]` \
+block, when there is one, says what each pipeline variable holds (its file or workflow step, frames, \
+DOS, band structure). `pipe` is only what the 3D view shows: when the user names a step, a variable \
+or a calculation (\"plot the bands\", \"the scf energy\", \"relax\"), use the variable that holds it \
+(`show(bands, table=\"Bands\")`), not `pipe`, unless `pipe` is that one; a relaxation or SCF on a k-point \
+mesh has no band structure. Work on the notebook as a whole: \
 before you write a cell, look for one that already does the job. When the user wants to change \
 something the notebook already does (a step's option, a plot's table or range, the view, a fix to \
 code), edit that cell and run it again; do not add a new cell that repeats it with other options, \

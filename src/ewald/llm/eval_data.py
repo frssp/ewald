@@ -8,6 +8,10 @@ is known; some series carry a trap a careful analyst catches (a run that starts 
 whose name disagrees with its INCAR, a run whose SCF never converged, runs that are all at one
 temperature, Li that never leaves its site, runs that store frames at different intervals). Everything is seeded, so a series is the same on
 every machine; the graders compute their reference values from the written files.
+
+:data:`WORKFLOWS` are other made-up calculations written the same way: ``si-bands-workflow`` is a
+relax -> scf -> bands workflow of Si (one folder per step with its vasprun.xml), where only the
+bands step ran along a k-path; the relaxation and the SCF ran on a k-mesh.
 """
 from __future__ import annotations
 
@@ -180,8 +184,149 @@ def write_run(folder: Path, series: Series, spec: RunSpec, rng) -> Path:
     return path
 
 
+# ------------------------------------------------------------------ a band-structure workflow
+_SI_A = 5.43
+_SI_LATTICE = 0.5 * _SI_A * np.array([[0, 1, 1], [1, 0, 1], [1, 1, 0]], float)
+_SI_PATH = [("\\Gamma", [0, 0, 0]), ("X", [0.5, 0, 0.5]), ("X", [0.5, 0, 0.5]), ("W", [0.5, 0.25, 0.75]),
+            ("K", [0.375, 0.375, 0.75]), ("\\Gamma", [0, 0, 0])]
+_SI_DIV = 10
+_SI_EF = 5.8
+
+
+def _si_eigenvalues(k, shift=0.0) -> np.ndarray:
+    """(nk, 8) made-up Si bands: valence top 5.5 eV at Gamma, conduction bottom 6.6 eV near X."""
+    kc = np.asarray(k, float) @ np.linalg.inv(_SI_LATTICE).T
+    g = np.linalg.norm(kc, axis=1)
+    x = np.linalg.norm(kc - np.array([0.5, 0, 0.5]) @ np.linalg.inv(_SI_LATTICE).T, axis=1)
+    e = np.zeros((len(k), 8))
+    for b in range(4):
+        e[:, b] = 5.5 - (3 - b) * 2.0 - 6 * g ** 2 * (1 + 0.3 * b)
+    for b in range(4, 8):
+        e[:, b] = 6.6 + (b - 4) * 1.4 + 4 * x ** 2 * (1 + 0.2 * b)
+    return e + shift
+
+
+def _vasprun_xml(frames, kpoints, weights, generation, eig, efermi, dos=True) -> str:
+    """A small VASP 6 vasprun.xml of Si2: ``frames`` (fractional positions, one calculation
+    each), the k-points under ``generation`` (``("Gamma", "4 4 4")`` or ``("listgenerated", div,
+    ends)``), eigenvalues ``(nk, nb)`` of the last calculation and, with ``dos``, a total DOS."""
+    def f(x):
+        return f"{x:16.8f}"
+
+    out = ['<?xml version="1.0" encoding="ISO-8859-1"?>', "<modeling>", " <generator>",
+           '  <i name="program" type="string">vasp </i>', '  <i name="version" type="string">6.4.2  </i>',
+           " </generator>", " <kpoints>"]
+    if generation[0] == "listgenerated":
+        out += ['  <generation param="listgenerated" >', f'   <i type="int" name="divisions">     {generation[1]} </i>']
+        out += [f"   <v>{''.join(f(c) for c in p)} </v>" for _, p in generation[2]]
+    else:
+        out += [f'  <generation param="{generation[0]}" >', f'   <v type="int" name="divisions">{generation[1]} </v>']
+    out += ["  </generation>", '  <varray name="kpointlist" >']
+    out += [f"   <v>{''.join(f(c) for c in k)} </v>" for k in kpoints]
+    out += ["  </varray>", '  <varray name="weights" >'] + [f"   <v>{f(w)} </v>" for w in weights]
+    out += ["  </varray>", " </kpoints>", " <atominfo>", "  <atoms>       2 </atoms>", "  <types>       1 </types>",
+            '  <array name="atoms" >', '   <dimension dim="1">ion</dimension>', '   <field type="string">element</field>',
+            '   <field type="int">atomtype</field>', "   <set>", "    <rc><c>Si</c><c>   1</c></rc>",
+            "    <rc><c>Si</c><c>   1</c></rc>", "   </set>", "  </array>", '  <array name="atomtypes" >',
+            '   <dimension dim="1">type</dimension>', '   <field type="int">atomspertype</field>',
+            '   <field type="string">element</field>', "   <field>mass</field>", "   <field>valence</field>",
+            '   <field type="string">pseudopotential</field>', "   <set>",
+            "    <rc><c>   2</c><c>Si</c><c>     28.08500000</c><c>      4.00000000</c>"
+            "<c>  PAW_PBE Si 05Jan2001                 </c></rc>", "   </set>", "  </array>", " </atominfo>"]
+
+    def structure(frac, name=None, pad=" "):
+        lines = [f'{pad}<structure name="{name}" >' if name else f"{pad}<structure>", f"{pad} <crystal>",
+                 f'{pad}  <varray name="basis" >']
+        lines += [f"{pad}   <v>{''.join(f(c) for c in v)} </v>" for v in _SI_LATTICE]
+        lines += [f"{pad}  </varray>", f'{pad}  <i name="volume">{f(abs(np.linalg.det(_SI_LATTICE)))} </i>',
+                  f"{pad} </crystal>", f'{pad} <varray name="positions" >']
+        lines += [f"{pad}  <v>{''.join(f(c) for c in v)} </v>" for v in frac] + [f"{pad} </varray>", f"{pad}</structure>"]
+        return lines
+
+    out += structure(frames[0], "initialpos")
+    for i, frac in enumerate(frames):
+        energy = -10.8 + 0.05 * (len(frames) - 1 - i)
+        en = [f'   <i name="e_fr_energy">{f(energy)} </i>', f'   <i name="e_wo_entrp">{f(energy)} </i>',
+              f'   <i name="e_0_energy">{f(energy)} </i>']
+        out += [" <calculation>", "  <scstep>", "   <energy>"] + [" " + x for x in en] + ["   </energy>", "  </scstep>"]
+        out += structure(frac, pad="  ")
+        out += ['  <varray name="forces" >'] + [f"   <v>{f(0.02 * (len(frames) - 1 - i))}{f(0)}{f(0)} </v>"] * 2
+        out += ["  </varray>", '  <varray name="stress" >'] + [f"   <v>{f(0)}{f(0)}{f(0)} </v>"] * 3
+        out += ["  </varray>", "  <energy>"] + en + ["  </energy>"]
+        if i == len(frames) - 1:
+            out += ["  <eigenvalues>", "   <array>", '    <dimension dim="1">band</dimension>',
+                    '    <dimension dim="2">kpoint</dimension>', '    <dimension dim="3">spin</dimension>',
+                    "    <field>eigene</field>", "    <field>occ</field>", "    <set>", '     <set comment="spin 1">']
+            for k in range(len(kpoints)):
+                out.append(f'      <set comment="kpoint {k + 1}">')
+                out += [f"       <r>{f(e)}{f(1.0 if e < efermi else 0.0)} </r>" for e in eig[k]]
+                out.append("      </set>")
+            out += ["     </set>", "    </set>", "   </array>", "  </eigenvalues>", "  <separator> </separator>"]
+            if dos:
+                energies = np.linspace(efermi - 12, efermi + 8, 81)
+                d = np.exp(-0.5 * ((energies[:, None] - eig.ravel()[None]) / 0.3) ** 2).sum(1) * (weights.sum() / len(kpoints))
+                integ = np.cumsum(d) * (energies[1] - energies[0])
+                out += ["  <dos>", f'   <i name="efermi">{f(efermi)} </i>', "   <total>", "    <array>",
+                        '     <dimension dim="1">gridpoints</dimension>', '     <dimension dim="2">spin</dimension>',
+                        "     <field>energy</field>", "     <field>total</field>", "     <field>integrated</field>",
+                        "     <set>", '      <set comment="spin 1">']
+                out += [f"       <r>{f(e)}{f(v)}{f(c)} </r>" for e, v, c in zip(energies, d, integ)]
+                out += ["      </set>", "     </set>", "    </array>", "   </total>", "  </dos>"]
+            else:
+                out += ["  <dos>", f'   <i name="efermi">{f(efermi)} </i>', "  </dos>"]
+        out.append(" </calculation>")
+    out += structure(frames[-1], "finalpos")
+    out.append("</modeling>")
+    return "\n".join(out) + "\n"
+
+
+def write_bands_workflow(where) -> Path:
+    """``relax/``, ``scf/`` and ``bands/`` of a made-up Si workflow, each with INCAR, KPOINTS and
+    vasprun.xml: the relaxation (4 ionic steps, the atoms moving to the diamond sites) and the SCF
+    ran on a 4x4x4 Gamma mesh, the bands step along G-X | W-K-G (its band structure is shifted
+    0.05 eV from the mesh runs' eigenvalues, so a plot of the wrong step is told apart)."""
+    where = Path(where)
+    rng = np.random.default_rng(7)
+    ideal = np.array([[0, 0, 0], [0.25, 0.25, 0.25]], float)
+    mesh = np.array([[i, j, k] for i in range(4) for j in range(4) for k in range(4)], float) / 4
+    mesh = mesh[: 10]                                    # an irreducible wedge in spirit: ten points
+    weights = rng.random(len(mesh)) + 0.5
+    weights /= weights.sum()
+    path = []
+    for s in range(0, len(_SI_PATH), 2):
+        a, b = np.array(_SI_PATH[s][1], float), np.array(_SI_PATH[s + 1][1], float)
+        path += [a + (b - a) * t for t in np.linspace(0, 1, _SI_DIV)]
+    path = np.array(path)
+    steps = {
+        "relax": ([ideal + [[0, 0, 0], [0.02 * (3 - i) / 3, -0.01 * (3 - i) / 3, 0.015 * (3 - i) / 3]] for i in range(4)],
+                  mesh, weights, ("Gamma", "4 4 4"), _si_eigenvalues(mesh), True, "IBRION = 2\nNSW = 40\nISIF = 3\n",
+                  "Automatic mesh\n0\nGamma\n4 4 4\n"),
+        "scf": ([ideal], mesh, weights, ("Gamma", "4 4 4"), _si_eigenvalues(mesh), True, "NSW = 0\nLCHARG = .TRUE.\n",
+                "Automatic mesh\n0\nGamma\n4 4 4\n"),
+        "bands": ([ideal], path, np.full(len(path), 1.0 / len(path)), ("listgenerated", _SI_DIV, _SI_PATH),
+                  _si_eigenvalues(path, 0.05), False, "NSW = 0\nICHARG = 11\nLORBIT = 11\n",
+                  "\n".join(["G-X W-K-G", str(_SI_DIV), "Line-mode", "Reciprocal"]
+                            + [" ".join(f"{c:.6f}" for c in p) + f" ! {lab}" for lab, p in _SI_PATH]) + "\n"),
+    }
+    for name, (frames, k, w, gen, eig, dos, incar, kpoints) in steps.items():
+        folder = where / name
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / "INCAR").write_text("SYSTEM = Si\nENCUT = 400\n" + incar, encoding="utf-8", newline="\n")
+        (folder / "KPOINTS").write_text(kpoints, encoding="utf-8", newline="\n")
+        (folder / "vasprun.xml").write_text(_vasprun_xml(frames, k, w, gen, eig, _SI_EF, dos=dos),
+                                            encoding="utf-8", newline="\n")
+    return where
+
+
+#: Other made-up calculations the tasks use, by name (``series:<name>/...`` like :data:`SERIES`).
+WORKFLOWS = {"si-bands-workflow": write_bands_workflow}
+
+
 def write_series(name: str, where) -> Path:
-    """Write series ``name`` (:data:`SERIES`) into folder ``where``; returns ``where``."""
+    """Write series ``name`` (:data:`SERIES`, or a :data:`WORKFLOWS` one) into folder ``where``;
+    returns ``where``."""
+    if name in WORKFLOWS:
+        return WORKFLOWS[name](where)
     series = SERIES[name]
     where = Path(where)
     rng = np.random.default_rng(series.seed)
@@ -190,4 +335,4 @@ def write_series(name: str, where) -> Path:
     return where
 
 
-__all__ = ["KB", "RunSpec", "SERIES", "Series", "write_run", "write_series"]
+__all__ = ["KB", "RunSpec", "SERIES", "Series", "WORKFLOWS", "write_bands_workflow", "write_run", "write_series"]

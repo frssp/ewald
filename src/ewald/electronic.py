@@ -11,13 +11,17 @@
 - the eigenvalues (``(nspin, nk, nbands)``), occupations, k-points (reduced) and weights,
 - the band-path distances (1/Angstrom, without 2 pi, as phonopy and py4vasp), the
   high-symmetry ticks ``[(distance, label)]`` and the indices where the path jumps,
-- the band projections (``(nspin, nk, nbands, natoms, norbitals)``), read when first used.
+- the band projections (``(nspin, nk, nbands, natoms, norbitals)``), read when first used,
+- ``kmesh``: True when the k-points are a uniform mesh (KPOINTS Gamma, Monkhorst-Pack or
+  automatic: a relaxation or a self-consistent run) rather than a band path. Such a run has
+  eigenvalues and a band gap but no band structure, so it gets no ``Bands`` table: plotting its
+  mesh points one after another as a "band structure" would be meaningless.
 
 ``nspin`` is 1 (also for non-collinear runs, where only the total is kept) or 2. Energies
 in tables and plots are relative to the Fermi energy. In :meth:`dos_table` the spin-down
 channel is negated, so it plots below the axis. The readers put the object in
 ``data.attributes["Electronic Structure"]``, the tables in ``data.tables["DOS"]`` and
-``data.tables["Bands"]`` and the gap in the attributes ``Fermi Energy`` and ``Band Gap``.
+``data.tables["Bands"]`` (band paths only) and the gap in the attributes ``Fermi Energy`` and ``Band Gap``.
 """
 from __future__ import annotations
 
@@ -75,6 +79,7 @@ class ElectronicStructure:
     distances: np.ndarray | None = None       # (nk,) along the path, 1/Angstrom
     ticks: list = field(default_factory=list)  # [(distance, label)]
     breaks: list = field(default_factory=list)  # k-point indices that start a new, disconnected segment
+    kmesh: bool = False                       # k-points are a uniform mesh, not a band path
     source: str = ""
     projections_loader: Callable | None = None  # () -> (nspin, nk, nb, natoms, norb) or None
     _projections: np.ndarray | None = None
@@ -87,6 +92,12 @@ class ElectronicStructure:
     @property
     def has_bands(self) -> bool:
         return self.eigenvalues is not None and self.eigenvalues.shape[1] > 0
+
+    @property
+    def has_band_path(self) -> bool:
+        """Eigenvalues along a band path (more than one k-point, not a uniform mesh): what the
+        ``Bands`` table and a band-structure plot need."""
+        return self.has_bands and not self.kmesh and self.eigenvalues.shape[1] > 1
 
     @property
     def num_spins(self) -> int:
@@ -201,7 +212,7 @@ class ElectronicStructure:
             t = {}
             if self.has_dos:
                 t["DOS"] = self.dos_table()
-            if self.has_bands and self.eigenvalues.shape[1] > 1:
+            if self.has_band_path:
                 t["Bands"] = self.band_table()
             self._table_cache = t
         return {k: dict(v) for k, v in self._table_cache.items()}
@@ -211,7 +222,8 @@ class ElectronicStructure:
         if self.has_dos:
             parts.append(f"DOS {len(self.dos_energies)} points" + (" + PDOS" if self.pdos is not None else ""))
         if self.has_bands:
-            parts.append(f"{self.eigenvalues.shape[1]} k-points x {self.eigenvalues.shape[2]} bands")
+            parts.append(f"{self.eigenvalues.shape[1]} k-points x {self.eigenvalues.shape[2]} bands"
+                         + (" (k-mesh, no band path)" if self.kmesh else ""))
         spin = " spin-polarized" if self.num_spins == 2 else ""
         return f"<ElectronicStructure{spin} {', '.join(parts)}, E_F {self.efermi:.4f} eV, {self.source}>"
 

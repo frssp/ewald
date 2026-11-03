@@ -152,3 +152,39 @@ def test_band_gap_metal_and_missing():
                              occupations=np.array([[[1.0, 0.0], [1.0, 1.0]]]), kpoints=np.zeros((2, 3)))
     assert es.band_gap()["gap"] == 0.0
     assert ElectronicStructure(types=np.array(["Cu"])).band_gap() is None
+
+
+def _mesh_copies(tmp_path):
+    """The fixture run as if its k-points were a uniform Gamma mesh (a relaxation or SCF)."""
+    h5py = pytest.importorskip("h5py")
+    xml = tmp_path / "vasprun.xml"
+    with open(XML, encoding="utf-8") as fh:
+        text = fh.read()
+    assert 'param="listgenerated"' in text
+    with open(xml, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(text.replace('param="listgenerated"', 'param="Gamma"'))
+    h5 = tmp_path / "vaspout.h5"
+    shutil.copy(H5, h5)
+    with h5py.File(h5, "r+") as f:
+        del f["input/kpoints/mode"]
+        f["input/kpoints/mode"] = np.bytes_("gamma")
+    return xml, h5
+
+
+def test_a_k_mesh_run_has_no_band_structure(tmp_path):
+    """A relaxation or SCF on a uniform k-mesh has eigenvalues and a gap but no band path: no
+    "Bands" table (the mesh points drawn one after another looked like a band structure), and
+    show(..., table="Bands") says to open the band-structure calculation."""
+    from ewald.views import view_data
+
+    for path in _mesh_copies(tmp_path):
+        data = ewald.import_file(str(path)).compute(0)
+        es = data.attributes["Electronic Structure"]
+        assert es.kmesh and es.has_bands and not es.has_band_path and "k-mesh" in repr(es)
+        assert "DOS" in data.tables and "Bands" not in data.tables
+        assert data.attributes["Band Gap"] == pytest.approx(0.9)
+        with pytest.raises(KeyError, match="uniform k-point mesh.*band-structure calculation"):
+            view_data(data, table="Bands")
+    for path in (XML, H5):     # the line-mode fixture is a band path
+        es = electronic(path)
+        assert not es.kmesh and es.has_band_path

@@ -251,6 +251,43 @@ def _compares(frames=None, columns=None, layout=None):
         return False
     return check
 
+def _shown_from(step, table):
+    """A cell that ran shows ``table`` of the pipeline loaded from ``<step>/vasprun.xml``
+    (``show(bands, table="Bands")``, or ``pipe = bands`` and ``show(pipe, ...)``), read from the
+    notebook's namespace when the task ends."""
+    import ast
+    from pathlib import PurePath
+
+    def check(nb):
+        for c in nb.cells:
+            if c.kind != "code" or c.state != "ok":
+                continue
+            try:
+                tree = ast.parse(c.source)
+            except SyntaxError:
+                continue
+            for n in ast.walk(tree):
+                if not (isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "show"
+                        and n.args and isinstance(n.args[0], ast.Name)):
+                    continue
+                kw = {k.arg: k.value for k in n.keywords}
+                if not (isinstance(kw.get("table"), ast.Constant) and kw["table"].value == table):
+                    continue
+                source = getattr(nb.namespace.get(n.args[0].id), "source", None)
+                path = getattr(source, "path", None)
+                if isinstance(path, str) and PurePath(path).parts[-2:] == (step, "vasprun.xml"):
+                    return True
+        return False
+    return check
+
+
+#: the cells a relax -> scf -> bands workflow notebook opens with (as the sim-agent side bar
+#: wrote them: every step under its name, and the workflow's own result, which is the relaxation)
+_BANDS_WORKFLOW_CELLS = ["relax = load('relax/vasprun.xml')\nscf = load('scf/vasprun.xml')\n"
+                         "bands = load('bands/vasprun.xml')\nresult = load('relax/vasprun.xml')",
+                         "pipe = result"]
+
+
 def _cell_count(nb) -> int:
     return len(nb.cells)
 
@@ -718,6 +755,16 @@ TASKS: list[Task] = [
          setup=["pipe.add(CoordinationAnalysis(cutoff=3.0))", "pipe.add(ColorCoding(property='Coordination', "
                 "cmap='viridis'))"],
          solution=[("edit_cell", {"index": 3, "params": {"cmap": "coolwarm"}})], answer="Done."),
+
+    # the step the user names, not pipe: pipe is the relaxation, whose k-mesh has no band structure
+    Task("nb-workflow-bands", "plot bands", "series:si-bands-workflow/relax/vasprun.xml",
+         [Cells(_shown_from("bands", "Bands"), name="show(bands, table='Bands') ran")],
+         category="notebook", allow_code=True, setup=_BANDS_WORKFLOW_CELLS,
+         solution=[("insert_cell", {"source": "show(bands, table='Bands')"})], answer="Done."),
+    Task("nb-workflow-scf-dos", "Show me the DOS of the scf calculation.", "series:si-bands-workflow/relax/vasprun.xml",
+         [Cells(_shown_from("scf", "DOS"), name="show(scf, table='DOS') ran")],
+         category="notebook", allow_code=True, setup=_BANDS_WORKFLOW_CELLS,
+         solution=[("insert_cell", {"source": "show(scf, table='DOS')"})], answer="Done."),
 
     # ---------------------------------------------------------- recipes (cells as python_api writes them)
     Task("recipe-rdf-plot", "Plot the radial distribution function in the notebook.", CU,
