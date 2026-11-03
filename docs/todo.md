@@ -772,6 +772,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- Reading a LAMMPS dump over SSH from the GUI on the owner's Windows PC against the real cluster
+  while browsing the Remotes side bar (SFTP calls now hold the connection lock and a broken
+  SFTP session is reopened, 2026-11-03; tested with threads against the in-process server only).
 - Dragging a notebook cell (or a selection) by its margins and step titles on Windows at 200 %
   scaling (the left column works there, 2026-11-02) and on macOS:
   the drag picture, the drop line and the edge scroll (only synthetic drops and a patched

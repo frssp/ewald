@@ -137,3 +137,28 @@ def test_main_window_has_remotes_side_bar(app, server, kr, monkeypatch, vasp_dir
     finally:
         w.close()
         remote.disconnect_all()
+
+
+def test_activating_a_computer_connects_once(app, server, kr, monkeypatch):
+    """A double-click emits itemActivated and itemDoubleClicked; connecting refreshes the list
+    and deletes its items, so a second handler got None (AttributeError on Windows)."""
+    from ewald.gui.remotes_panel import RemotesPanel
+
+    panel = RemotesPanel()
+    placeholder = panel.list.item(0)
+    assert placeholder.data(QtCore.Qt.UserRole) is None  # "No remote computers yet"
+    panel._profile_activated(placeholder)
+    panel._profile_activated(None)
+
+    profiles.save(Profile("work", host="hpc", folder="/data"))
+    panel.refresh()
+    calls = []
+    real = panel.connect_to
+    monkeypatch.setattr(panel, "connect_to", lambda host: calls.append(host) or real(host))
+    item = panel.list.item(0)
+    panel.list.itemActivated.emit(item)
+    panel.list.itemDoubleClicked.emit(item)
+    for _ in range(5):
+        app.processEvents()
+    assert calls == ["work"] and panel.cwd == "/data"
+    panel.close()

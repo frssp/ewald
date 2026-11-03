@@ -81,6 +81,14 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
   `ewald-optimade` plugin, which an older install no longer loads; `ewald-optimade` 0.2 only
   re-exports `ewald.optimade`. (D78, #100)
 
+### Fixed
+
+- Reading a file over SSH while another thread used the same connection (the GUI's compute
+  worker and the Remotes side bar, say) could break the SFTP session with "Garbage packet
+  received": every SFTP call now holds the connection lock, and a broken session is reopened on
+  the same SSH connection and the call retried once. Double-clicking a computer in the Remotes
+  side bar no longer raises an AttributeError. (#128)
+
 ## [0.2.0] - 2026-10-28
 
 The first public release. 0.1.0 below was prepared in the private repository and never tagged,

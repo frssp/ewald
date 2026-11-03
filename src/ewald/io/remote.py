@@ -215,7 +215,11 @@ class Connection:
         except BaseException:
             self.close()
             raise
+        # paramiko's SFTPClient is not thread safe: two threads reading responses at once (the
+        # compute worker and the GUI, say) interleave packets and break the session for good
+        # ("Garbage packet received"). Every SFTP call holds this lock.
         self.lock = threading.RLock()
+        self.generation = 0  # bumped whenever the SFTP session is reopened
         self._grep = None  # unknown until first use
 
     def __repr__(self):
@@ -388,6 +392,31 @@ class Connection:
     def is_active(self) -> bool:
         return self.transport.is_active()
 
+    def reset_sftp(self) -> None:
+        """Open a fresh SFTP session on the same SSH transport (the old one is broken)."""
+        import paramiko
+
+        with self.lock:
+            try:
+                self.sftp.close()
+            except Exception:
+                pass
+            if not self.transport.is_active():
+                raise RemoteError(f"connection to {self.alias} was lost")
+            self.sftp = paramiko.SFTPClient.from_transport(self.transport)
+            self.generation += 1
+
+    def sftp_call(self, fn):
+        """``fn(sftp)`` under the lock; a broken SFTP session is reopened and ``fn`` retried once."""
+        with self.lock:
+            try:
+                return fn(self.sftp)
+            except Exception as e:
+                if not _broken(e, self.sftp):
+                    raise
+            self.reset_sftp()
+            return fn(self.sftp)
+
     def close(self):
         try:
             self.transport.close()
@@ -396,16 +425,16 @@ class Connection:
                 self._jump.close()
 
     def home(self) -> str:
-        with self.lock:
-            return self.sftp.normalize(".")
+        return self.sftp_call(lambda s: s.normalize("."))
 
     def stat(self, path):
-        with self.lock:
-            return self.sftp.stat(path)
+        return self.sftp_call(lambda s: s.stat(path))
 
     def listdir(self, path):
-        with self.lock:
-            return self.sftp.listdir_attr(path)
+        return self.sftp_call(lambda s: s.listdir_attr(path))
+
+    def get(self, remote_path, local_path, callback=None):
+        return self.sftp_call(lambda s: s.get(remote_path, local_path, callback=callback))
 
     def run(self, command: str, timeout: float = 600) -> tuple[int, bytes]:
         """Run ``command`` on the remote host; returns (exit status, stdout)."""
@@ -475,6 +504,18 @@ def _append_known_host(path, name, key):
         pass  # accepted for this session only
 
 
+def _broken(exc: BaseException, sftp) -> bool:
+    """Whether ``exc`` means the SFTP session itself is unusable (not a missing file etc.)."""
+    import paramiko
+
+    if isinstance(exc, (paramiko.SFTPError, EOFError)):
+        return True
+    if isinstance(exc, OSError) and not isinstance(exc, (FileNotFoundError, PermissionError)):
+        chan = getattr(sftp, "sock", None)
+        return chan is None or bool(getattr(chan, "closed", False))
+    return False
+
+
 _connections: dict[tuple, Connection] = {}
 _connections_lock = threading.Lock()
 
@@ -522,14 +563,27 @@ class RemoteFile(io.RawIOBase):
         super().__init__()
         self._conn = conn
         self._cache: OrderedDict[int, bytes] = OrderedDict()  # before open, so close() works if it fails
-        with conn.lock:
-            self._fh = conn.sftp.open(path, "rb")
+        self._fh, self._gen = None, -1
         self.name = path
-        self.size = self._fh.stat().st_size
+        with conn.lock:  # open and fstat both talk to the shared SFTP session
+            self._open()
+            self.size = conn.sftp_call(lambda s: self._reopen().stat().st_size)
         self._pos = 0
         self._bs = block_size
         self._max = cache_blocks
         self._last_block = -2
+
+    def _open(self):
+        conn = self._conn
+        self._fh = conn.sftp_call(lambda s: s.open(self.name, "rb"))
+        self._gen = conn.generation
+        return self._fh
+
+    def _reopen(self):
+        """The handle again on the current SFTP session (after it was reset); call under the lock."""
+        if self._gen != self._conn.generation:
+            self._open()
+        return self._fh
 
     def readable(self):
         return True
@@ -551,7 +605,7 @@ class RemoteFile(io.RawIOBase):
         if missing:
             ranges = [(b * self._bs, min(self._bs, self.size - b * self._bs)) for b in missing]
             with self._conn.lock:
-                data = list(self._fh.readv(ranges))
+                data = self._conn.sftp_call(lambda s: list(self._reopen().readv(ranges)))
             for b, chunk in zip(missing, data):
                 self._cache[b] = chunk
         for b in range(first, last + 1):
@@ -580,7 +634,9 @@ class RemoteFile(io.RawIOBase):
     def close(self):
         if not self.closed:
             try:
-                self._fh.close()
+                if self._fh is not None and self._gen == self._conn.generation:
+                    with self._conn.lock:  # close waits for a reply on the shared session
+                        self._fh.close()
             except Exception:  # never opened, or the connection is gone
                 pass
             self._cache.clear()
@@ -748,8 +804,7 @@ def fetch(path) -> str:
     tmp = local.with_name(local.name + ".part")
     label = f"{rp.host}:{full}"
     callback = (lambda done, total: _progress(done, total, label)) if _progress else None
-    with conn.lock:
-        conn.sftp.get(full, str(tmp), callback=callback)
+    conn.get(full, str(tmp), callback=callback)
     fileops.replace(tmp, local)
     meta_path.write_text(json.dumps(meta), encoding="utf-8", newline="\n")
     return str(local)
@@ -767,8 +822,7 @@ def download(path, dest) -> str:
     label = f"{rp.host}:{rp.path}"
     callback = (lambda done, total: _progress(done, total, label)) if _progress else None
     try:
-        with conn.lock:
-            conn.sftp.get(rp.path, str(tmp), callback=callback)
+        conn.get(rp.path, str(tmp), callback=callback)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise
