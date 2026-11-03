@@ -1251,7 +1251,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Alternatives:** New chat clearing the chat as before; several chats open at once in one
   notebook (more chat tabs than notebook tabs, two AIs editing the same cells). For the buttons
   (rendered): text buttons in the header row; icons in the tab row with the pick line kept in
-  its own row.
+  its own row. The owner picked icons in the tab row with the pick line as a chip.
 - **Landed:** public PR #133.
 
 ## Adding an entry
