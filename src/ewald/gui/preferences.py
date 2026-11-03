@@ -71,14 +71,14 @@ LAYOUT = {
         ("Console", ["python.startup_script"]),
         ("Modules", ["python.extra_paths"])]),
     "AI": ("The AI service behind Ask AI and the AI chat, its API key, model and connection.", [
+        ("Saved connections", ["llm.profiles"]),
         ("Provider", ["llm.provider"]),
-        ("Connection", ["llm.base_url", "llm.route_prefix", "llm.key_header", "llm.headers",
+        ("Connection", ["llm.command", "llm.base_url", "llm.route_prefix", "llm.key_header", "llm.headers",
                         "llm.timeout"]),
         ("Model", ["llm.model", "llm.effort"]),
         ("Chat", ["llm.stream"]),
         ("Notebook", ["llm.code_cells", "llm.run_cells", "llm.follow_cells", "llm.related_steps"]),
-        ("Files", ["llm.read_folders", "llm.confirm_hosts"]),
-        ("Saved connections", ["llm.profiles"])]),
+        ("Files", ["llm.read_folders", "llm.confirm_hosts"])]),
     "Plugins": ("Where the Plugins side bar finds plugins; each plugin's own settings follow as pages.", [
         ("Catalogs", ["python.plugin_catalogs"]),
         ("Side bar", ["python.installed_plugin_order"])]),
@@ -969,6 +969,9 @@ class PreferencesDialog(QtWidgets.QDialog):
 
         self._key_removed = False
         self._key_worker = None
+        self._loaded_key = self._loaded_from = None      # a saved connection's key, not applied yet
+        self._profile_keys: dict = {}                    # name -> (provider, key) saved on this page
+        self._profiles_seen = {n: v.get("provider") for n, v in (self.work["llm.profiles"] or {}).items()}
         row = self._row_frame(rows)
         grid = QtWidgets.QGridLayout(row)
         grid.setContentsMargins(16, 12, 16, 12)
@@ -1027,6 +1030,7 @@ class PreferencesDialog(QtWidgets.QDialog):
         if reset_model and not self._loading:
             self.key_edit.clear()
             self._key_removed = False
+            self._loaded_key = self._loaded_from = None
             self._key_note("")
             if "llm.model" in self.editors:
                 self.set_value("llm.model", "")   # a model id of the old provider means nothing to the new one
@@ -1038,7 +1042,9 @@ class PreferencesDialog(QtWidgets.QDialog):
             loading, self._loading = self._loading, True
             text = combo.currentText()
             combo.clear()
-            for model_id, label in p.models.items():
+            # an ACP agent's models come from the agent (Test connection lists them)
+            models = p.models or (p.env_models() if p.sdk == "acp" and p.env_models else {})
+            for model_id, label in models.items():
                 combo.addItem(model_id)
                 combo.setItemData(combo.count() - 1, label, QtCore.Qt.ToolTipRole)
             combo.setEditText(text)
@@ -1048,12 +1054,17 @@ class PreferencesDialog(QtWidgets.QDialog):
         self._key_status()
 
     # rows the chosen provider uses: llm.<field> -> the Provider.options entry it needs
-    _PROVIDER_ROWS = {"llm.route_prefix": "route_prefix", "llm.key_header": "key_header"}
+    _PROVIDER_ROWS = {"llm.route_prefix": "route_prefix", "llm.key_header": "key_header",
+                      "llm.command": "command"}
+    # rows an agent started as a program (an ACP agent such as OpenCode) has no use for
+    _HTTP_ROWS = ("llm.base_url", "llm.headers")
 
     def _row_applies(self, key) -> bool:
         p = self._provider()
         if key == "llm.effort":
             return p.effort
+        if key in self._HTTP_ROWS and p.sdk == "acp":
+            return False
         return key not in self._PROVIDER_ROWS or self._PROVIDER_ROWS[key] in p.options
 
     def _connection_rows(self, p):
@@ -1067,13 +1078,22 @@ class PreferencesDialog(QtWidgets.QDialog):
         self.editors["llm.key_header"][0].setPlaceholderText("Authorization: Bearer")
         self.editors["llm.headers"][0].setPlaceholderText("Name: value; Request-Id: {uuid}")
         self.editors["llm.timeout"][0].setSpecialValueText("Provider default")
+        if "llm.command" in self.editors:
+            self.editors["llm.command"][0].setPlaceholderText("opencode (on PATH)")
         if hasattr(self, "search"):
             self._search(self.search.text())
 
     def save_profile(self, name: str):
-        """Save the provider, model and connection shown now as ``name`` (Apply/OK keep it)."""
+        """Save the provider, model and connection shown now as ``name`` (Apply/OK keep it), with
+        a copy of the key typed or saved for the provider (into the keychain on Apply)."""
+        from ..llm import credentials
         from ..llm.providers import profile_from_settings
 
+        p = self._provider()
+        key = None
+        if p.key_name and not self._key_removed:
+            key = self.key_edit.text().strip() or self._loaded_key or credentials.stored_api_key(p)[0]
+        self._profile_keys[name] = (p.name, key)
         box = self.editors["llm.profiles"][0]
         profiles = {**box.profiles, name: profile_from_settings(self.work)}
         box.set(profiles, name)
@@ -1084,6 +1104,8 @@ class PreferencesDialog(QtWidgets.QDialog):
         """Fill the AI rows from the saved connection ``name``."""
         from ..llm.providers import PROFILE_FIELDS
 
+        from ..llm import credentials
+
         saved = self.work["llm.profiles"].get(name)
         if not saved:
             return
@@ -1091,6 +1113,21 @@ class PreferencesDialog(QtWidgets.QDialog):
             key = f"llm.{field}"
             self.set_value(key, saved.get(field, option(key).default))
         self.editors["llm.profiles"][0].set(self.work["llm.profiles"], name)
+        # the connection's own key (saved with it), used for its provider when you press Apply
+        p = self._provider()
+        pending = self._profile_keys.get(name)
+        if pending is not None and pending[0] == p.name:
+            key = pending[1]
+        else:
+            try:
+                key = credentials.profile_key(name, p) if p.key_name else None
+            except Exception:
+                key = None
+        self.key_edit.clear()
+        self._key_removed = False
+        self._loaded_key = key or None
+        self._loaded_from = name if key else None
+        self._key_status()
 
     def _key_status(self):
         from ..llm import credentials
@@ -1101,6 +1138,9 @@ class PreferencesDialog(QtWidgets.QDialog):
                         (p.env_var, ""))
         if self._key_removed:
             text = "Will be removed when you press Apply."
+        elif self._loaded_key:
+            text = (f"Key of the saved connection {self._loaded_from} ({credentials.mask(self._loaded_key)}); "
+                    f"used for {p.label} when you press Apply.")
         elif key:
             text = f"Saved key {credentials.mask(key)}."
             if env:
@@ -1120,6 +1160,7 @@ class PreferencesDialog(QtWidgets.QDialog):
 
     def remove_api_key(self):
         self._key_removed = True
+        self._loaded_key = self._loaded_from = None
         self.key_edit.clear()
         self._key_status()
 
@@ -1147,6 +1188,8 @@ class PreferencesDialog(QtWidgets.QDialog):
             if not workers.alive(self.key_test):   # the dialog closed meanwhile
                 return
             ok, msg = result.get("r", (False, "no result"))
+            if ok and p.sdk == "acp":
+                self._provider_changed(reset_model=False)   # the models the agent offers
             self._key_note(msg, ok)
             self.key_test.setEnabled(True)
 
@@ -1166,12 +1209,32 @@ class PreferencesDialog(QtWidgets.QDialog):
             if typed and p.key_name:
                 credentials.save_api_key(typed, p)
                 self.key_edit.clear()
+            elif self._loaded_key and p.key_name:
+                if self._loaded_key != credentials.stored_api_key(p)[0]:
+                    credentials.save_api_key(self._loaded_key, p)
             elif self._key_removed:
                 credentials.delete_api_key(p)
+            self._apply_profile_keys(credentials)
         except OSError as exc:
             QtWidgets.QMessageBox.warning(self, "Preferences", f"Could not save the API key:\n{exc}")
         self._key_removed = False
+        self._loaded_key = self._loaded_from = None
         self._key_status()
+
+    def _apply_profile_keys(self, credentials):
+        """Keys of connections saved or deleted on this page, into or out of the keychain."""
+        profiles = self.work["llm.profiles"]
+        for name, (provider, key) in list(self._profile_keys.items()):
+            if name in profiles:
+                if key:
+                    credentials.save_profile_key(name, key, provider)
+                else:
+                    credentials.delete_profile_key(name, provider)
+        for name, provider in list(self._profiles_seen.items()):
+            if name not in profiles and provider:
+                credentials.delete_profile_key(name, provider)
+        self._profile_keys.clear()
+        self._profiles_seen = {n: v.get("provider") for n, v in profiles.items()}
 
     # ---------------------------------------------------------------- values
     def _load(self):

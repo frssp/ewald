@@ -647,10 +647,17 @@ Plugins and AI
   `llm.model` setting for all providers (switching the provider in Preferences clears it);
   streaming falls back by itself only for Chat Completions servers (a Claude gateway that cannot
   stream needs Preferences › AI › Stream answers off); a native Gemini or Bedrock/Vertex client would need a `Chat`
-  subclass (today Gemini goes through its OpenAI-compatible endpoint). Keys are per provider, so two
-  saved connections of one provider with different keys share one keychain entry. Preferences › AI › Extra headers is a
+  subclass (today Gemini goes through its OpenAI-compatible endpoint). Preferences › AI › Extra headers is a
   one-line field, so a long header list is hard to read and easy to cut short (it happened with a
   real gateway, 2026-10-23); a multi-line editor would help.
+- OpenCode over ACP (`llm/acp.py`, D92), phase 1: OpenCode gets no ewald tools and answers with
+  ```python blocks only, so it cannot read cell outputs or renders by itself. Phase 2 (when the owner
+  asks): offer ewald's cell tools to the agent as an MCP server in `session/new` (`mcpServers`),
+  still refusing OpenCode's own edit/bash. Other ACP agents (Claude Code, Codex, Gemini CLI) would
+  need only a command and arguments; there is no generic ACP provider yet. The model list appears
+  only after Test connection (kept in memory, not saved). OpenCode's tool calls and thoughts are not
+  shown in the chat. One `opencode acp` process serves every chat (one session per notebook tab);
+  it stops only when EWALD exits.
 - Plugin manifests, phase 2 (from the VS Code comparison): contributions declared in
   `ewald-plugin.toml` (`[[readers]]`, `[[modifiers]]`, ... with `python = "module:object"`)
   registered lazily and imported on first use (`@panel` widgets are already built on first open,
@@ -772,6 +779,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- OpenCode provider (D92) on the owner's Windows with the company's OpenCode: `opencode.cmd` from
+  npm found on PATH and started without a console window, Test connection lists the company
+  models, an answer streams into the AI chat, Stop ends it, and closing EWALD leaves no `opencode`
+  or `node` process behind (taskkill /T).
 - Reading a LAMMPS dump over SSH from the GUI on the owner's Windows PC against the real cluster
   while browsing the Remotes side bar (SFTP calls now hold the connection lock and a broken
   SFTP session is reopened, 2026-11-03; tested with threads against the in-process server only).
@@ -888,7 +899,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   `!pip` has no Python at `sys.executable`.
 - Windows checks of 2026-10-23: the OpenGL check in a VM and a Remote Desktop session without
   GPU (the Legacy GL viewport with `opengl32sw.dll` should come up, with the note on stderr);
-  saving a notebook open in Notepad++ or synced by OneDrive (the message names the program); the
+  saving a notebook open in Notepad++ or synced by OneDrive (the message names the program), and
+  opening one PowerShell holds without sharing (the Open failed message should name PowerShell; it
+  showed a bare "[Errno 13] Permission denied" on 2026-11-03); the
   `icacls` ACL on `credentials.json` (only your account listed); the bundled fonts in the UI.
 - macOS start-up log (2026-10-23): no "Populating font family aliases" (Qt) or "findfont ...
   Apple Chancery" (matplotlib) lines when the GUI opens a notebook with plots. The
