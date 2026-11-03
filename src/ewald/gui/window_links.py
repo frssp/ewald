@@ -401,7 +401,9 @@ class LinksMixin:
 
     def _ai_answer(self, notebook, started: bool):
         """An AI chat answer about ``notebook`` starts or ends: its tab follows the cells the AI
-        writes as Preferences › AI › Follow the AI's cells says (:mod:`ewald.gui.ai_follow`)."""
+        writes as Preferences › AI › Follow the AI's cells says (:mod:`ewald.gui.ai_follow`), and
+        its tab is marked meanwhile."""
+        self.panel.set_ai_answering(notebook, started)
         view = next((v for v in self.panel.views() if v.notebook is notebook), None)
         if view is None:
             return
@@ -409,6 +411,19 @@ class LinksMixin:
             view.ai_follow.begin(self.settings["llm.follow_cells"])
         else:
             view.ai_follow.end()
+
+    def _mirror_chat_tabs(self, restyle: bool = False):
+        """The AI chat side bar's tab row follows the notebook tabs: same tabs, order and names,
+        the same current tab."""
+        views = self.panel.views()
+        self.ask_panel.mirror_tabs([(v.notebook, v.notebook.name) for v in views],
+                                   self.panel.tabs.currentIndex(), restyle=restyle)
+
+    def _show_chat_notebook(self, notebook):
+        """A tab of the AI chat side bar was clicked: show that notebook (its chat comes along)."""
+        view = next((v for v in self.panel.views() if v.notebook is notebook), None)
+        if view is not None:
+            self.panel.tabs.setCurrentWidget(view)
 
     def _show_ai_cell(self, notebook, cell_id):
         """A cell link in the AI chat: show that notebook's tab and the cell, lit up for a moment."""

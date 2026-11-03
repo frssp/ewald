@@ -30,7 +30,7 @@ from .busy import BusyLabel
 from .icons import icon
 from .code_editor import CodeEditor
 from .pipeline_panel import FitWidthScrollArea as _FitWidthScrollArea
-from . import workers
+from . import header, workers
 from .theme import TOKENS
 from ..llm.notebook_prompt import (CODE_CELLS_NOTE, NOTEBOOK_NOTE, RUN_CELLS_NOTE, code_blocks,  # noqa: F401
                                     errors_part, notebook_part, notebook_system, related_part,
@@ -493,6 +493,27 @@ def history_prompt(entries: list[dict]) -> str:
             f"<earlier_chat>\n{text}\n</earlier_chat>") if text else ""
 
 
+def _elide(text: str, n: int = 60) -> str:
+    first = (text.strip().splitlines() or [""])[0]
+    return first[:n] + ("…" if len(first) > n else "")
+
+
+def _when(saved: str) -> str:
+    """When an earlier chat was put away, short: the time today, "yesterday", else the date."""
+    import datetime
+
+    try:
+        t = datetime.datetime.fromisoformat(saved)
+    except ValueError:
+        return ""
+    days = (datetime.date.today() - t.date()).days
+    if days == 0:
+        return t.strftime("%H:%M")
+    if days == 1:
+        return "yesterday"
+    return f"{t:%b} {t.day}" if t.year == datetime.date.today().year else f"{t:%Y-%m-%d}"
+
+
 class _Conversation:
     """The chat of one notebook tab: its messages (and the page that shows them), its agent and
     what was sent to it, and the answer on its way. ``key`` is the notebook (None: no notebook)."""
@@ -515,6 +536,7 @@ class _Conversation:
         self.sent_errors: str | None = None
         self.sent_view: str | None = None
         self.history = ""               # an earlier conversation the next question carries to a new agent
+        self._chats: list = []          # earlier chats while there is no notebook
         self.worker: _Worker | None = None
         self.pending: Message | None = None
         self.tools_used: list[str] = []
@@ -523,6 +545,13 @@ class _Conversation:
     def busy(self) -> bool:
         return self.worker is not None and self.worker.isRunning()
 
+    @property
+    def chats(self) -> list:
+        """The earlier chats (``Notebook.chats``; kept here while there is no notebook)."""
+        if self.key is not None and hasattr(self.key, "chats"):
+            return self.key.chats
+        return self._chats
+
     def forget_sent(self):
         self.sent_notebook = self.sent_errors = self.sent_view = None
 
@@ -530,6 +559,100 @@ class _Conversation:
         """Keep the messages on the notebook (``Notebook.chat``), which an ``.ewd`` saves."""
         if self.key is not None and hasattr(self.key, "chat"):
             self.key.chat = [m.to_dict() for m in self.messages if m is not self.pending]
+
+
+def mark_icon(color: str, size: int = 8) -> QtGui.QIcon:
+    """A round dot, the chat tabs' mark (a chat in that notebook, an answer on its way)."""
+    scale = 2   # drawn at twice the size: sharp at 200 % display scaling
+    pm = QtGui.QPixmap(2 * size * scale, 2 * size * scale)
+    pm.setDevicePixelRatio(scale)
+    pm.fill(QtCore.Qt.transparent)
+    p = QtGui.QPainter(pm)
+    p.setRenderHint(QtGui.QPainter.Antialiasing)
+    p.setBrush(QtGui.QColor(color))
+    p.setPen(QtCore.Qt.NoPen)
+    p.drawEllipse(QtCore.QRectF(size * 0.5, size * 0.5, size, size))
+    p.end()
+    return QtGui.QIcon(pm)
+
+
+class _ChatTabBar(QtWidgets.QTabBar):
+    def tabSizeHint(self, index):
+        size = super().tabSizeHint(index)
+        size.setHeight(header.height())   # the height of the notebook tabs and the panel headers
+        return size
+
+
+class ChatTabs(QtWidgets.QWidget):
+    """The AI chat side bar's tab row: one tab per open notebook, in the notebook tabs' order and
+    with their names, the current one the current notebook's (:meth:`mirror`). A gray dot marks a
+    notebook with a chat, an orange one a chat with an answer on its way. Clicking a tab asks for
+    that notebook (``notebookRequested``); the window shows it, which brings its chat along. With
+    no notebook open the row shows the panel's name."""
+
+    notebookRequested = QtCore.Signal(object)
+
+    def __init__(self, parent=None):
+        super().__init__(parent, objectName="chatTabRow")
+        bar = self.bar = _ChatTabBar(objectName="chatTabBar")
+        bar.setDocumentMode(True)
+        bar.setDrawBase(False)
+        bar.setExpanding(False)
+        bar.setElideMode(QtCore.Qt.ElideRight)
+        bar.setUsesScrollButtons(True)
+        bar.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+        self.title = QtWidgets.QLabel("AI chat", objectName="panelTitle")
+        lay = QtWidgets.QHBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+        lay.setSpacing(2)
+        lay.addWidget(self.title, 1)   # in place of the tabs when there are none
+        lay.addWidget(bar, 1)
+        self.notebooks: list = []
+        self._marks: list = []
+        self._mirroring = False
+        bar.currentChanged.connect(self._picked)
+        self.mirror([], -1)
+
+    def add_button(self, button: QtWidgets.QAbstractButton):
+        """A panel button at the right end of the row (History, New chat)."""
+        self.layout().addWidget(button, 0, QtCore.Qt.AlignVCenter)
+
+    def mirror(self, entries: list[tuple[object, str, str | None]], current: int, restyle: bool = False):
+        """Show ``entries`` (notebook, tab name, mark: None, "chat" or "answering") as the tabs,
+        ``current`` (an index) as the current one; ``restyle`` draws the marks again (a new UI
+        theme). Emits nothing."""
+        if restyle:
+            self._marks = []
+        self._mirroring = True
+        try:
+            bar = self.bar
+            while bar.count() > len(entries):
+                bar.removeTab(bar.count() - 1)
+            while bar.count() < len(entries):
+                bar.addTab("")
+            marks = []
+            for i, (_nb, name, mark) in enumerate(entries):
+                if bar.tabText(i) != name:
+                    bar.setTabText(i, name)
+                if i >= len(self._marks) or self._marks[i] != mark:
+                    color = {"chat": TOKENS["muted"], "answering": TOKENS["pick"]}.get(mark)
+                    bar.setTabIcon(i, mark_icon(color) if color else QtGui.QIcon())
+                bar.setTabToolTip(i, f"{name}: {'the AI is answering' if mark == 'answering' else 'AI chat'}")
+                marks.append(mark)
+            self._marks = marks
+            self.notebooks = [e[0] for e in entries]
+            if 0 <= current < bar.count() and bar.currentIndex() != current:
+                bar.setCurrentIndex(current)
+            self.title.setVisible(not entries)
+            self.title.setContentsMargins(0 if entries else 10, 0, 0, 0)
+            bar.setVisible(bool(entries))
+        finally:
+            self._mirroring = False
+
+    def _picked(self, index: int):
+        if not self._mirroring and 0 <= index < len(self.notebooks):
+            self.notebookRequested.emit(self.notebooks[index])
 
 
 class AskPanel(QtWidgets.QWidget):
@@ -556,6 +679,8 @@ class AskPanel(QtWidgets.QWidget):
     messages, agent and an answer still on its way), :meth:`sync` shows the current one, and the
     messages are kept in ``Notebook.chat`` (saved in ``.ewd`` files). A notebook opened with a saved
     chat shows it, and its first question carries it to the model (not for an untrusted notebook).
+    :attr:`tabs` (:class:`ChatTabs`) is a tab row with the notebook tabs (:meth:`mirror_tabs`),
+    marked where a chat has messages or an answer on its way.
     """
 
     pipelineChanged = QtCore.Signal()
@@ -584,16 +709,21 @@ class AskPanel(QtWidgets.QWidget):
         self._stopped: list[_Worker] = []   # stopped workers still finishing their last request
         self._conversations: dict[int, _Conversation] = {}
         self.conversation: _Conversation | None = None
+        # the tab row mirroring the notebook tabs (the window puts it in the side bar's title bar)
+        self.tabs = ChatTabs(self)
+        self.tabs.hide()
+        self._tab_entries: list[tuple[object, str]] = []
+        self._tab_current = -1
 
-        # --- header: what the question is about, New chat
+        # --- the tab row's buttons: History (the notebook's earlier chats) and New chat; what the
+        # question is about is a chip above the input
         self.selection_label = QtWidgets.QLabel(objectName="chatContext")
-        self.new_button = QtWidgets.QToolButton(text="New chat", objectName="chatHeaderButton",
-                                                toolTip="Start a new conversation")
+        self.history_button = header.button("history", "Earlier chats of this notebook")
+        self.history_button.clicked.connect(self._show_history)
+        self.new_button = header.button("plus", "New chat (this one goes into History)")
         self.new_button.clicked.connect(self.reset)
-        header = QtWidgets.QHBoxLayout()
-        header.setContentsMargins(10, 6, 6, 6)
-        header.addWidget(self.selection_label, 1)
-        header.addWidget(self.new_button)
+        self.tabs.add_button(self.history_button)
+        self.tabs.add_button(self.new_button)
 
         # --- messages: one page per conversation
         self.scroll = _FitWidthScrollArea(objectName="chatScroll")
@@ -627,11 +757,11 @@ class AskPanel(QtWidgets.QWidget):
         lay = QtWidgets.QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 8)
         lay.setSpacing(0)
-        lay.addLayout(header)
         lay.addWidget(self.scroll, 1)
         bottom = QtWidgets.QVBoxLayout()
         bottom.setContentsMargins(10, 6, 10, 0)
         bottom.setSpacing(4)
+        bottom.addWidget(self.selection_label, 0, QtCore.Qt.AlignLeft)
         bottom.addWidget(composer)
         bottom.addWidget(hint)
         lay.addLayout(bottom)
@@ -689,7 +819,9 @@ class AskPanel(QtWidgets.QWidget):
                 # a chat started before there was a notebook goes on in the first one
                 del self._conversations[id(None)]
                 conv = loose
-                conv.key = key
+                earlier, conv.key = loose._chats, key
+                if hasattr(key, "chats"):
+                    key.chats.extend(earlier)
                 conv.save()
             else:
                 conv = _Conversation(self, key)
@@ -707,6 +839,27 @@ class AskPanel(QtWidgets.QWidget):
             self.scroll.verticalScrollBar().setValue(self.scroll.verticalScrollBar().maximum())
             self.update_selection()
         return conv
+
+    def chat_mark(self, notebook) -> str | None:
+        """How the tabs mark ``notebook``'s chat: "answering", "chat" (it has messages) or None."""
+        conv = self._conversations.get(id(notebook))
+        if conv is not None and conv.key is notebook:
+            if conv.pending is not None:
+                return "answering"
+            return "chat" if conv.messages else None
+        return "chat" if getattr(notebook, "chat", None) else None   # saved, not shown yet
+
+    def mirror_tabs(self, entries: list[tuple[object, str]] | None = None, current: int | None = None,
+                    restyle: bool = False):
+        """Show the notebook tabs in :attr:`tabs`: ``entries`` are (notebook, tab name) in tab
+        order, ``current`` the current tab's index. Without them the last ones are drawn again
+        (a chat's mark changed); ``restyle`` after a UI theme change."""
+        if entries is not None:
+            self._tab_entries = list(entries)
+        if current is not None:
+            self._tab_current = current
+        self.tabs.mirror([(nb, name, self.chat_mark(nb)) for nb, name in self._tab_entries],
+                         self._tab_current, restyle=restyle)
 
     def _restore(self, conv: _Conversation):
         """The messages a notebook saved (``Notebook.chat``, e.g. from an ``.ewd``)."""
@@ -792,6 +945,8 @@ class AskPanel(QtWidgets.QWidget):
         conv.list.insertWidget(conv.list.count() - 1, message)
         if save:
             conv.save()
+        if len(conv.messages) == 1:
+            self.mirror_tabs()   # the notebook has a chat now
         return message
 
     def _note(self, text):
@@ -803,10 +958,81 @@ class AskPanel(QtWidgets.QWidget):
             self.scroll.verticalScrollBar().setValue(hi)
 
     def reset(self):
-        """New chat: the current notebook's conversation starts over."""
+        """New chat: the current notebook's conversation starts over; the one it had goes into the
+        notebook's earlier chats (``Notebook.chats``, :meth:`open_chat` brings it back)."""
         conv = self._conv()
         if conv.busy():
             return
+        self._archive(conv)
+        self._clear(conv)
+
+    def delete_chat(self):
+        """Throw the current chat away (it does not go into the earlier chats) and start over."""
+        conv = self._conv()
+        if not conv.busy():
+            self._clear(conv)
+
+    def open_chat(self, index: int):
+        """Show the notebook's earlier chat ``index`` (in :meth:`chat_history`'s order) again; the
+        current one takes its place among the earlier chats. Its next question carries it to the
+        model as a transcript, as a chat saved with the notebook does."""
+        conv = self._conv()
+        chats = conv.chats
+        if conv.busy() or not 0 <= index < len(chats):
+            return
+        entry = chats.pop(index)
+        self._archive(conv)
+        self._clear(conv)
+        for message in entry["messages"]:
+            m = Message.from_dict(message, insert=self._insert)
+            conv.snippets += [b.code for b in m.code_blocks if b.insert_button is not None]
+            self._add(m, conv, save=False)
+        conv.save()
+        self.mirror_tabs()
+
+    def chat_history(self) -> list[dict]:
+        """The current notebook's earlier chats, newest first: ``title``, ``saved`` (ISO time) and
+        ``messages``."""
+        return list(self._conv().chats)
+
+    def history_menu(self) -> QtWidgets.QMenu:
+        """The History button's menu: the current chat, the notebook's earlier chats (open one) and
+        Delete this chat."""
+        conv = self._conv()
+        menu = QtWidgets.QMenu(self, objectName="chatHistoryMenu")
+        busy = conv.busy()
+        menu.addSection("Chats of this notebook" if conv.key is not None else "Chats")
+        first = next((m.text for m in conv.messages if m.role == "user"), None)
+        now = menu.addAction(_elide(first) if first else "New chat")
+        now.setCheckable(True)
+        now.setChecked(True)
+        now.setEnabled(False)
+        for i, entry in enumerate(conv.chats):
+            a = menu.addAction(f"{entry['title'] or 'Untitled'}\t{_when(entry.get('saved', ''))}",
+                               lambda i=i: self.open_chat(i))
+            a.setEnabled(not busy)
+        menu.addSeparator()
+        delete = menu.addAction("Delete this chat", self.delete_chat)
+        delete.setEnabled(bool(conv.messages) and not busy)
+        return menu
+
+    def _show_history(self):
+        menu = self.history_menu()
+        b = self.history_button
+        menu.exec(b.mapToGlobal(QtCore.QPoint(b.width() - menu.sizeHint().width(), b.height())))
+
+    def _archive(self, conv: _Conversation):
+        entries = [m.to_dict() for m in conv.messages if m is not conv.pending and m.role != "note"]
+        if not any(e["role"] == "user" for e in entries):
+            return
+        import datetime
+
+        first = next(e["text"] for e in entries if e["role"] == "user")
+        conv.chats.insert(0, {"title": _elide(first),
+                              "saved": datetime.datetime.now().isoformat(timespec="minutes"),
+                              "messages": entries})
+
+    def _clear(self, conv: _Conversation):
         conv.agent = None
         conv.history = ""
         conv.forget_sent()
@@ -817,6 +1043,7 @@ class AskPanel(QtWidgets.QWidget):
         conv.snippets.clear()
         conv.save()
         conv.welcome.show()
+        self.mirror_tabs()
 
     def insert_snippet(self, index: int):
         """Insert the ``index``-th Python block of the conversation as a notebook cell."""
@@ -914,6 +1141,7 @@ class AskPanel(QtWidgets.QWidget):
         worker.answered.connect(lambda text, c=conv: self._on_answer(c, text))
         worker.failed.connect(lambda message, c=conv: self._on_failed(c, message))
         self._set_stop_button(True)
+        self.mirror_tabs()
         self.answerStarted.emit(conv.key)
         worker.start()
 
@@ -985,6 +1213,7 @@ class AskPanel(QtWidgets.QWidget):
             self._set_stop_button(False)
         conv.pending = None
         conv.save()
+        self.mirror_tabs()
         self.answerFinished.emit(conv.key)
         pipeline = conv.agent_pipeline if conv.agent else None
         now = getattr(getattr(conv.agent, "toolset", None), "pipeline", pipeline)

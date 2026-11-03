@@ -238,8 +238,16 @@ def test_ewd_keeps_the_ai_chat(tmp_path):
     with zipfile.ZipFile(tmp_path / "a.ewd") as z:
         assert json.loads(z.read("chat.json"))["messages"] == chat
     again = Notebook.load(tmp_path / "a.ewd", trusted=True)
-    assert again.chat == chat and not again.warnings
+    assert again.chat == chat and not again.warnings and again.chats == []
+    earlier = [{"title": "Space group", "saved": "2026-11-03T05:00:00", "messages": chat[:1]},
+               {"title": "x", "messages": []}, "junk", {"messages": [{"role": "system", "text": "x"}]}]
+    nb.chats = earlier                                             # earlier chats (New chat keeps them)
+    notebook_io.save_ewd(nb, tmp_path / "h.ewd", figures=False)
+    assert Notebook.load(tmp_path / "h.ewd", trusted=True).chats == earlier[:1]
     nb.chat = []
+    assert notebook_io.save_ewd(nb, tmp_path / "h2.ewd", figures=False) is not None
+    assert Notebook.load(tmp_path / "h2.ewd", trusted=True).chats == earlier[:1]   # history alone is kept
+    nb.chats = []
     notebook_io.save_ewd(nb, tmp_path / "b.ewd", figures=False)   # no chat: no chat.json
     with zipfile.ZipFile(tmp_path / "b.ewd") as z:
         assert "chat.json" not in z.namelist()

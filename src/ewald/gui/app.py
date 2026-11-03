@@ -189,6 +189,11 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         self.ask_dock = self._dock(self.ask_panel, "AI chat", QtCore.Qt.LeftDockWidgetArea, None)
         self.splitDockWidget(self.ask_dock, self.notebook_dock, QtCore.Qt.Horizontal)
         self.ask_dock.hide()
+        # its title bar is a tab row with the notebook tabs: either row switches both (D94)
+        self.ask_dock.titleBarWidget().embed(self.ask_panel.tabs)
+        self.ask_panel.tabs.notebookRequested.connect(self._show_chat_notebook)
+        self.panel.tabs.tabsChanged.connect(self._mirror_chat_tabs)
+        self._mirror_chat_tabs()
         self._build_activity_bar()
         # the View tab (below the 3D view, beside the console): how the structure is drawn
         self.display = DisplayPanel(self.style)
