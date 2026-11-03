@@ -1254,6 +1254,17 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   its own row. The owner picked icons in the tab row with the pick line as a chip.
 - **Landed:** public PR #133.
 
+### D96. Performance after the battery freeze: scene build on the worker, then frame indexes on disk (2026-11-03)
+
+- **Decision:** after the freeze on battery (public PR #135), the owner asked to consider overall
+  performance as well ("전체적인 성능 개선도 고려해줘") and picked doing both offered items, the
+  worker first: build a new frame's 3D scene on the compute worker so the GUI thread only adds
+  actors and renders, then keep the frame indexes of big trajectory files on disk so reopening
+  them skips the scan.
+- **Alternatives:** only one of the two; a battery saver mode for the 3D view (lower resolution
+  or frame rate on battery), which changes what the view looks like.
+- **Landed:** public PR #136 (scene build on the worker).
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

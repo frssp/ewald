@@ -440,7 +440,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
             wait = True
         playing = self.timeline.play.isChecked()
         job = self.runner.request(self.pipeline, self.frame, self.device, interactive,
-                                  budget=None if wait else ..., prepare=self._view_prepare(),
+                                  budget=None if wait else ..., prepare=self._view_prepare(interactive),
                                   prefetch=self.timeline.next_frame() if playing else None)
         if job is not None:
             self._computed(job)
@@ -454,9 +454,14 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
                      "(Preferences › 3D view › Performance › Bond cylinders at most). Pictures still draw them.",
                      warning=True)
 
-    def _view_prepare(self):
+    def _view_prepare(self, interactive: bool = False):
         """What the compute worker does for the 3D view after a frame (see ``ComputeRunner``):
-        search the bonds it will draw, so a big frame's bond search does not hold up the window."""
+        build the scene it will draw (``Viewport.scene_prebuilder``), else at least search the
+        bonds, so a big frame's bonds and geometry do not hold up the window."""
+        prebuild = getattr(self.viewport, "scene_prebuilder", None)
+        prebuild = prebuild(interactive) if prebuild is not None else None
+        if prebuild is not None:
+            return prebuild
         kw = self.style.scene_kwargs()
         pairs = kw.get("bond_pairs")
         if not pairs or kw.get("boundary") or kw.get("replicate"):  # those draw other atoms

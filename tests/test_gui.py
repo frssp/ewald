@@ -3767,6 +3767,69 @@ def test_playback_searches_bonds_off_the_gui_thread(app, monkeypatch):
     w.close()
 
 
+def test_new_frames_build_their_scene_on_the_worker(app, monkeypatch):
+    import threading
+
+    from ewald import render
+    from ewald.data import Cell, DataCollection
+    from ewald.gui.app import MainWindow
+
+    frames = [DataCollection(np.array([[0, 0, 0], [1.0 + 0.1 * k, 0, 0]]), ["Cu", "Cu"], Cell(np.eye(3) * 6))
+              for k in range(3)]
+    w = MainWindow(Pipeline(StaticSource(frames)))
+    w.show()
+    w.viewport.ensure_view()
+    app.processEvents()
+    w.style.bonds_enabled, w.style.bond_pairs = True, [["Cu", "Cu", 0.0, 1.5]]
+    w.recompute(wait=True)
+    seen = []
+    real = render.make_scene
+    monkeypatch.setattr(render, "make_scene",
+                        lambda *a, **k: (seen.append(threading.current_thread().name), real(*a, **k))[1])
+    w.timeline._set(1)
+    assert w.runner.wait(5)
+    app.processEvents()
+    assert seen and all(n.startswith("ewald-compute") for n in seen), seen   # none on the GUI thread
+    assert "bonds" in w.viewport.plotter.actors and w.frame == 1
+    # the same picture as a scene built on the GUI thread
+    worker = w.viewport.plotter.actors["bonds"].GetMapper().GetInput().GetNumberOfPoints()
+    w.viewport.redraw()
+    assert w.viewport.plotter.actors["bonds"].GetMapper().GetInput().GetNumberOfPoints() == worker
+    assert seen[-1] == threading.current_thread().name
+    # a setting changed after the frame was asked for: the GUI thread builds with the new one
+    w.viewport._prebuilt.clear()
+    prebuild = w.viewport.scene_prebuilder()
+    prebuild(w.data)
+    w.style.bonds_enabled = False
+    seen.clear()
+    w.viewport.redraw()
+    assert seen == [threading.current_thread().name] and "bonds" not in w.viewport.plotter.actors
+    assert not w.viewport._prebuilt
+    w.close()
+
+
+def test_prebuilt_scenes_keep_only_the_read_ahead(app):
+    from ewald.gui.viewport import Viewport
+    from ewald.view_style import ViewStyle
+
+    v = Viewport(ViewStyle())
+    a, b, c = object(), object(), object()
+    v._prebuilt.extend([(a, "k", 1, a), (b, "k", 2, b)])
+    assert v._take_prebuilt(a)[2] == 1 and [e[0] for e in v._prebuilt] == [b]
+    assert v._take_prebuilt(c) is None and [e[0] for e in v._prebuilt] == [b]
+    assert v._take_prebuilt(b)[2] == 2 and not v._prebuilt
+    v.close()
+
+
+def test_make_scene_matches_build_scene(cu_fcc):
+    from ewald import render
+
+    with pytest.raises(TypeError):
+        render.make_scene(cu_fcc, no_such_option=1)
+    scene = render.make_scene(cu_fcc, bond_pairs=[("Cu", "Cu", 0.0, 2.8)], atom_style="impostor", light="soft")
+    assert [layer.name for layer in scene.layers][:2] == ["atoms", "bonds"]
+
+
 def test_viewport_leaves_out_bonds_above_the_stick_limit(app, cu_fcc):
     from ewald.gui.viewport import Viewport
     from ewald.view_style import ViewStyle

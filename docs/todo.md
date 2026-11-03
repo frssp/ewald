@@ -12,9 +12,9 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   `benchmarks/viewport.py` is in, the bond search and reading ahead run off the GUI thread
   (phase 1), and bonds are built in numba with alike halves drawn as one stick (phase 2). Phases
   3-4 (an own GPU bond renderer, culling) wait for the numbers from the owner's Intel Arc
-  (`python benchmarks/viewport.py -o arc.json`). Left from phase 2: the scene build and stick input
-  of a 1M-atom frame with bonds (4.4 s) still run on the GUI thread; the compute worker could
-  build the `Scene` too.
+  (`python benchmarks/viewport.py -o arc.json`). The compute worker now also builds the `Scene` of a
+  new frame (2026-11-03); left on the GUI thread: the stick input (`render.stick_data`, 0.1 s at
+  108k atoms with bonds), the actors and the upload.
 
 - A smaller Windows standalone app (D80 follow-up): setup.exe 204 MB and zip 322 MB (were 294 and
   396) after leaving out unused VTK modules (`packaging/bundle_excludes.py`) and sharing the

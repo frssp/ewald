@@ -62,9 +62,15 @@ After phases 1-2, `python benchmarks/viewport.py --atoms 108000 1000000` in the 
 | 1M with bonds: peak memory | 8.6 GB | 2.4 GB |
 | 1M with bonds: frame switch on the GUI thread | 17 s | 13 s (4.4 s `set_data` + 8.5 s llvmpipe render; 4 s search on the worker) |
 
-The 4.4 s of `set_data` at 1M atoms with bonds is the scene build and stick input on the GUI
-thread; building the `Scene` on the compute worker as well (with the view's settings taken
-when the frame is requested) would leave only the actors and the upload there.
+The 4.4 s of `set_data` at 1M atoms with bonds was the scene build and stick input on the GUI
+thread. Since 2026-11-03 the compute worker builds the `Scene` of a new frame as well
+(`Viewport.scene_prebuilder`, with the view's settings taken when the frame is requested;
+`render.make_scene` is the plotter-free half of `build_scene`), and the GUI thread only adds
+the actors and renders. A setting changed in between makes the redraw build the scene itself,
+and frames that will be drawn coarse are not built ahead. 108k atoms with bonds in the
+container: the worker builds in 0.65 s, the GUI thread then spends 0.13 s on actors and stick
+input plus the render (0.74 s on llvmpipe, a few ms on a GPU), where it spent about 0.8 s
+before the render.
 
 ## Plan
 

@@ -1,6 +1,7 @@
 """3D viewport: VESTA-style view controls and tools (orbit/pick/measure) as chips over the view, overlays."""
 from __future__ import annotations
 
+import collections
 import sys
 import time
 import weakref
@@ -199,6 +200,9 @@ class Viewport(QtWidgets.QWidget):
         self.coarse = False               # the scene on screen is the coarse one
         self._dragging = False
         self._lod_cloud = None            # subsampled impostor cloud of the current scene, built on first drag
+        # (data, settings key, Scene, colored data) built on the compute worker: the frame asked
+        # for and the one read ahead during playback (deque appends are thread-safe)
+        self._prebuilt = collections.deque(maxlen=2)
         self._refine_timer = QtCore.QTimer(self, singleShot=True)
         self._refine_timer.timeout.connect(self.refine)
         self._picks: list[int] = []
@@ -749,6 +753,56 @@ class Viewport(QtWidgets.QWidget):
         mask[::step] = True
         return mask if visible is None else mask & visible
 
+
+    def scene_kwargs(self) -> dict:
+        """What :func:`ewald.render.build_scene` gets for a full-detail scene of the view (GUI thread)."""
+        dark = _is_dark(self.style.background)
+        kw = self.style.scene_kwargs()
+        kw["cell_color"] = self.style.cell_color or ("#AEB4BE" if dark else "black")
+        # the view's own sphere_resolution, else Preferences (interactive; image export uses full quality)
+        kw["sphere_resolution"] = kw.get("sphere_resolution") or self.sphere_resolution
+        if kw["atom_style"] == "auto" and self.sphere_drawing == "impostor":
+            kw["atom_style"] = "impostor"
+        kw["arrow_resolution"] = self.arrow_resolution
+        return kw
+
+    def scene_prebuilder(self, interactive: bool = False):
+        """For the compute worker (``ComputeRunner`` ``prepare``): a callable(data) that builds the
+        full-detail :class:`ewald.scene.Scene` of a new frame with the view's settings of now, so
+        that :meth:`redraw` on the GUI thread only adds the actors. None when the frame will be
+        drawn coarse (scrubbing or playing a big structure) or not at all (a parked view).
+        A setting changed meanwhile makes the redraw build the scene itself, as before."""
+        if self._plotter is None or self.parked or self.data is None:
+            return None
+        if interactive and (self.needs_coarse(scrub=True) or (self.playing and self._play_coarse)):
+            return None
+        kw = self.scene_kwargs()
+        key = _kwargs_key(kw)
+
+        def prebuild(data):
+            from ..color_rule import take
+            from ..render import make_scene
+
+            if data is None or not data.count:
+                return
+            args = dict(kw)
+            args.pop("labels", None)
+            shown = take(data, args)
+            self._prebuilt.append((data, key, make_scene(shown, **args), shown))
+
+        return prebuild
+
+    def _take_prebuilt(self, data):
+        """The worker's scene of ``data``, if any; forgets it and the ones built before it (a
+        scene read ahead for the next frame stays)."""
+        entries = list(self._prebuilt)
+        match = next((i for i, e in enumerate(entries) if e[0] is data), None)
+        keep = entries[match + 1:] if match is not None else entries[-1:]
+        # a new deque, not remove(): that compares the data collections with ==. A scene the
+        # worker appends in between is lost, so its frame is built here as before
+        self._prebuilt = collections.deque(keep, maxlen=2)
+        return entries[match] if match is not None else None
+
     def redraw(self, coarse: bool = False):
         if self._plotter is None:  # drawn when the 3D widget is built
             return
@@ -768,17 +822,20 @@ class Viewport(QtWidgets.QWidget):
         t0 = time.perf_counter()
         dark = _is_dark(self.style.background)
         p.set_background(self.style.background)
-        kw = self.style.scene_kwargs()
+        kw = self.scene_kwargs()
+        key = _kwargs_key(kw)
         labels = kw.pop("labels", None)
-        kw["cell_color"] = self.style.cell_color or ("#AEB4BE" if dark else "black")
-        # the view's own sphere_resolution, else Preferences (interactive; image export uses full quality)
-        kw["sphere_resolution"] = kw.get("sphere_resolution") or self.sphere_resolution
-        if kw["atom_style"] == "auto" and self.sphere_drawing == "impostor":
-            kw["atom_style"] = "impostor"
-        kw["arrow_resolution"] = self.arrow_resolution
-        from ..color_rule import take
+        pre = self._take_prebuilt(self.data)
+        built = None
+        if not coarse and pre is not None and pre[1] == key:
+            built, shown = pre[2], pre[3]   # built on the compute worker (see scene_prebuilder)
+            scene = shown
+            for k in ("color_by", "colormap", "color_range"):
+                kw.pop(k, None)
+        else:
+            from ..color_rule import take
 
-        scene = shown = take(self.data, kw)   # the view's color_by (display only)
+            scene = shown = take(self.data, kw)   # the view's color_by (display only)
         if coarse:  # impostors: cheap to build and to draw
             kw.update(atom_style="flat" if kw["atom_style"] == "flat" else "impostor",
                       only_visible=self._coarse_mask())
@@ -789,7 +846,7 @@ class Viewport(QtWidgets.QWidget):
                 if scene.bonds is not None or scene.vectors:
                     scene = scene.copy()
                     scene.bonds, scene.vectors = None, {}
-        drawn = build_scene(p, scene, mesh_limit=self.mesh_limit, **kw)
+        drawn = build_scene(p, scene, mesh_limit=self.mesh_limit, scene=built, **kw)
         self._limit_bonds(p)
         # boundary and replicated images are hovered through the drawn spheres (each knows its real atom)
         atoms = drawn["atoms"].primitive if ("boundary" in kw or "replicate" in kw) and not coarse and "atoms" in drawn else None
@@ -1597,6 +1654,11 @@ class Viewport(QtWidgets.QWidget):
 
 EMPTY_HINT = native_text("Open a structure, trajectory or notebook\n"
                          "File › Open (Ctrl+O), File › Open example, or drop a file here")
+
+
+def _kwargs_key(kw: dict) -> str:
+    """The view's scene settings as text: a scene built from equal settings is the same scene."""
+    return repr(sorted(kw.items(), key=lambda item: item[0]))
 
 
 def _is_dark(color: str) -> bool:

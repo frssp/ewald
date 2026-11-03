@@ -359,9 +359,11 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
                 coordination: dict | None = None, vectors=None, arrow_resolution: int | None = None,
                 visuals=None, frame: int = 0, boundary=None, boundary_bonds: str = "half",
                 replicate=None, replicate_cell: str = "super", show_atoms: bool = True, surfaces=None,
-                cell_radius=None, type_transparency=None, selection_color=None, light=None, measurements=None):
+                cell_radius=None, type_transparency=None, selection_color=None, light=None, measurements=None,
+                scene=None):
     """Add atoms (and optionally cell + bonds) of ``data`` to a PyVista plotter; returns the
-    :class:`ewald.scene.Scene` it drew.
+    :class:`ewald.scene.Scene` it drew. ``scene``: one :func:`make_scene` already built from
+    ``data`` with the same arguments (the 3D view builds it on the compute worker), drawn as is.
 
     ``atom_style``: 'mesh' (sphere meshes, publication shading), 'impostor' (GPU
     point sprites for very large systems), 'auto' (mesh up to ``mesh_limit`` atoms) or 'flat'
@@ -397,23 +399,46 @@ def build_scene(plotter, data: DataCollection, *, radius_scale: float = 1.0, sho
     :func:`apply_light`); None is the default key light of every renderer. ``measurements`` draws the lines of distances, angles
     and dihedrals (:mod:`ewald.measure`; the values are an overlay).
     """
-    from .scene import SceneContext, build
-
-    scene = build(data, ctx=SceneContext(frame=frame, only_visible=only_visible), visuals=visuals,
-                  radius_scale=radius_scale, type_colors=type_colors, type_radii=type_radii,
-                  radius_preset=radius_preset, oxidation_states=oxidation_states, coordination=coordination,
-                  bonds=bonds, bond_pairs=bond_pairs, bond_radius=bond_radius, vectors=vectors,
-                  trajectory_width=trajectory_width, trajectory_color_by=trajectory_color_by,
-                  trajectory_colormap=trajectory_colormap, trajectory_color_range=trajectory_color_range,
-                  trajectory_time_range=trajectory_time_range, trajectory_trail=trajectory_trail,
-                  trajectory_radius=trajectory_radius, trajectory_style=trajectory_style, show_cell=show_cell, cell_width=cell_width,
-                  boundary=boundary, boundary_bonds=boundary_bonds, replicate=replicate,
-                  replicate_cell=replicate_cell, show_atoms=show_atoms, surfaces=surfaces, cell_radius=cell_radius,
-                  type_transparency=type_transparency, selection_color=selection_color, measurements=measurements)
+    if scene is None:
+        args = dict(locals())   # outside a comprehension: on Python 3.10/3.11 that has its own locals()
+        for k in ("plotter", "data", "scene"):
+            args.pop(k)
+        scene = make_scene(data, **args)
     draw_scene(plotter, scene, atom_style=atom_style, mesh_limit=mesh_limit, sphere_resolution=sphere_resolution,
                arrow_resolution=arrow_resolution or max(6, (sphere_resolution or 16) // 2 + 2), ink=cell_color)
     apply_light(plotter, light)
     return scene
+
+
+_DRAW_ONLY = ("atom_style", "mesh_limit", "sphere_resolution", "arrow_resolution", "cell_color", "light")
+
+
+def make_scene(data: DataCollection, **kwargs):
+    """The :class:`ewald.scene.Scene` :func:`build_scene` draws for ``data`` and the same keyword
+    arguments (those that only steer drawing are ignored), without a plotter: numpy and numba
+    only, so the 3D view builds it on the compute worker."""
+    import inspect
+
+    from .scene import SceneContext, build
+
+    a = {k: p.default for k, p in inspect.signature(build_scene).parameters.items()
+         if p.default is not inspect.Parameter.empty and k not in ("scene", *_DRAW_ONLY)}
+    kwargs = {k: v for k, v in kwargs.items() if k not in _DRAW_ONLY}
+    unknown = set(kwargs) - set(a)
+    if unknown:
+        raise TypeError(f"make_scene() got unexpected keyword arguments {sorted(unknown)}")
+    a.update(kwargs)
+    return build(data, ctx=SceneContext(frame=a["frame"], only_visible=a["only_visible"]), visuals=a["visuals"],
+                 radius_scale=a["radius_scale"], type_colors=a["type_colors"], type_radii=a["type_radii"],
+                 radius_preset=a["radius_preset"], oxidation_states=a["oxidation_states"], coordination=a["coordination"],
+                 bonds=a["bonds"], bond_pairs=a["bond_pairs"], bond_radius=a["bond_radius"], vectors=a["vectors"],
+                 trajectory_width=a["trajectory_width"], trajectory_color_by=a["trajectory_color_by"],
+                 trajectory_colormap=a["trajectory_colormap"], trajectory_color_range=a["trajectory_color_range"],
+                 trajectory_time_range=a["trajectory_time_range"], trajectory_trail=a["trajectory_trail"],
+                 trajectory_radius=a["trajectory_radius"], trajectory_style=a["trajectory_style"], show_cell=a["show_cell"], cell_width=a["cell_width"],
+                 boundary=a["boundary"], boundary_bonds=a["boundary_bonds"], replicate=a["replicate"],
+                 replicate_cell=a["replicate_cell"], show_atoms=a["show_atoms"], surfaces=a["surfaces"], cell_radius=a["cell_radius"],
+                 type_transparency=a["type_transparency"], selection_color=a["selection_color"], measurements=a["measurements"])
 
 
 def draw_scene(plotter, scene, *, atom_style: str = "auto", mesh_limit: int = 150_000,
