@@ -10,6 +10,10 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- Freeze report: when the window stops responding for 5 s (Preferences › General › Report freezes
+  after), every thread's stack goes to `freezes.log` in the settings folder; Help › Freeze log opens
+  it. `ewald gpu` and Help › About show battery or mains, and the status bar warns when High
+  performance was asked for but the 3D view got the integrated GPU (e.g. on battery) (#135).
 - The AI chat side bar has a tab row mirroring the notebook tabs: either row switches both, and
   dots mark notebooks with a chat or an answer on its way (D94, #133).
 - AI chat *History*: New chat keeps the old chat with the notebook (saved in `.ewd`), and History
