@@ -2387,6 +2387,32 @@ def test_viewport_draws_vector_arrows(app):
     assert not any(str(k).startswith("vectors:") for k in v.plotter.actors)
     v.close()
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_freeze_watch_starts_with_the_window_and_help_opens_its_log(app, pipe, monkeypatch, tmp_path):
+    import faulthandler
+
+    from ewald import settings
+    from ewald.gui import app as appmod, file_dialogs
+
+    s = settings.Settings()
+    w = appmod.MainWindow(pipe, settings=s)
+    assert w.open_freeze_log() is None and "No freezes" in w.statusBar().currentMessage()
+    watch = appmod.start_freeze_watch(w)
+    try:
+        assert watch.running and watch.path.exists()
+        opened = []
+        monkeypatch.setattr(file_dialogs, "open_in_editor", lambda p: opened.append(p) or True)
+        assert w.open_freeze_log() == watch.path and opened == [watch.path]
+        watch.froze.emit(12.0, str(watch.path))
+        assert "did not respond for 12 s" in w.statusBar().currentMessage()
+    finally:
+        watch.stop()
+        faulthandler.cancel_dump_traceback_later()
+    s["general.freeze_report"] = 0
+    assert not appmod.start_freeze_watch(w).running
+    w.close()
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
 def test_opengl_check_skips_platforms_without_gl(app, pipe, monkeypatch):
     # QT_QPA_PLATFORM=offscreen has no GL context; on Windows asking VTK for the driver crashed
     from ewald.gui import viewport as vpmod
@@ -2420,8 +2446,14 @@ def test_viewport_impostors_smooth_edges_and_opengl_check(app, pipe, monkeypatch
     monkeypatch.setattr(gpu_select, "list_gpus", lambda: ["Intel(R) Arc(TM) Graphics", "NVIDIA GeForce RTX 4060"])
     monkeypatch.setattr(vp, "opengl_info", lambda: {"renderer": "Intel(R) Arc(TM) Graphics", "vendor": "Intel",
                                                     "version": "4.6", "software": False})
+    monkeypatch.setattr(gpu_select, "power_source", lambda platform=None: "battery")
     about = w.hardware_summary()
-    assert "NVIDIA GeForce RTX 4060" in about and "GPU for the 3D view" in about
+    assert "NVIDIA GeForce RTX 4060" in about and "GPU for the 3D view" in about and "Power: on battery" in about
+    # High performance asked for, but on battery the laptop gave the view the Arc: the status bar says so
+    s["viewport.gpu"] = "high-performance"
+    w.check_opengl()
+    assert "not the high-performance GPU" in w.statusBar().currentMessage()
+    s["viewport.gpu"] = "auto"
     monkeypatch.undo()
     # Preferences › GPU for the 3D view on Windows writes the per-app choice when it changes
     from ewald.gui import prefs_apply

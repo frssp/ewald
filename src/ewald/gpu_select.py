@@ -220,12 +220,95 @@ def other_gpu_hint(renderer: str, gpus: list[str], platform: str | None = None) 
     return f"This computer also has {', '.join(discrete)}. To draw the 3D view there: {how}."
 
 
+# --- battery or mains -------------------------------------------------------------------------------
+def _windows_power() -> str | None:  # pragma: no cover - Windows only
+    import ctypes
+
+    class _Status(ctypes.Structure):
+        _fields_ = [("ACLineStatus", ctypes.c_ubyte), ("BatteryFlag", ctypes.c_ubyte),
+                    ("BatteryLifePercent", ctypes.c_ubyte), ("SystemStatusFlag", ctypes.c_ubyte),
+                    ("BatteryLifeTime", ctypes.c_ulong), ("BatteryFullLifeTime", ctypes.c_ulong)]
+
+    status = _Status()
+    if not ctypes.windll.kernel32.GetSystemPowerStatus(ctypes.byref(status)):
+        return None
+    if status.BatteryFlag == 128:      # no system battery: a desktop
+        return None
+    return {0: "battery", 1: "ac"}.get(status.ACLineStatus)
+
+
+def _linux_power(root: str) -> str | None:
+    """From ``/sys/class/power_supply``: "ac" when a mains/USB supply is online, "battery" when
+    only batteries are there, None without any (a desktop or a container)."""
+    def read(*parts):
+        try:
+            with open(os.path.join(root, *parts), encoding="utf-8") as f:
+                return f.read().strip()
+        except OSError:
+            return ""
+
+    try:
+        names = sorted(os.listdir(root))
+    except OSError:
+        return None
+    kinds = {name: read(name, "type").lower() for name in names}
+    if any(kind in ("mains", "usb", "usb_c", "usb_pd") and read(name, "online") == "1" for name, kind in kinds.items()):
+        return "ac"
+    if any(kind == "battery" and read(name, "scope").lower() != "device" for name, kind in kinds.items()):
+        return "battery"
+    return None
+
+
+def _mac_power(run=None) -> str | None:
+    first = ((run or _run)(["pmset", "-g", "batt"]).splitlines() or [""])[0]
+    if "Battery Power" in first:
+        return "battery"
+    if "AC Power" in first:
+        return "ac"
+    return None
+
+
+def power_source(platform: str | None = None, sys_root: str | None = None, run=None) -> str | None:
+    """"battery", "ac" (plugged in) or None (no battery, or the OS does not say). Laptops lower
+    the GPU's clocks on battery, and some switch the discrete GPU off, so the 3D view may draw on
+    the integrated GPU even with High performance chosen."""
+    platform = platform or sys.platform
+    try:
+        if platform == "win32":
+            return _windows_power()
+        if platform.startswith("linux"):
+            return _linux_power(sys_root or os.path.join(os.sep, "sys", "class", "power_supply"))
+        if platform == "darwin":
+            return _mac_power(run)
+    except Exception:  # never let a power probe break the GUI or the CLI
+        return None
+    return None
+
+
+def wanted_gpu_missing(renderer: str, choice: str | None) -> str | None:
+    """High performance was asked for but the 3D view got an integrated GPU (the discrete one is
+    off, e.g. on battery or in a laptop's Eco/Hybrid mode, or Windows ignored the choice): a
+    warning for the status bar, else None. Needs no GPU list, so it costs nothing at startup."""
+    if env_choice(choice) != "high-performance" or not renderer or not is_integrated(renderer):
+        return None
+    power = power_source()
+    why = ("the computer runs on battery, and laptops often switch the discrete GPU off then"
+           if power == "battery" else "the discrete GPU may be switched off (a laptop's Eco or "
+           "Hybrid mode) or Windows did not apply the choice yet")
+    return (f"The 3D view draws on {renderer}, not the high-performance GPU: {why}. Maximizing or "
+            "resizing the window can then take several seconds; plug in and start EWALD again, or "
+            "see Help › About EWALD.")
+
+
 def summary(renderer: str | None = None, platform: str | None = None) -> str:
     """Plain-text report for ``ewald gpu``: GPUs, the viewport preference, CUDA and OpenCL."""
     from .backend import gpu_available
 
     platform = platform or sys.platform
     lines = ["GPUs: " + (", ".join(list_gpus()) or "unknown")]
+    power = power_source(platform)
+    lines.append("Power: " + {"battery": "on battery (GPUs may run slower or switch off)",
+                              "ac": "plugged in"}.get(power or "", "no battery or unknown"))
     if renderer:
         lines.append(f"Viewport OpenGL: {renderer}")
     if platform == "win32":

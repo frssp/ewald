@@ -365,7 +365,7 @@ Insert adds cells (code, text, Step, Plot, Quick analysis, a snapshot), Notebook
 the kernel, Tools are the structure view's tools and the command palette, Window shows the side bars
 (ticked while shown; plugin side bars sit with the built-in ones) and the tabs, and Help has the
 tutorials, the manual and Help › Keyboard shortcuts, a searchable list of every shortcut including
-the notebook's command-mode keys. Shortcuts in menus and tooltips are written the platform's way
+the notebook's command-mode keys, and Help › Freeze log, what every thread was doing when the window last stopped responding (docs/user/gpu.md, "On battery"). Shortcuts in menus and tooltips are written the platform's way
 (⌘ on macOS).
 
 ## Render workspace

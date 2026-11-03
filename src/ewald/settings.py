@@ -86,6 +86,10 @@ OPTIONS = (
            "extxyz; local or SSH): new frames extend the timeline."),
     Option("general.live_reload_interval", 2.0, "Live reload interval", "Seconds between looks at the file.",
            minimum=0.5, maximum=600),
+    Option("general.freeze_report", 5.0, "Report freezes after",
+           "Seconds the window may not respond before EWALD writes what every thread was doing to "
+           "freezes.log in the settings folder (Help › Freeze log). 0 turns it off. Takes effect at the next start.",
+           minimum=0, maximum=600),
     Option("general.docs_url", "", "Documentation URL",
            "Where Help opens the manual. Empty = the docs folder on GitHub; or a hosted or built site."),
 
