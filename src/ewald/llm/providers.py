@@ -8,6 +8,8 @@ Built in (Preferences > AI > Provider, setting ``llm.provider``):
 * ``gemini`` - Google Gemini through its OpenAI-compatible endpoint.
 * ``openai-compatible`` - any server speaking the OpenAI Chat Completions API: Ollama and
   LM Studio on your machine, vLLM, OpenRouter, ... Set its address as ``llm.base_url``.
+* ``opencode`` - the OpenCode coding agent over the Agent Client Protocol (:mod:`ewald.llm.acp`):
+  OpenCode's own models and sign-in, the only setting is its command (``llm.command``).
 
 A *connection* is a provider plus the address, model and headers to use with it
 (:meth:`Provider.connect`, :func:`from_settings`); Preferences > AI saves several as named
@@ -117,6 +119,8 @@ class Provider:
     env_prefix: Callable | None = None  # () -> model prefix when none is set
     check_with: str = "models"          # "models": the models endpoint; "chat": a tiny request;
                                         # "auto": the models endpoint, else a tiny request
+    check_fn: Callable | None = None    # (provider, api_key, model, base_url, _client) -> (ok, message)
+                                        # for a provider that is not an HTTP API (an ACP agent)
     client_options: dict = field(default_factory=dict)  # passed to make_client (Provider.connect)
     description: str = ""
     origin: str = "built-in"
@@ -133,6 +137,8 @@ class Provider:
 
     @property
     def default_model(self) -> str:
+        if self.sdk == "acp":   # an agent has a default of its own
+            return ""
         return next(iter(self.all_models), "")
 
     @property
@@ -198,6 +204,8 @@ class Provider:
               _client=None) -> tuple[bool, str]:
         """Ask the service whether the key and model work (the models endpoint, no tokens used)."""
         model = model or self.default_model
+        if self.check_fn is not None:
+            return self.check_fn(self, api_key, model, base_url, _client=_client)
         try:
             sdk = importlib.import_module(self.sdk)
         except ImportError:
@@ -250,6 +258,30 @@ class Provider:
         return True, f"Connected: {name}"
 
 
+def _acp_client(api_key=None, base_url=None, **kwargs):
+    from .acp import _opencode_client
+
+    return _opencode_client(api_key, base_url, **kwargs)
+
+
+def _acp_check(provider, api_key=None, model=None, base_url=None, _client=None):
+    from .acp import check_opencode
+
+    return check_opencode(provider, api_key, model, base_url, _client=_client)
+
+
+def _acp_models():
+    from .acp import KNOWN_MODELS
+
+    return dict(KNOWN_MODELS)
+
+
+def _acp_chat():
+    from .acp import AcpChat   # no SDK: the module is plain Python
+
+    return AcpChat
+
+
 BUILTIN = {
     "anthropic": Provider(
         "anthropic", "Anthropic (Claude)", assistant="Claude", sdk="anthropic", chat_class=AnthropicChat,
@@ -282,6 +314,13 @@ BUILTIN = {
                     "LM Studio (http://localhost:1234/v1), vLLM, OpenRouter (https://openrouter.ai/api/v1), "
                     "Azure OpenAI or an API gateway (API key header, extra headers). "
                     "Set its address in Server URL and the model it serves."),
+    "opencode": Provider(
+        "opencode", "OpenCode (ACP)", assistant="OpenCode", sdk="acp", models={},
+        make_client=_acp_client, chat_class=_acp_chat(), key_name="", key_required=False,
+        key_hint="OpenCode signs in by itself", key_help="OpenCode keeps its own sign-in: run opencode auth login.",
+        vision=True, options=("command",), check_fn=_acp_check, env_models=_acp_models,
+        description="The OpenCode coding agent (opencode acp): the models, sign-in and provider settings of "
+                    "your OpenCode, including a company's. Set the opencode program in Agent command."),
 }
 
 
@@ -303,7 +342,7 @@ def get(name: "str | Provider | None" = None) -> Provider:
     return found
 
 
-CONNECTION_FIELDS = ("base_url", "route_prefix", "key_header", "headers", "timeout")
+CONNECTION_FIELDS = ("base_url", "route_prefix", "key_header", "headers", "timeout", "command")
 PROFILE_FIELDS = ("provider", "model", "effort") + CONNECTION_FIELDS
 
 

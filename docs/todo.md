@@ -651,6 +651,13 @@ Plugins and AI
   saved connections of one provider with different keys share one keychain entry. Preferences › AI › Extra headers is a
   one-line field, so a long header list is hard to read and easy to cut short (it happened with a
   real gateway, 2026-10-23); a multi-line editor would help.
+- OpenCode over ACP (`llm/acp.py`, D92), phase 1: OpenCode gets no ewald tools and answers with
+  ```python blocks only, so it cannot read cell outputs or renders by itself. Phase 2 (when the owner
+  asks): offer ewald's cell tools to the agent as an MCP server in `session/new` (`mcpServers`),
+  still refusing OpenCode's own edit/bash. Other ACP agents (Claude Code, Codex, Gemini CLI) would
+  need only a command and arguments; there is no generic ACP provider yet. The model list appears
+  only after Test connection (kept in memory, not saved). OpenCode's tool calls and thoughts are not
+  shown in the chat.
 - Plugin manifests, phase 2 (from the VS Code comparison): contributions declared in
   `ewald-plugin.toml` (`[[readers]]`, `[[modifiers]]`, ... with `python = "module:object"`)
   registered lazily and imported on first use (`@panel` widgets are already built on first open,
@@ -772,6 +779,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- OpenCode provider (D92) on the owner's Windows with the company's OpenCode: `opencode.cmd` from
+  npm found on PATH and started without a console window, Test connection lists the company
+  models, an answer streams into the AI chat, Stop ends it, and closing EWALD leaves no `opencode`
+  or `node` process behind (taskkill /T).
 - Reading a LAMMPS dump over SSH from the GUI on the owner's Windows PC against the real cluster
   while browsing the Remotes side bar (SFTP calls now hold the connection lock and a broken
   SFTP session is reopened, 2026-11-03; tested with threads against the in-process server only).

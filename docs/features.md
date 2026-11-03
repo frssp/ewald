@@ -352,6 +352,7 @@ Providers (Preferences > AI, `--provider`; `@ai_provider` plugins add more):
 | OpenAI | `openai` | `gpt-5` | `OPENAI_API_KEY` or keychain |
 | Google Gemini | `gemini` | `gemini-2.5-pro` | `GEMINI_API_KEY` or keychain |
 | OpenAI-compatible server | `openai-compatible` | `llama3.1` | optional |
+| OpenCode (ACP) | `opencode` | `` | none |
 
 Tools:
 
@@ -550,6 +551,7 @@ One section per simulation code (`ewald.codes`; plugins add codes with `@simulat
 | `llm.route_prefix` | Model prefix | `''` |
 | `llm.key_header` | API key header | `''` |
 | `llm.headers` | Extra headers | `''` |
+| `llm.command` | Agent command | `''` |
 | `llm.timeout` | Timeout | `0.0` |
 | `llm.effort` | Effort | `'high'` |
 | `llm.stream` | Stream answers | `True` |

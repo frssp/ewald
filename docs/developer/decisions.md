@@ -1198,6 +1198,21 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Alternatives:** Qt's default, where the dragged tab follows the mouse without a bound.
 - **Landed:** public PR #127.
 
+### D92. OpenCode answers Ask AI as an ACP agent, set by its command alone (2026-11-03)
+
+- **Decision:** Preferences › AI gets an *OpenCode (ACP)* provider. EWALD starts `opencode acp`
+  and speaks the Agent Client Protocol to it, the way the Obsidian Agent Client plugin does; the
+  only setting is the `opencode` command, and OpenCode keeps its own models and sign-in. OpenCode
+  gets no ewald tools in this first step: its answers' ```python blocks become cells, and its own
+  edit/bash tools are refused. Driving EWALD from OpenCode through `ewald mcp` stays as it is.
+- **Why:** "Gui에서 지금 api provider처럼 동작하기만 하면 된다. Mcp로 뭔가 큰걸 하고 싶지 않다",
+  and "오픈코드 사내 서비스라서. 옵시디안 처럼 오픈코드 설정을 opencode커맨드 패스만 넣으면 되게
+  하면 편하겠는데".
+- **Alternatives:** OpenCode Zen's OpenAI-compatible endpoint through the existing provider (needs a
+  Zen key, not the company setup); reading OpenCode's provider settings and calling the model
+  directly; growing `ewald mcp` so OpenCode drives the open GUI.
+- **Landed:** public PR #N.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

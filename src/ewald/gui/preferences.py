@@ -72,7 +72,7 @@ LAYOUT = {
         ("Modules", ["python.extra_paths"])]),
     "AI": ("The AI service behind Ask AI and the AI chat, its API key, model and connection.", [
         ("Provider", ["llm.provider"]),
-        ("Connection", ["llm.base_url", "llm.route_prefix", "llm.key_header", "llm.headers",
+        ("Connection", ["llm.command", "llm.base_url", "llm.route_prefix", "llm.key_header", "llm.headers",
                         "llm.timeout"]),
         ("Model", ["llm.model", "llm.effort"]),
         ("Chat", ["llm.stream"]),
@@ -1038,7 +1038,9 @@ class PreferencesDialog(QtWidgets.QDialog):
             loading, self._loading = self._loading, True
             text = combo.currentText()
             combo.clear()
-            for model_id, label in p.models.items():
+            # an ACP agent's models come from the agent (Test connection lists them)
+            models = p.models or (p.env_models() if p.sdk == "acp" and p.env_models else {})
+            for model_id, label in models.items():
                 combo.addItem(model_id)
                 combo.setItemData(combo.count() - 1, label, QtCore.Qt.ToolTipRole)
             combo.setEditText(text)
@@ -1048,12 +1050,17 @@ class PreferencesDialog(QtWidgets.QDialog):
         self._key_status()
 
     # rows the chosen provider uses: llm.<field> -> the Provider.options entry it needs
-    _PROVIDER_ROWS = {"llm.route_prefix": "route_prefix", "llm.key_header": "key_header"}
+    _PROVIDER_ROWS = {"llm.route_prefix": "route_prefix", "llm.key_header": "key_header",
+                      "llm.command": "command"}
+    # rows an agent started as a program (an ACP agent such as OpenCode) has no use for
+    _HTTP_ROWS = ("llm.base_url", "llm.headers")
 
     def _row_applies(self, key) -> bool:
         p = self._provider()
         if key == "llm.effort":
             return p.effort
+        if key in self._HTTP_ROWS and p.sdk == "acp":
+            return False
         return key not in self._PROVIDER_ROWS or self._PROVIDER_ROWS[key] in p.options
 
     def _connection_rows(self, p):
@@ -1067,6 +1074,8 @@ class PreferencesDialog(QtWidgets.QDialog):
         self.editors["llm.key_header"][0].setPlaceholderText("Authorization: Bearer")
         self.editors["llm.headers"][0].setPlaceholderText("Name: value; Request-Id: {uuid}")
         self.editors["llm.timeout"][0].setSpecialValueText("Provider default")
+        if "llm.command" in self.editors:
+            self.editors["llm.command"][0].setPlaceholderText("opencode (on PATH)")
         if hasattr(self, "search"):
             self._search(self.search.text())
 
@@ -1147,6 +1156,8 @@ class PreferencesDialog(QtWidgets.QDialog):
             if not workers.alive(self.key_test):   # the dialog closed meanwhile
                 return
             ok, msg = result.get("r", (False, "no result"))
+            if ok and p.sdk == "acp":
+                self._provider_changed(reset_model=False)   # the models the agent offers
             self._key_note(msg, ok)
             self.key_test.setEnabled(True)
 

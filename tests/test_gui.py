@@ -1539,6 +1539,33 @@ def test_preferences_ai_connection_rows_and_saved_connections(app, monkeypatch):
     dlg.close()
 
 
+@pytest.mark.skipif(os.name == "nt", reason="the fake agent is a #! program, POSIX only")
+def test_preferences_ai_opencode_rows_and_models_from_test_connection(app, monkeypatch, tmp_path):
+    from ewald import settings
+    from ewald.gui.preferences import PreferencesDialog
+    from ewald.llm import acp, credentials
+    from helpers.acp_agent import write_agent
+
+    monkeypatch.setattr(credentials, "_keyring", lambda: None)
+    monkeypatch.setattr(acp, "KNOWN_MODELS", {})
+    dlg = PreferencesDialog(settings.load())
+    rows = {k: dlg.editors[k][2] for k in ("llm.command", "llm.base_url", "llm.headers", "llm.route_prefix",
+                                            "llm.key_header")}
+    assert rows["llm.command"].isHidden() and not rows["llm.base_url"].isHidden()   # Claude: no agent program
+    dlg.set_value("llm.provider", "opencode")
+    assert not rows["llm.command"].isHidden()
+    assert all(rows[k].isHidden() for k in ("llm.base_url", "llm.headers", "llm.route_prefix", "llm.key_header"))
+    assert dlg.editors["llm.model"][0].count() == 0          # the agent lists its models when asked
+    dlg.set_value("llm.command", write_agent(tmp_path, "opencode", program=True))
+    dlg.test_api_key(wait=True)
+    assert dlg._key_ok and "FakeAgent" in dlg.key_result.text()
+    combo = dlg.editors["llm.model"][0]
+    assert [combo.itemText(i) for i in range(combo.count())] == ["fake/a", "fake/b"]
+    dlg.set_value("llm.provider", "openai-compatible")
+    assert rows["llm.command"].isHidden() and not rows["llm.base_url"].isHidden()
+    dlg.close()
+
+
 def test_ask_panel_agent_uses_ai_preferences(app, monkeypatch):
     from ewald import settings
     from ewald.gui import ask_panel
