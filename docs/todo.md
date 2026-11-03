@@ -776,6 +776,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   scaling (the left column works there, 2026-11-02) and on macOS:
   the drag picture, the drop line and the edge scroll (only synthetic drops and a patched
   `QDrag.exec` are tested under xvfb).
+- Dragging a notebook tab past either end of the tab row on Windows at 200 % scaling and on
+  macOS: the tab stops at the row's ends and before the scroll arrows (D91; synthetic mouse
+  moves under xvfb only).
 - The frozen Windows app from `windows-release.yml` (setup.exe, portable zip) on the owner's
   Windows PC: install, open a VASP/LAMMPS file, render, quit without a crash dialog. Then GPU
   compute from Preferences › Compute › Optional components › Install (D80): pip finishes in the

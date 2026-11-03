@@ -171,6 +171,8 @@ so this release also carries everything listed there.
 
 ### Fixed
 
+- A notebook tab dragged to reorder it stays inside the tab row and stops at its ends, instead
+  of following the mouse past the panel into the hidden area. (D91, #127)
 - The Windows app no longer crashes on exit while the Plugins side bar is still reading the
   catalogs, nor when started on a Qt platform without OpenGL (`QT_QPA_PLATFORM=offscreen`); the
   frozen app's release build passes its smoke tests again.

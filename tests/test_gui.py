@@ -7397,3 +7397,54 @@ def test_preferences_install_button_for_gpu_compute(app, monkeypatch):
     for _ in range(5):
         app.processEvents()
     assert asked == [["cupy-cuda12x[ctk]"]] and dlg.result() == QtWidgets.QDialog.Accepted
+
+
+def test_notebook_tab_drag_stays_inside_the_tab_row(app):
+    """A dragged notebook tab stops at the ends of the visible row (and before the scroll
+    arrows), instead of following the mouse into the hidden area; reordering still works."""
+    from PySide6.QtTest import QTest
+
+    from ewald.gui.notebook_tabs import NotebookTabs
+
+    def drag(bar, index, dx, dy=0):
+        start = bar.tabRect(index).center()
+        QTest.mousePress(bar, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, start)
+        moving = []
+        for step in range(0, dx + (1 if dx > 0 else -1) * 30, 30 if dx > 0 else -30)[1:]:  # mouse-like steps
+            point = QtCore.QPointF(start.x() + step, start.y() + dy)
+            event = QtGui.QMouseEvent(QtCore.QEvent.MouseMove, point, bar.mapToGlobal(point),
+                                      QtCore.Qt.NoButton, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier)
+            QtWidgets.QApplication.sendEvent(bar, event)
+            app.processEvents()
+            moving = [w.geometry() for w in bar.findChildren(QtWidgets.QWidget)
+                      if w.parent() is bar and w.isVisible()
+                      and not isinstance(w, QtWidgets.QAbstractButton)]
+        QTest.mouseRelease(bar, QtCore.Qt.LeftButton, QtCore.Qt.NoModifier, point.toPoint())
+        app.processEvents()
+        return moving[0] if moving else None
+
+    tabs = NotebookTabs()
+    tabs.resize(400, 200)
+    for name in "abc":
+        tabs.addTab(QtWidgets.QLabel(name), f"notebook {name}")
+    tabs.show()
+    QTest.qWaitForWindowExposed(tabs)
+    bar = tabs.bar
+    grab = 2  # Qt's moving-tab widget overlaps the tab by a pixel on each side
+
+    rect = drag(bar, 0, 5 * bar.width(), dy=300)
+    assert rect is not None and rect.right() <= bar.width() - 1 + grab
+    assert [bar.tabText(i) for i in range(3)] == ["notebook b", "notebook c", "notebook a"]
+    rect = drag(bar, 2, -5 * bar.width())
+    assert rect is not None and rect.left() >= -grab
+    assert [bar.tabText(i) for i in range(3)] == ["notebook a", "notebook b", "notebook c"]
+
+    for name in "defghijk":   # more tabs than fit: the scroll arrows show at the right end
+        tabs.addTab(QtWidgets.QLabel(name), f"notebook {name}")
+    app.processEvents()
+    arrows = [b for b in bar.findChildren(QtWidgets.QToolButton) if b.isVisible() and b.parent() is bar]
+    assert arrows
+    rect = drag(bar, 0, 5 * bar.width(), dy=300)
+    assert rect is not None and rect.right() <= min(b.x() for b in arrows) - 1 + grab
+    tabs.close()
+    tabs.deleteLater()
