@@ -1188,6 +1188,16 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   그냥 반응 안 오게 할까?"
 - **Landed:** public PR #126.
 
+### D91. A dragged notebook tab stays inside the tab row (2026-11-03)
+
+- **Decision:** while a notebook tab is dragged to reorder it, it stops at the two ends of the
+  visible tab row (and before the scroll arrows when they show) instead of following the mouse
+  into the hidden area past the panel. Reordering works as before.
+- **Why:** "노트북 탭을 드래그하니 그 패널을 넘어서 안 보이는 영역까지 가네. 그냥 바운더리를 못
+  넘어가게 할까?"
+- **Alternatives:** Qt's default, where the dragged tab follows the mouse without a bound.
+- **Landed:** public PR #127.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

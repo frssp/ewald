@@ -24,11 +24,46 @@ class _TabBar(QtWidgets.QTabBar):
         size.setHeight(header.height())  # one row height with the panel headers above and beside it
         return size
 
+    _drag = None   # (press x, left and right of the pressed tab) while a tab may be dragged
+
     def mousePressEvent(self, event):
-        if self.tabAt(event.position().toPoint()) < 0:
+        pos = event.position()
+        index = self.tabAt(pos.toPoint())
+        if index < 0:
             event.ignore()  # empty part of the row: the dock title bar starts a panel drag
             return
+        if event.button() == QtCore.Qt.LeftButton:
+            rect = self.tabRect(index)
+            self._drag = (pos.x(), rect.left(), rect.right())
         super().mousePressEvent(event)
+
+    def _visible_right(self) -> int:
+        """The last x a tab may cover: the bar's width, less the scroll arrows when they show."""
+        right = self.width() - 1
+        for button in self.findChildren(QtWidgets.QToolButton):
+            if button.isVisible() and button.parent() is self:
+                right = min(right, button.x() - 1)
+        return right
+
+    def mouseMoveEvent(self, event):
+        # QTabBar moves the dragged tab with the mouse without any bound, so it could be dragged
+        # out of the row into the hidden area. Keep the dragged tab inside the visible row.
+        if self._drag is not None and event.buttons() & QtCore.Qt.LeftButton:
+            press_x, left, right = self._drag
+            pos = event.position()
+            lo = press_x - left                          # the tab's left edge at x = 0
+            hi = press_x + self._visible_right() - right  # its right edge at the visible end
+            x = min(max(pos.x(), lo), max(lo, hi))
+            y = min(max(pos.y(), 0.0), float(self.height() - 1))
+            if (x, y) != (pos.x(), pos.y()):
+                point = QtCore.QPointF(x, y)
+                event = QtGui.QMouseEvent(event.type(), point, self.mapToGlobal(point),
+                                          event.button(), event.buttons(), event.modifiers())
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._drag = None
+        super().mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event):
         if self.tabAt(event.position().toPoint()) < 0:
