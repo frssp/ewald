@@ -572,6 +572,7 @@ class MenusMixin:
             h.addAction(label, lambda page=page: self.open_help(page))
         h.addSeparator()
         h.addAction("&Keyboard shortcuts", self.show_shortcuts)
+        h.addAction("&Freeze log", self.open_freeze_log)
         h.addSeparator()
         about = h.addAction("&About EWALD", self.about)
         about.setMenuRole(QtGui.QAction.AboutRole)
@@ -734,6 +735,20 @@ class MenusMixin:
             f"in Python notebooks, with AI and plugins built in.</p><p>{self.hardware_summary()}</p>"
             f"<p><a href='{self.help_url()}'>Manual</a></p>")
 
+    def open_freeze_log(self):
+        """Help › Freeze log: what EWALD was doing when the window stopped responding."""
+        from .freeze_watch import log_path
+
+        path = log_path()
+        if not path.exists():
+            self.message(f"No freezes recorded ({path} does not exist yet)")
+            return None
+        from .file_dialogs import open_in_editor
+
+        if not open_in_editor(path):
+            self.message(f"Freeze log: {path}")
+        return path
+
     def _gpu_available(self) -> bool:
         if getattr(self, "_gpu", None) is None:
             from ..backend import gpu_available
@@ -754,6 +769,10 @@ class MenusMixin:
         gpus = gpu_select.list_gpus()
         if len(gpus) > 1:
             text += f"<br>GPUs in this computer: {', '.join(gpus)}"
+        power = gpu_select.power_source()
+        if power:
+            text += "<br>Power: " + ("on battery (the GPU may run slower or the discrete one may be off)"
+                                     if power == "battery" else "plugged in")
         hint = gpu_select.other_gpu_hint(gl["renderer"] or "", gpus)
         if hint:
             text += f"<br><b>{hint.replace('`', '')}</b>"

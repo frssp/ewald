@@ -170,3 +170,53 @@ def test_cuda_dll_dirs_finds_the_nvidia_wheels(tmp_path, monkeypatch):
     assert backend.cuda_dll_dirs([str(tmp_path)]) == []   # once per folder
     monkeypatch.setattr(sys, "platform", "linux")
     assert backend.cuda_dll_dirs([str(tmp_path)]) == []
+
+
+def _supply(root, name, **files):
+    d = root / name
+    d.mkdir(parents=True)
+    for k, v in files.items():
+        (d / k).write_text(v + "\n", encoding="utf-8", newline="\n")
+
+
+def test_power_source_linux_sysfs(tmp_path):
+    assert gpu_select.power_source("linux", sys_root=str(tmp_path / "none")) is None   # a container
+    _supply(tmp_path, "BAT0", type="Battery")
+    _supply(tmp_path, "hidpp_battery_0", type="Battery", scope="Device")   # a mouse, not the laptop
+    _supply(tmp_path, "AC", type="Mains", online="0")
+    assert gpu_select.power_source("linux", sys_root=str(tmp_path)) == "battery"
+    (tmp_path / "AC" / "online").write_text("1\n", encoding="utf-8")
+    assert gpu_select.power_source("linux", sys_root=str(tmp_path)) == "ac"
+    only_mouse = tmp_path / "desk"
+    _supply(only_mouse, "hidpp_battery_0", type="Battery", scope="Device")
+    assert gpu_select.power_source("linux", sys_root=str(only_mouse)) is None
+
+
+@pytest.mark.parametrize("first, want", [
+    ("Now drawing from 'Battery Power'", "battery"), ("Now drawing from 'AC Power'", "ac"), ("", None)])
+def test_power_source_macos(first, want):
+    assert gpu_select.power_source("darwin", run=lambda args: first + "\n -InternalBattery-0 80%") == want
+
+
+def test_power_source_never_raises_off_its_platform():
+    assert gpu_select.power_source("win32") in (None, "battery", "ac")   # no windll on Linux/macOS: None
+
+
+def test_wanted_gpu_missing(monkeypatch):
+    monkeypatch.delenv("EWALD_GPU", raising=False)
+    monkeypatch.setattr(gpu_select, "power_source", lambda platform=None: "battery")
+    arc = "Intel(R) Arc(TM) Graphics"
+    note = gpu_select.wanted_gpu_missing(arc, "high-performance")
+    assert arc in note and "battery" in note and "Maximizing" in note
+    assert gpu_select.wanted_gpu_missing("NVIDIA GeForce RTX 4050 Laptop GPU/PCIe/SSE2", "high-performance") is None
+    assert gpu_select.wanted_gpu_missing(arc, "auto") is None
+    monkeypatch.setattr(gpu_select, "power_source", lambda platform=None: "ac")
+    assert "Eco" in gpu_select.wanted_gpu_missing(arc, "high-performance")
+    monkeypatch.setenv("EWALD_GPU", "high-performance")
+    assert gpu_select.wanted_gpu_missing(arc, "auto")
+
+
+def test_summary_names_the_power_source(monkeypatch):
+    monkeypatch.setattr(gpu_select, "list_gpus", lambda: ["Intel(R) Arc(TM) Graphics"])
+    monkeypatch.setattr(gpu_select, "power_source", lambda platform=None: "battery")
+    assert "Power: on battery" in gpu_select.summary(platform="linux")

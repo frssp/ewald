@@ -841,6 +841,14 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   `cupy-cuda12x[ctk]`). Modifiers on CUDA measured there too (gpu.md). Still to check: Preferences › GPU
   for the 3D view / `ewald gpu --prefer` themselves (the owner used Windows Settings),
   `benchmarks/neighbors.py`, and Linux PRIME offload on a real hybrid laptop.
+- The owner's Windows laptop froze for good when EWALD was started on battery and the window
+  maximized (2026-11-03). Code side: `freezes.log` (Help › Freeze log, `general.freeze_report`)
+  dumps every thread's stack during a freeze, `ewald gpu`/About show battery or mains, and the
+  status bar warns when High performance was asked for but the 3D view got the integrated GPU.
+  Still to do on that laptop: reproduce on battery and read `freezes.log` (driver call such as
+  `showMaximized` or EWALD code), `ewald gpu` on battery (does the RTX disappear?), and
+  `benchmarks/resize.py` plugged in vs on battery; if it is the Arc driver, decide between a
+  battery fallback (legacy-gl, a smaller first frame) and leaving it to the vendor's GPU mode.
 - CommonNeighborAnalysis is 3.5x slower on CUDA than on the CPU at 108k atoms (402 vs 115 ms on
   an RTX 4050, 2026-10-26), ClusterAnalysis slightly slower (89 vs 68 ms): profile the xp path
   (many small kernel launches or host round trips) and give CNA one CUDA kernel or keep it on the

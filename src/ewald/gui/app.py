@@ -302,6 +302,12 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         if gl["software"]:
             self.message(f"Viewport uses software OpenGL ({gl['renderer']}): no GPU acceleration, "
                          "so large scenes are slow. Check the graphics driver (Help › About EWALD).")
+        else:
+            from ..gpu_select import wanted_gpu_missing
+
+            note = wanted_gpu_missing(gl["renderer"] or "", self.settings["viewport.gpu"])
+            if note:
+                self.message(note, warning=True)
         return gl
 
     def set_workspace(self, index):
@@ -811,6 +817,20 @@ def _in_ipython_qt_loop():
         return False
 
 
+def start_freeze_watch(win):
+    """Write a freeze's thread stacks to freezes.log (Preferences › General › Report freezes after)."""
+    from .freeze_watch import FreezeWatch, machine_context
+
+    try:
+        watch = FreezeWatch(win.settings["general.freeze_report"], context=lambda: machine_context(win), parent=win)
+        watch.froze.connect(lambda s, path: win.message(
+            f"EWALD did not respond for {s:.0f} s; what it was doing is in {path} (Help › Freeze log)", warning=True))
+        return watch.start()
+    except Exception as exc:  # an unwritable settings folder must not stop the GUI
+        print(f"ewald-gui: freeze report off ({exc})", file=sys.stderr)
+        return None
+
+
 def main(argv=None):
     import argparse
 
@@ -828,7 +848,10 @@ def main(argv=None):
     from . import first_run
 
     first_run.finish(win)
+    watch = start_freeze_watch(win)
     code = app.exec()
+    if watch is not None:
+        watch.stop()
     from . import workers
 
     workers.wait_all()   # a catalog read or file load still running would crash the exit

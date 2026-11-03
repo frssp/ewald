@@ -98,6 +98,34 @@ ewald gpu --prefer high-performance          # then the 3D view on the RTX from 
 python benchmarks/resize.py                  # prints "OpenGL: <renderer>"; compare the first maximize
 ```
 
+### On battery
+
+Unplugged, laptops lower the GPU clocks, and many switch the discrete GPU off (Eco, Hybrid or
+"discrete GPU off on battery" modes in the vendor's control app). The 3D view then starts on the
+integrated GPU even with High performance chosen. On the owner's Intel Arc the first maximize of
+the window already took about 4 s plugged in (0.2 s on the RTX 4050); on battery it can take much
+longer and look like a hang. EWALD says so in the status bar when High performance was asked for
+and the 3D view still got an integrated GPU, and `ewald gpu` and Help › About EWALD show whether
+the computer runs on battery.
+
+When the window stops responding for more than 5 s (Preferences › General › Report freezes
+after; 0 turns it off), EWALD writes the Python stack of every thread to `freezes.log` in the
+settings folder, at the moment of the freeze, so the file is there even when the program has to
+be ended from the Task Manager. When the window responds again, a line with the length of the
+freeze, the power source, the 3D view's GPU and the window size follows. Help › Freeze log opens
+it. A stack that ends in `showMaximized`, `resizeEvent` or `Render` points at the graphics driver;
+one in EWALD's own code is a bug to report with the file.
+
+To compare plugged in and on battery (nushell on Windows; the same commands work in other
+shells with their own syntax for the environment variable):
+
+```nu
+ewald gpu                                         # "Power: on battery", the GPUs and the Windows choice
+python benchmarks/resize.py --profile             # run once plugged in and once on battery
+with-env {EWALD_VIEWPORT: "legacy-gl"} { ewald gui }   # the OpenGL 1.x view maximized in 90 ms on Arc
+open ($env.APPDATA | path join ewald freezes.log)  # after a freeze
+```
+
 Run the commands one at a time. EWALD's CUDA kernels are compiled when first used, with NVRTC, so
 CuPy needs the CUDA runtime libraries: the `[ctk]` extra brings them as pip wheels, or install the
 CUDA Toolkit 12.x from NVIDIA, which also sets `CUDA_PATH`. CuPy's warning "CUDA path could not be

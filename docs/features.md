@@ -432,6 +432,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `general.restore_layout` | Restore window layout | `True` |
 | `general.live_reload` | Live reload | `True` |
 | `general.live_reload_interval` | Live reload interval | `2.0` |
+| `general.freeze_report` | Report freezes after | `5.0` |
 | `general.docs_url` | Documentation URL | `''` |
 
 ### Codes
@@ -840,6 +841,7 @@ One section per simulation code (`ewald.codes`; plugins add codes with `@simulat
 - Writing plugins
 - Python API reference
 - Keyboard shortcuts
+- Freeze log
 - About EWALD
 
 **Viewport (right click)**, entries shown only when they apply (picked atoms, phonon modes, NEB band, volumetric grid, trajectory):
