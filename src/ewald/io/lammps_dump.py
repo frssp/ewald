@@ -54,7 +54,7 @@ class LammpsDumpReader(FrameReader):
         self.sort_by_id = sort_by_id
         self._size = file_size(self.path)
         self._timesteps: dict[int, int] = {}  # frame offset -> ITEM: TIMESTEP, from the index scan
-        self._offsets, last_complete = _scan_frames(self.path, steps=self._timesteps)
+        self._offsets, last_complete = _indexed_scan(self.path, self._timesteps)
         if not self._offsets:
             raise ValueError(f"{path}: no 'ITEM: TIMESTEP' found; not a LAMMPS dump file")
         self._end = None  # where the last frame ends (None: end of file)
@@ -286,6 +286,22 @@ def _type_labels(values, type_map=None) -> np.ndarray:
     if type_map:
         names = [type_map.get(v, v) for v in names]
     return np.array(names, dtype=str)[inverse]
+
+
+def _indexed_scan(path, steps: dict) -> tuple[list[int], bool]:
+    """:func:`_scan_frames` of the whole file, or its result kept on disk from an earlier open
+    of the unchanged file (:mod:`ewald.io.index_cache`)."""
+    from . import index_cache
+
+    kept = index_cache.lookup(path, "lammps-dump")
+    if kept is not None:
+        steps.update(zip(kept["step_offsets"].tolist(), kept["steps"].tolist()))
+        return kept["offsets"].tolist(), True
+    offsets, complete = _scan_frames(path, steps=steps)
+    if offsets and complete:
+        index_cache.store(path, "lammps-dump", offsets=offsets, step_offsets=list(steps),
+                          steps=list(steps.values()))
+    return offsets, complete
 
 
 def _scan_frames(path, start: int = 0, chunk_size: int = 1 << 24,

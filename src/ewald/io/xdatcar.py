@@ -43,7 +43,7 @@ class XdatcarReader(FrameReader):
     def __init__(self, path):
         self.path = str(path)
         self._size = file_size(self.path)
-        self._frames, truncated = self._scan(0, 0, None)  # (header offset, configuration-line offset)
+        self._frames, truncated = self._indexed_scan()  # (header offset, configuration-line offset)
         if not self._frames:
             if truncated:
                 raise IncompleteFileError(f"{path}: no complete configuration yet (VASP still running "
@@ -52,6 +52,19 @@ class XdatcarReader(FrameReader):
         if truncated:
             self._set_incomplete(f"{len(self._frames)} configuration(s) read, the partial last one skipped")
         self._header_cache: dict[int, tuple] = {}
+
+    def _indexed_scan(self) -> tuple[list[tuple[int, int]], bool]:
+        """The whole file's :meth:`_scan`, or its result kept on disk from an earlier open of the
+        unchanged file (:mod:`ewald.io.index_cache`)."""
+        from . import index_cache
+
+        kept = index_cache.lookup(self.path, "xdatcar")
+        if kept is not None:
+            return [tuple(f) for f in kept["frames"].tolist()], False
+        frames, truncated = self._scan(0, 0, None)
+        if frames and not truncated:
+            index_cache.store(self.path, "xdatcar", frames=np.asarray(frames).reshape(-1, 2))
+        return frames, truncated
 
     def _scan(self, start, header, natoms) -> tuple[list[tuple[int, int]], bool]:
         """Frames from byte ``start`` on (``header``/``natoms``: the header in force there),

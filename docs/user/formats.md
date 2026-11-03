@@ -350,6 +350,16 @@ trajectory is not copied. Other formats, including plugin formats, are downloade
 local cache (`ewald.io.remote.cache_dir()`, `EWALD_CACHE_DIR` overrides) and reused while the
 remote file is unchanged. Host aliases need at least two characters, so `C:\data` stays local.
 
+## Opening big files again
+
+A LAMMPS dump, XDATCAR or extended XYZ file is scanned once when it opens, for where each frame
+starts (about 4-8 s per GB). For local files of 32 MB and more that index is kept in the cache
+folder (`index/` next to the remote-file cache; `EWALD_CACHE_DIR` moves both), so opening the same
+file again skips the scan: a 40,000-frame XDATCAR of 340 MB opened in 3.9 s the first time and in
+0.02 s after that. The index counts only while the file keeps its size and modification time; a run
+that appends frames, or any other change, makes ewald scan it again. `EWALD_INDEX_CACHE=0` turns
+it off, and deleting the folder (`ewald.io.index_cache.clear()`) is always safe.
+
 ## Runs that are still writing
 
 A LAMMPS dump, XDATCAR, OUTCAR, vasprun.xml, extxyz or H5MD file, or a VASP NEB folder, can be
