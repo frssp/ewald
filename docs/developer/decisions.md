@@ -1213,6 +1213,17 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   directly; growing `ewald mcp` so OpenCode drives the open GUI.
 - **Landed:** public PR #132.
 
+### D93. Saved AI connections come first on the AI page and bring their own key (2026-11-03)
+
+- **Decision:** *Saved connections* is the first section of Preferences › AI, above Provider.
+  Each saved connection keeps a copy of its provider's API key in the keychain, and picking the
+  connection brings that key back with the address and headers.
+- **Why:** "ai setting저장해놓은 것 불러왔을 때 api key나 head 등이 하나도 안 불러와진다. 그리고
+  provider 저장해 놓은게 설정에서 맨 위에 있는게 좋을 듯."
+- **Alternatives:** one key per provider for every connection (as before), which two gateways
+  behind the OpenAI-compatible provider cannot share.
+- **Landed:** public PR #132.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

@@ -87,6 +87,8 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Fixed
 
+- Picking a saved AI connection brings back its own API key too (each keeps a copy in the keychain),
+  and Saved connections is now the first section of Preferences › AI. (D93, #132)
 - Reading a file over SSH while another thread used the same connection (the GUI's compute
   worker and the Remotes side bar, say) could break the SFTP session with "Garbage packet
   received": every SFTP call now holds the connection lock, and a broken session is reopened on
