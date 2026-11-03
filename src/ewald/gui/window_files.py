@@ -8,6 +8,7 @@ from PySide6 import QtCore, QtWidgets
 from .. import examples
 from .. import modifiers as mods
 from .. import plugins
+from ..fileops import describe_error
 from ..io import import_file
 from ..io.remote import is_remote
 from ..render import camera_state
@@ -120,8 +121,9 @@ class FilesMixin:
             self.message(f"Cancelled opening {path}")
             return None
         except Exception as exc:
-            self.message(f"Load failed: {path}: {exc}", error=True)
-            QtWidgets.QMessageBox.critical(self, "Load failed", f"{path}\n\n{exc}")
+            text = describe_error(exc, path)
+            self.message(f"Load failed: {path}: {text}", error=True)
+            QtWidgets.QMessageBox.critical(self, "Load failed", f"{path}\n\n{text}")
             return None
         if _has_phonon_modes(pipe) and not any(isinstance(m, mods.PhononMode) for m in pipe.modifiers):
             pipe.modifiers.append(mods.PhononMode())  # a phonon file opens playing a mode
@@ -232,8 +234,9 @@ class FilesMixin:
         try:
             view = self.panel.open_notebook(path, run=run, trusted=trusted)
         except Exception as exc:
-            self.message(f"Open failed: {path}: {exc}", error=True)
-            QtWidgets.QMessageBox.critical(self, "Open failed", f"{path}\n\n{exc}")
+            text = describe_error(exc, path)
+            self.message(f"Open failed: {path}: {text}", error=True)
+            QtWidgets.QMessageBox.critical(self, "Open failed", f"{path}\n\n{text}")
             return None
         nb = view.notebook
         for w in nb.warnings:
@@ -332,7 +335,7 @@ class FilesMixin:
         try:
             self.panel.save(path, **options)
         except OSError as exc:
-            QtWidgets.QMessageBox.critical(self, "Save failed", f"{path}\n\n{exc}")
+            QtWidgets.QMessageBox.critical(self, "Save failed", f"{path}\n\n{describe_error(exc, path, 'save')}")
             return None
         self.message(f"Saved notebook {path}")
         return path
@@ -586,8 +589,9 @@ class FilesMixin:
                 warnings.simplefilter("ignore")
                 s = load_session(path, allow_code=bool(allow_code))
         except Exception as exc:
-            self.message(f"Session load failed: {path}: {exc}", error=True)
-            QtWidgets.QMessageBox.critical(self, "Load session failed", f"{path}\n\n{exc}")
+            text = describe_error(exc, path)
+            self.message(f"Session load failed: {path}: {text}", error=True)
+            QtWidgets.QMessageBox.critical(self, "Load session failed", f"{path}\n\n{text}")
             return None
         for w in s.warnings:
             self.message(w, error=True)

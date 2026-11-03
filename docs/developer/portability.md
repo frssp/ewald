@@ -58,7 +58,10 @@ handles or memory maps). Replace files only through `ewald.fileops.replace` (or 
 which writes a temporary file first): on Windows it retries for about 1.5 s, since virus scanners
 and sync clients let go quickly, and then raises `FileInUseError` (a `PermissionError`) naming the
 programs that hold the file, from the Windows Restart Manager. `test_portability.py` rejects a
-bare `os.replace`.
+bare `os.replace`. A file another program holds without sharing (PowerShell's
+`[IO.File]::Open(..., "None")`) cannot even be read; the GUI's open and save dialogs show
+`fileops.describe_error(exc, path)`, which names the holders the same way instead of a bare
+"[Errno 13] Permission denied".
 
 **Secrets.** The fallback secrets file (`keychain.file_set`, when no OS keychain works) is mode
 0600 on Linux and macOS and gets an owner-only ACL on Windows (`icacls /inheritance:r /grant:r`),

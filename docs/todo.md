@@ -899,7 +899,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
   `!pip` has no Python at `sys.executable`.
 - Windows checks of 2026-10-23: the OpenGL check in a VM and a Remote Desktop session without
   GPU (the Legacy GL viewport with `opengl32sw.dll` should come up, with the note on stderr);
-  saving a notebook open in Notepad++ or synced by OneDrive (the message names the program); the
+  saving a notebook open in Notepad++ or synced by OneDrive (the message names the program), and
+  opening one PowerShell holds without sharing (the Open failed message should name PowerShell; it
+  showed a bare "[Errno 13] Permission denied" on 2026-11-03); the
   `icacls` ACL on `credentials.json` (only your account listed); the bundled fonts in the UI.
 - macOS start-up log (2026-10-23): no "Populating font family aliases" (Qt) or "findfont ...
   Apple Chancery" (matplotlib) lines when the GUI opens a notebook with plots. The

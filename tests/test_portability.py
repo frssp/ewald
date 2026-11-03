@@ -423,6 +423,25 @@ def test_replace_retries_while_windows_holds_the_file(tmp_path, monkeypatch):
     assert not (tmp_path / "notebook.py.tmp").exists()     # the temporary file is cleaned up
 
 
+def test_refused_open_names_the_program_holding_the_file(tmp_path, monkeypatch):
+    """Opening a notebook another program holds without sharing (PowerShell's
+    [IO.File]::Open(..., "None")) says which program, not only "[Errno 13] Permission denied"."""
+    from ewald import fileops
+
+    path = tmp_path / "notebook.py"
+    err = PermissionError(13, "Permission denied", str(path))
+    monkeypatch.setattr(fileops, "_windows", lambda: True)
+    monkeypatch.setattr(fileops, "holders", lambda p: ["Windows PowerShell"] if os.fspath(p) == str(path) else [])
+    text = fileops.describe_error(err, path)
+    assert "open in Windows PowerShell" in text and "open again" in text and "Permission denied" in text
+    assert "save again" in fileops.describe_error(err, path, "save")
+    assert "Windows PowerShell" in fileops.describe_error(err)              # the path from the error itself
+    assert fileops.describe_error(err, tmp_path / "other.py") == str(err)  # nobody to name
+    assert fileops.describe_error(FileNotFoundError(2, "No such file"), path) == "[Errno 2] No such file"
+    monkeypatch.setattr(fileops, "_windows", lambda: False)
+    assert fileops.describe_error(err, path) == str(err)
+
+
 def test_replace_does_not_retry_off_windows(tmp_path, monkeypatch):
     from ewald import fileops
 

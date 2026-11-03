@@ -72,6 +72,20 @@ def write_text(path, text: str, *, delays=None) -> Path:
     return path
 
 
+def describe_error(exc: BaseException, path=None, action: str = "open") -> str:
+    """The text to show for ``exc`` from reading or writing ``path``: on Windows a refused file
+    (``PermissionError``) names the programs that hold it, so "[Errno 13] Permission denied"
+    says which window to close; anything else is ``str(exc)``."""
+    if isinstance(exc, FileInUseError) or not isinstance(exc, PermissionError) or not _windows():
+        return str(exc)
+    target = path if path is not None else getattr(exc, "filename", None)
+    programs = holders(target) if target is not None else []
+    if not programs:
+        return str(exc)
+    return (f"{os.fspath(target)} is open in {', '.join(programs)}, which does not let other "
+            f"programs use it; close it there and {action} again ({exc.strerror or exc})")
+
+
 def holders(path) -> list[str]:
     """Names of the programs that have ``path`` open (Windows Restart Manager); [] elsewhere
     or when Windows cannot tell."""
