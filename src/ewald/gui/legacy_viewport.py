@@ -150,6 +150,9 @@ class LegacyViewport(Viewport):
         return self.view.grabFramebuffer()
 
     # ------------------------------------------------------------------ scene
+    def scene_prebuilder(self, interactive: bool = False):
+        return None   # draws its own display lists from the data (bonds are still searched ahead)
+
     def redraw(self, coarse: bool = False):
         from ..scene import SceneContext, build
 
