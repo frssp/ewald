@@ -162,9 +162,6 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   `id(modifier)`). Keys by content (source path, size and mtime, step type and settings, the
   mtimes of files a step reads) would keep them; an all-frames step over a long trajectory gains
   the most. Measured 2026-10-25: 108k atoms, CNA + PTM + Coordination, Run all 1.0 s every time.
-- Reader index on disk: dump, XDATCAR and extxyz frame offsets are scanned on every open (about
-  4-8 s per GB from a warm OS cache; 376 MB dump 1.5 s, 162 MB XDATCAR 1.3 s). Keeping them in
-  the cache folder keyed by path, size and mtime would make reopening a large file instant.
 - Structure identification at 108k atoms: the periodic kNN is a numba cell list now (0.10-0.22 s
   for k = 12-33, was 0.32-0.71 s with cKDTree + image padding). PTM (0.93 s) and Steinhardt
   (0.95 s) are now dominated by their per-atom kernels (PTM's C++ template matching, the Ylm

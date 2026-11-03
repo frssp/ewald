@@ -35,7 +35,7 @@ class ExtxyzReader(FrameReader):
     def __init__(self, path):
         self.path = str(path)
         self._size = file_size(self.path)
-        self._frames, complete = _scan_frames(self.path)  # (byte offset, byte length)
+        self._frames, complete = _indexed_scan(self.path)  # (byte offset, byte length)
         if not self._frames:
             if not complete:
                 raise IncompleteFileError(f"{path}: the only frame is incomplete (still being written, or the "
@@ -88,6 +88,20 @@ class ExtxyzReader(FrameReader):
         _ovito_names(data, atoms)
         data.attributes.setdefault("Timestep", index)
         return data
+
+
+def _indexed_scan(path):
+    """:func:`_scan_frames` of the whole file, or its result kept on disk from an earlier open
+    of the unchanged file (:mod:`ewald.io.index_cache`)."""
+    from . import index_cache
+
+    kept = index_cache.lookup(path, "extxyz")
+    if kept is not None:
+        return [tuple(f) for f in kept["frames"].tolist()], True
+    frames, complete = _scan_frames(path)
+    if frames and complete:
+        index_cache.store(path, "extxyz", frames=np.asarray(frames).reshape(-1, 2))
+    return frames, complete
 
 
 def _scan_frames(path, chunk_size: int = 1 << 24, offset: int = 0,

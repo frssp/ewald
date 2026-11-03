@@ -88,6 +88,11 @@ VASP XDATCAR, 256 atoms x 20,000 frames (162 MB):
 - **OVITO's pip module** is fast. However, it returns OVITO pipeline objects and comes with its
   own license terms.
 
+The frame index of a local dump, XDATCAR or extxyz file of 32 MB or more is kept on disk
+(`ewald.io.index_cache`, keyed by path, size and modification time), so a second open skips the
+scan (2026-11-03 in the container: 340 MB XDATCAR 3.9 s -> 0.02 s, 395 MB 1M-atom dump
+1.2 s -> 0.33 s, the rest being the first frame's header and checks).
+
 ## Open gaps
 
 - **1M-atom dump frame:** OVITO reads it in about half the time and memory. The difference is
