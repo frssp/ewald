@@ -10,6 +10,12 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- The AI chat side bar has a tab row mirroring the notebook tabs: either row switches both, and
+  dots mark notebooks with a chat or an answer on its way (D94, #133).
+- AI chat *History*: New chat keeps the old chat with the notebook (saved in `.ewd`), and History
+  opens it again. History and New chat are icons in the chat tab row; the pick line sits above the
+  input (D95, #133).
+
 - Preferences › AI › Provider *OpenCode (ACP)*: Ask AI answered by the OpenCode coding agent
   (`opencode acp`, Agent Client Protocol) with OpenCode's own models and sign-in, a company's
   setup included; the only setting is the opencode command (`llm.command`). Its answers'

@@ -1235,7 +1235,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Alternatives (rendered in Graphite and Paper):** the notebook's name in the chat header only;
   a notebook dropdown in the chat header; the chat as a pane inside each notebook tab, beside the
   cells. The owner picked the mirrored tab row.
-- **Landed:** public PR #PR_NUM.
+- **Landed:** public PR #133.
 
 ### D95. New chat keeps the old chat in a per-notebook History (2026-11-03)
 
@@ -1252,7 +1252,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   notebook (more chat tabs than notebook tabs, two AIs editing the same cells). For the buttons
   (rendered): text buttons in the header row; icons in the tab row with the pick line kept in
   its own row.
-- **Landed:** public PR #PR_NUM.
+- **Landed:** public PR #133.
 
 ## Adding an entry
 
