@@ -89,6 +89,32 @@ def save_api_key(key: str, provider=None) -> str:
     return keychain.set_secret(name, key, _kr=_keyring())
 
 
+def _profile_entry(profile: str, provider=None) -> str:
+    name = _provider(provider).key_name
+    return f"{name}@{profile}" if name else ""
+
+
+def profile_key(profile: str, provider=None) -> str | None:
+    """The key saved with the saved connection ``profile`` (``llm.profiles``), or None. A saved
+    connection keeps a copy of its provider's key in the keychain, so connections of one provider
+    with different keys (two gateways) each bring their own back."""
+    entry = _profile_entry(profile, provider)
+    return keychain.get_secret(entry, _kr=_keyring())[0] if entry else None
+
+
+def save_profile_key(profile: str, key: str, provider=None) -> str:
+    entry = _profile_entry(profile, provider)
+    if not entry or not key.strip():
+        raise ValueError("no key to save")
+    return keychain.set_secret(entry, key.strip(), _kr=_keyring())
+
+
+def delete_profile_key(profile: str, provider=None):
+    entry = _profile_entry(profile, provider)
+    if entry:
+        keychain.delete_secret(entry, _kr=_keyring())
+
+
 def delete_api_key(provider=None):
     """Forget the saved key (keychain and file); the environment variable is left alone."""
     global _changes
