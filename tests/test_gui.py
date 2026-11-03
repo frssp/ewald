@@ -1539,6 +1539,46 @@ def test_preferences_ai_connection_rows_and_saved_connections(app, monkeypatch):
     dlg.close()
 
 
+def test_preferences_saved_connection_brings_its_own_key(app, monkeypatch):
+    from ewald import settings
+    from ewald.gui.preferences import PreferencesDialog
+    from ewald.llm import credentials, providers
+
+    monkeypatch.setattr(credentials, "_keyring", lambda: None)
+    dlg = PreferencesDialog(settings.load())
+    titles = [h.text() for h, _c, _k in dlg.cards]
+    ai = [t for t in titles if t.upper() in ("SAVED CONNECTIONS", "PROVIDER")]
+    assert [t.upper() for t in ai][:2] == ["SAVED CONNECTIONS", "PROVIDER"]   # saved connections first
+    dlg.set_value("llm.provider", "openai-compatible")
+    dlg.set_value("llm.base_url", "http://hub.example/v1")
+    dlg.set_value("llm.headers", "X-Team: md")
+    dlg.key_edit.setText("key-hub")
+    dlg.save_profile("hub")
+    dlg.set_value("llm.base_url", "http://other.example/v1")
+    dlg.key_edit.setText("key-other")
+    dlg.save_profile("other")
+    dlg.apply()
+    dlg.close()
+    p = providers.get("openai-compatible")
+    assert credentials.stored_api_key(p)[0] == "key-other"
+    assert (credentials.profile_key("hub", p), credentials.profile_key("other", p)) == ("key-hub", "key-other")
+    assert "key-hub" not in open(settings.load().path, encoding="utf-8").read()
+
+    dlg = PreferencesDialog(settings.load())
+    box = dlg.editors["llm.profiles"][0]
+    i = box.combo.findData("hub")
+    box.combo.setCurrentIndex(i)
+    box.combo.activated.emit(i)
+    assert dlg.work["llm.base_url"] == "http://hub.example/v1" and dlg.work["llm.headers"] == "X-Team: md"
+    assert "saved connection hub" in dlg.key_status.text()
+    dlg.apply()
+    assert credentials.stored_api_key(p)[0] == "key-hub"
+    box.remove("other")
+    dlg.apply()
+    assert credentials.profile_key("other", p) is None
+    dlg.close()
+
+
 @pytest.mark.skipif(os.name == "nt", reason="the fake agent is a #! program, POSIX only")
 def test_preferences_ai_opencode_rows_and_models_from_test_connection(app, monkeypatch, tmp_path):
     from ewald import settings
@@ -5147,7 +5187,7 @@ def test_preferences_pages_after_menu_review(app):
     assert settings.OPTION["python.run_notebooks"].page == "Notebooks"
     assert settings.OPTION["python.plugin_catalogs"].page == "Plugins"
     assert settings.OPTION["viewport.target_fps"].page == "3D view"
-    assert [title for title, _keys in LAYOUT["AI"][1]][:2] == ["Provider", "Connection"]
+    assert [title for title, _keys in LAYOUT["AI"][1]][:2] == ["Saved connections", "Provider"]
     dlg = PreferencesDialog(settings.Settings(), page="Viewports")
     assert dlg.pages.currentItem().text() == "3D view"
     dlg.show_page("Elements")

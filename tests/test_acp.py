@@ -331,3 +331,25 @@ def test_agent_that_dies_while_answering(fake):
     agent.ask("hi")
     with pytest.raises(AcpError, match="session/prompt: the agent stopped: panic: the model server went away"):
         agent.ask("DIE now")
+
+
+def test_chats_share_one_agent_process_with_a_session_each(monkeypatch, tmp_path):
+    from ewald.llm import providers
+
+    monkeypatch.setattr(acp, "_SHARED", {})
+    p = providers.from_settings(None, provider="opencode", command=sys.executable)["provider"]
+    one, two = p.client(), p.client()
+    assert one is two                                  # one process for every notebook tab's chat
+    assert p.client(shared=False) is not one           # Test connection starts its own
+    other = providers.from_settings(None, provider="opencode", command="elsewhere")["provider"]
+    assert other.client() is not one
+
+
+def test_two_chats_on_one_client_keep_their_own_sessions(fake):
+    client, received = fake()
+    a, b = _agent(client), _agent(client)
+    a.ask("first tab")
+    b.ask("second tab")
+    a.ask("first tab again")
+    assert a.chat.session_id != b.chat.session_id
+    assert len(received("session/new")) == 2 and len(received("initialize")) == 1

@@ -244,7 +244,11 @@ from ewald.llm import Agent, providers
 agent = Agent.from_file("XDATCAR", **providers.from_settings(profile="hub"))
 ```
 
-API keys stay one per provider in the keychain; a saved connection never holds one.
+Each provider has one API key in the keychain, the one Ask AI uses. A saved connection keeps a
+copy of the key its provider had when you saved it (also in the keychain, under
+`<provider key>@<name>`, never in `settings.json`). Picking the connection brings that key back,
+and Apply makes it the provider's key again, so two gateways behind the same provider each keep
+their own key. Deleting the connection deletes its copy.
 
 ## API key
 

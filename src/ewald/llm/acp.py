@@ -109,14 +109,19 @@ class AcpClient:
         self._pending: dict[int, queue.Queue] = {}
         self._listeners: dict[str, Callable[[dict], None]] = {}
         self._lock = threading.Lock()
+        self._starting = threading.RLock()
         self._stderr: list[str] = []
         self.permissions_refused: list[dict] = []
         _LIVE.add(self)
 
     # ---------------------------------------------------------------- process
     def start(self):
-        if self.proc is not None and self.proc.poll() is None:
-            return
+        with self._starting:   # two chats asking at once start one process
+            if self.proc is not None and self.proc.poll() is None:
+                return
+            self._start()
+
+    def _start(self):
         program = resolve_command(self.command)
         env = {**os.environ, **self.env}
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
@@ -428,14 +433,27 @@ class AcpChat(Chat):
         self._pending, self._images = [], []
 
 
-def _opencode_client(api_key=None, base_url=None, *, command=None, timeout=None, **_ignored):
+#: One agent process per (command, timeout), shared by every chat (each notebook tab has its own
+#: chat and so its own session in that process).
+_SHARED: dict = {}
+_SHARED_LOCK = threading.Lock()
+
+
+def _opencode_client(api_key=None, base_url=None, *, command=None, timeout=None, shared=True, **_ignored):
     env = {"OPENCODE_CONFIG_CONTENT": json.dumps({"permission": OPENCODE_PERMISSIONS})}
-    return AcpClient(command or "opencode", ["acp"], env=env, timeout=timeout)
+    if not shared:
+        return AcpClient(command or "opencode", ["acp"], env=env, timeout=timeout)
+    key = (command or "opencode", timeout or None)
+    with _SHARED_LOCK:
+        client = _SHARED.get(key)
+        if client is None:
+            client = _SHARED[key] = AcpClient(command or "opencode", ["acp"], env=env, timeout=timeout)
+        return client
 
 
 def check_opencode(provider, api_key=None, model=None, base_url=None, _client=None) -> tuple[bool, str]:
     """Start the agent, open a session and say which models it offers (no tokens used)."""
-    client = _client or provider.client()
+    client = _client or provider.client(shared=False)   # its own process, stopped right after
     try:
         session = client.new_session()
     except AcpError as exc:

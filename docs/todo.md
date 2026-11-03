@@ -647,8 +647,7 @@ Plugins and AI
   `llm.model` setting for all providers (switching the provider in Preferences clears it);
   streaming falls back by itself only for Chat Completions servers (a Claude gateway that cannot
   stream needs Preferences › AI › Stream answers off); a native Gemini or Bedrock/Vertex client would need a `Chat`
-  subclass (today Gemini goes through its OpenAI-compatible endpoint). Keys are per provider, so two
-  saved connections of one provider with different keys share one keychain entry. Preferences › AI › Extra headers is a
+  subclass (today Gemini goes through its OpenAI-compatible endpoint). Preferences › AI › Extra headers is a
   one-line field, so a long header list is hard to read and easy to cut short (it happened with a
   real gateway, 2026-10-23); a multi-line editor would help.
 - OpenCode over ACP (`llm/acp.py`, D92), phase 1: OpenCode gets no ewald tools and answers with
@@ -657,7 +656,8 @@ Plugins and AI
   still refusing OpenCode's own edit/bash. Other ACP agents (Claude Code, Codex, Gemini CLI) would
   need only a command and arguments; there is no generic ACP provider yet. The model list appears
   only after Test connection (kept in memory, not saved). OpenCode's tool calls and thoughts are not
-  shown in the chat.
+  shown in the chat. One `opencode acp` process serves every chat (one session per notebook tab);
+  it stops only when EWALD exits.
 - Plugin manifests, phase 2 (from the VS Code comparison): contributions declared in
   `ewald-plugin.toml` (`[[readers]]`, `[[modifiers]]`, ... with `python = "module:object"`)
   registered lazily and imported on first use (`@panel` widgets are already built on first open,
