@@ -324,6 +324,7 @@ Details: [Command line](user/cli.md).
 | `ewald render INPUT OUTPUT` | render a frame to an image (.png/.jpg/.tif/.svg/.pdf/.eps) | `--frame` `--size` `--direction` `--bonds` `--color-by` `--cmap` `--type-map` `--ao` `--renderer` `--allow-code` `--quality` `--text` `--type-legend` `--scale-bar` `--theme` `--overlay` `--dpi` |
 | `ewald movie INPUT OUTPUT` | render frames to .mp4/.gif/.avi/.mov or a PNG sequence | `--fps` `--start` `--stop` `--every` `--size` `--direction` `--bonds` `--color-by` `--cmap` `--type-map` `--time-per-frame` `--renderer` `--allow-code` `--quality` `--text` `--type-legend` `--scale-bar` `--theme` `--overlay` |
 | `ewald gui [INPUT...]` | open the desktop viewer | `--type-map` `--device` |
+| `ewald register-links` | open ewald:// links from web pages with this install | `--remove` |
 | `ewald examples` | list the shipped example files (POSCAR, CIF, extxyz, LAMMPS, ...) | `--copy` `--papers` `--fetch` |
 | `ewald info INPUT` | print frames and properties | `--type-map` |
 | `ewald describe INPUT` | JSON summary of a frame or, with --trajectory, of the run | `--frame` `--trajectory` `--type-map` |
@@ -433,6 +434,7 @@ Edit › Preferences, one page per group; stored as JSON with only changed value
 | `general.live_reload` | Live reload | `True` |
 | `general.live_reload_interval` | Live reload interval | `2.0` |
 | `general.freeze_report` | Report freezes after | `5.0` |
+| `general.confirm_links` | Ask before opening links | `True` |
 | `general.docs_url` | Documentation URL | `''` |
 
 ### Codes

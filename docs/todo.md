@@ -788,6 +788,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- `ewald://` links (Links from web pages, `ewald/deeplink.py`): a click in Chrome and Edge on the
+  owner's Windows PC with the installer's registration and with `ewald register-links` from a pip
+  install, on macOS with EWALD.app, and on a Linux desktop; with EWALD closed (starts and opens)
+  and running (opens in the same window; the local-socket hand-over is tested under xvfb only).
 - OpenCode provider (D92) on the owner's Windows with the company's OpenCode: `opencode.cmd` from
   npm found on PATH and started without a console window, Test connection lists the company
   models, an answer streams into the AI chat, Stop ends it, and closing EWALD leaves no `opencode`

@@ -6213,6 +6213,96 @@ def test_open_location_opens_a_scheme_path(app, cu_fcc, monkeypatch):
         plugins._registry.readers.pop("fake-scheme", None)
 
 
+def test_ewald_link_asks_then_opens_a_reader_location(app, cu_fcc, monkeypatch):
+    """An ewald:// link from a web page shows what it opens, opens it on OK like Open location,
+    and refuses what no installed reader serves (a local path) with a message."""
+    from ewald import plugins, settings
+    from ewald.gui import links
+    from ewald.gui.app import MainWindow
+
+    seen, asked, warned = [], [], []
+    plugins.register_reader("fake-scheme", lambda path, **k: seen.append(path) or [cu_fcc],
+                            schemes=("fakeloc",), priority=None)
+    try:
+        w = MainWindow(settings=settings.Settings())
+        monkeypatch.setattr(links, "confirm", lambda win, link: asked.append(link) or False)
+        assert w.open_from_os("ewald://open?location=fakeloc%3A42&title=Si%20bands") is None
+        assert asked[0].title == "Si bands" and seen == []               # cancelled: nothing read
+        monkeypatch.setattr(links, "confirm", lambda win, link: asked.append(link) or True)
+        assert w.open_from_os("ewald://open?location=fakeloc%3A42") is not None
+        assert seen == ["fakeloc:42"] and w.pipeline.num_frames == 1
+        monkeypatch.setattr(QtWidgets.QMessageBox, "warning", lambda *a: warned.append(a[2]))
+        assert w.open_from_os("ewald://open?location=%2Fetc%2Fpasswd") is None
+        assert "installed reader" in warned[0] and seen == ["fakeloc:42"]
+        w.settings["general.confirm_links"] = False                        # "Don't ask again"
+        n = len(asked)
+        w.open_from_os("ewald://open?location=fakeloc%3A43")
+        assert len(asked) == n and seen[-1] == "fakeloc:43"
+        w.close()
+    finally:
+        plugins._registry.readers.pop("fake-scheme", None)
+
+
+def test_gui_main_forwards_only_link_starts(monkeypatch):
+    from ewald import gui
+    from ewald.gui import links
+
+    sent = []
+    monkeypatch.setattr(links, "forward", lambda args: sent.append(args) or True)
+    assert not gui._forward_links(["POSCAR"]) and not gui._forward_links([])
+    assert not gui._forward_links(["ewald://open?location=a:1", "POSCAR"])   # files: a window of its own
+    assert gui._forward_links(["ewald://open?location=a:1"]) and sent == [["ewald://open?location=a:1"]]
+
+
+def test_link_confirm_box_dont_ask_again(app, monkeypatch):
+    from ewald import settings
+    from ewald.deeplink import DeepLink
+    from ewald.gui import links
+
+    class Win(QtWidgets.QWidget):
+        pass
+
+    win = Win()
+    win.settings = settings.Settings()
+    shown = []
+
+    def run(box):
+        shown.append(box.text())
+        box.checkBox().setChecked(True)
+        next(b for b in box.buttons() if b.text() == "Open").click()
+
+    monkeypatch.setattr(QtWidgets.QMessageBox, "exec", run)
+    assert links.confirm(win, DeepLink("fakeloc:1", "<b>x</b>"))
+    assert "fakeloc:1" in shown[0] and "&lt;b&gt;x" in shown[0]            # the title is text, not HTML
+    assert win.settings["general.confirm_links"] is False
+    _dispose(win)
+
+
+def test_second_start_hands_links_to_the_running_ewald(app):
+    """ewald-gui started by a browser while EWALD runs passes the link over the local socket."""
+    import subprocess
+    import sys
+
+    from ewald.gui import links
+
+    got = []
+    server = links.LinkServer(got.append)
+    assert server.listening
+    try:
+        code = ("import sys; from ewald.gui.links import forward; "
+                "sys.exit(0 if forward(['ewald://open?location=fakeloc%3A9']) else 3)")
+        proc = subprocess.Popen([sys.executable, "-c", code])
+        deadline = QtCore.QDeadlineTimer(20000)
+        while proc.poll() is None and not deadline.hasExpired():
+            app.processEvents(QtCore.QEventLoop.AllEvents, 50)
+        app.processEvents()
+        assert proc.wait(5) == 0 and got == ["ewald://open?location=fakeloc%3A9"]
+        assert not links.LinkServer(got.append).listening      # one listener per user
+    finally:
+        server.close()
+    assert not links.forward(["ewald://open?location=fakeloc%3A9"], timeout_ms=300)
+
+
 def test_plugin_settings_page_in_preferences_refuses_bad_values(app, monkeypatch):
     """A plugin page's save() raising ValueError keeps Preferences open on that page with the message."""
     from ewald import plugins, settings

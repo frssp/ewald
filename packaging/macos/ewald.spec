@@ -83,6 +83,8 @@ INFO = {
     "LSMinimumSystemVersion": "12.0",   # oldest macOS the PySide6 and VTK wheels support
     "NSHighResolutionCapable": True,    # Retina: Qt and VTK render at device pixels
     "NSRequiresAquaSystemAppearance": False,  # follow the system dark mode
+    # ewald:// links from web pages ("Open in EWALD" buttons); they arrive as QFileOpenEvents
+    "CFBundleURLTypes": [{"CFBundleURLName": "io.github.frssp.ewald.link", "CFBundleURLSchemes": ["ewald"]}],
     "CFBundleDocumentTypes": [
         {"CFBundleTypeName": "Atomistic structure or trajectory", "CFBundleTypeRole": "Viewer",
          "LSHandlerRank": "Alternate", "CFBundleTypeExtensions": EXTENSIONS},

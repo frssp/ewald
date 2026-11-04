@@ -8,6 +8,7 @@ from PySide6 import QtCore, QtWidgets
 from .. import examples
 from .. import modifiers as mods
 from .. import plugins
+from ..deeplink import is_deep_link
 from ..fileops import describe_error
 from ..io import import_file
 from ..io.remote import is_remote
@@ -387,6 +388,15 @@ class FilesMixin:
             return self.open_file(text)      # not a file: no type questions, no NEB lookup
         self.open_any(text)
         return self.pipeline
+
+    def open_from_os(self, path):
+        """A file or ``ewald://`` link the OS hands over (argv, Finder, a browser, a later
+        ``ewald-gui`` start): links ask first and open only reader locations (:mod:`.links`)."""
+        if is_deep_link(path):
+            from .links import open_link
+
+            return open_link(self, path)
+        return self.open_any(path)
 
     def open_workflow(self, workflow):
         """Open a workflow (a :class:`ewald.workflow.Workflow`, or a path such as
