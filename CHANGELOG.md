@@ -10,6 +10,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- Links from web pages: `ewald://open?location=...` opens a reader location (`aiida:…`, plugin
+  schemes) after a confirmation, in the EWALD already running when there is one; the Windows
+  installers and EWALD.app register the scheme, `ewald register-links` a pip install (#138).
 - Freeze report: when the window stops responding for 5 s (Preferences › General › Report freezes
   after), every thread's stack goes to `freezes.log` in the settings folder; Help › Freeze log opens
   it. `ewald gpu` and Help › About show battery or mains, and the status bar warns when High
