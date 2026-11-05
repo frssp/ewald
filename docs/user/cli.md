@@ -19,6 +19,7 @@ LAMMPS numeric types wherever a file is read.
 | `ewald remote list\|add\|remove\|test\|ls\|get` | [saved remote computers](formats.md#saved-remote-computers): `add NAME --host H --user U [--key FILE] [--password] [--passphrase] [--jump J] [--folder DIR]` (secrets asked and saved in the OS keychain), `ls NAME[:DIR]`, `get NAME:/file [DEST]` |
 | `ewald optimade search QUERY [--db NAME] [--limit N] [--json]`, `ewald optimade databases` | [OPTIMADE structure databases](formats.md#structure-databases-optimade): list structures (a formula, `Li-P-S`, `Li P S` or a filter) and the known databases; open one with `load("optimade:DB/ID")` |
 | `ewald gpu [--prefer auto\|high-performance\|power-saving]` | the GPUs in this computer, which one the 3D view uses on Windows and the CUDA/OpenCL devices; `--prefer` sets the Windows Graphics settings choice for this Python ([GPU compute](gpu.md#laptops-with-two-gpus)) |
+| `ewald register-links [--remove]` | let `ewald://` links on web pages ("Open in EWALD" buttons) open this install's GUI; for a pip install on Windows or Linux (the installers and EWALD.app do it themselves) ([Links from web pages](gui.md#links-from-web-pages)) |
 | `ewald api` | print the LLM API reference (`llms.txt`) |
 | `ewald inventory [-o docs/features.md] [--gui]` | print or rewrite the [feature inventory](../features.md); `--gui` reads the menus from a live window |
 

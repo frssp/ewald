@@ -439,6 +439,26 @@ or `simagent:1234`; the dialog lists the schemes that are installed. A plugin th
 up (a server address, an access key) has its own page in Preferences (after the Plugins page) and a
 Settings button in the Plugins side bar, so it can be set up without Python.
 
+### Links from web pages
+
+A web page, such as a results server's job list, can open a calculation in EWALD with an
+"Open in EWALD" button: a link of the form
+`ewald://open?location=simagent%3A1234&title=PK%201234`. The browser asks once whether to open
+EWALD; EWALD then shows what the link wants to open and opens it on OK, exactly as if the location
+had been typed into Open location. When EWALD is already running, the link opens in that window
+instead of a new one.
+
+A link opens only a location that an installed reader plugin serves (`aiida:…`, `simagent:…`):
+never a local file, an SSH path or a notebook, and nothing in it is run. Without the plugin the
+link is refused with a message. "Don't ask again for links" in the box, or Preferences › General
+› Ask before opening links, opens links without the box.
+
+The Windows installer and EWALD.app register `ewald://` links ([Install](install.md#open-in-ewald-buttons-on-web-pages)). A pip install registers them with
+`ewald register-links` (Windows: for this user in the registry; Linux: a hidden desktop entry for
+`x-scheme-handler/ewald`); `ewald register-links --remove` undoes it. Without EWALD the browser
+does nothing on such a link, so pages that link here should also offer the location as text to
+copy into Open location.
+
 ## Preferences
 
 Edit › Preferences (Ctrl+, ; the application menu on macOS) has eleven pages: General, Codes

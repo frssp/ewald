@@ -25,6 +25,7 @@ DATA = Path(__file__).resolve().parent / "data"
 # Key: (file under src/ewald, enclosing function). New sites use os.path / pathlib / posixpath
 # (remote paths) instead, or are listed here with the reason.
 SEP_SITES = {
+    ("deeplink.py", "_desktop_quote"): "backslash escapes of a desktop entry's Exec line, not paths",
     ("optimade/client.py", "entry_url"): "OPTIMADE URLs (base URL + /structures/ID), not files",
     ("optimade/uri.py", "parse"): "optimade:DB/ID addresses, split as text on every platform",
     ("llm/tools.py", "open_workflow"): "step names down a workflow tree ('bands/scf'), not files",

@@ -68,6 +68,28 @@ Windows releases also carry installers that need no Python of your own
 installed version; what changed between versions is in
 [CHANGELOG.md](https://github.com/frssp/ewald/blob/main/CHANGELOG.md).
 
+## Open in EWALD buttons on web pages
+
+A web page (a results server, a lab wiki) can open a calculation in EWALD with an "Open in
+EWALD" button, an `ewald://` link ([Links from web pages](gui.md#links-from-web-pages)). For that
+the operating system must know that `ewald://` links go to EWALD:
+
+- **Windows installers and EWALD.app (macOS)** register it during setup; nothing to do.
+- **pip install (Windows, Linux)**: run once, in the Python where EWALD is installed,
+
+  ```bash
+  python -m ewald register-links
+  ```
+
+  It prints which program opens the links (`... ewald-gui.exe "%1"` on Windows, a desktop entry
+  on Linux). Run it again after moving to another Python or virtual environment; `--remove`
+  undoes it. With both an installer and a pip install, the one registered last gets the links.
+
+Check on Windows with `reg query HKCU\Software\Classes\ewald /s` (the key is missing when
+nothing is registered). When a button does nothing, the link is not registered; when EWALD opens
+but refuses the link, the reader plugin for that location (for example `simagent:`) is not
+installed.
+
 ## Extras
 
 The plain install already has every feature that needs no Qt, GPU or OVITO: symmetry (spglib),
