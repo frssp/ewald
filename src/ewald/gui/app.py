@@ -90,6 +90,9 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         from .. import settings as settings_mod
 
         self.settings = settings if settings is not None else settings_mod.load()
+        from ..io import remote as remote_mod
+
+        remote_mod.gui_thread = threading.current_thread()   # SSH connects here warn (GuiThreadWarning)
         self.setWindowTitle("EWALD")
         self.setWindowIcon(app_icon())
         self.resize(1600, 1000)
@@ -850,6 +853,12 @@ def main(argv=None):
     ap.add_argument("--device", default=None, help="cpu, cuda or auto")
     args = ap.parse_args(strip_psn(sys.argv[1:] if argv is None else argv))
     app = _app()
+    from . import first_run
+
+    if first_run.cold:   # after an install or update: numba compiles in another Python meanwhile
+        from .compute import start_child_compile
+
+        start_child_compile()
     from . import viewport_backend
     from .. import settings as settings_mod
 

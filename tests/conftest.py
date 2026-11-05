@@ -46,6 +46,9 @@ def _isolated_settings(tmp_path, monkeypatch):
     """Never read or write the developer's real ~/.config/ewald during tests."""
     monkeypatch.setenv("EWALD_CONFIG_DIR", str(tmp_path / "config"))
     monkeypatch.setenv("EWALD_PLUGIN_INDEX", "")    # no network: tests name their own indexes
+    from ewald.io import remote
+
+    monkeypatch.setattr(remote, "gui_thread", None)   # set again by each test's MainWindow
     monkeypatch.setenv("EWALD_INDEX_CACHE", "0")    # no frame indexes in the real cache folder (test_index_cache)
 
 

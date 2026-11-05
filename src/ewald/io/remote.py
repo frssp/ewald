@@ -520,6 +520,17 @@ _connections: dict[tuple, Connection] = {}
 _connections_lock = threading.Lock()
 
 
+class GuiThreadWarning(RuntimeWarning):
+    """An SSH connection was opened on the GUI thread: the window cannot respond until it is up
+    (or times out, over a minute for a host out of reach). Do it on a worker (``gui.busy.wait_for``,
+    the compute worker); tests turn this warning into an error."""
+
+
+# Set by the GUI (MainWindow): the thread whose event loop draws the window. The core never
+# imports Qt, so the GUI tells it which thread must not block on the network.
+gui_thread: threading.Thread | None = None
+
+
 def connect(host: str, user: str | None = None, port: int | None = None) -> Connection:
     """The cached connection to ``host`` (reconnects if it dropped)."""
     _require_paramiko()
@@ -527,6 +538,11 @@ def connect(host: str, user: str | None = None, port: int | None = None) -> Conn
     with _connections_lock:
         conn = _connections.get(k)
         if conn is None or not conn.is_active():
+            if gui_thread is not None and threading.current_thread() is gui_thread:
+                import warnings
+
+                warnings.warn(f"connecting to {host} on the GUI thread; the window does not respond "
+                              "until it is up", GuiThreadWarning, stacklevel=2)
             conn = _connections[k] = Connection(host, user, port)
         return conn
 

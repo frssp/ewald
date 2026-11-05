@@ -64,6 +64,9 @@ def _ipython_console(namespace, on_execute, parent):
     # ipykernel imports debugpy, whose pydevd prints four "Debugger warning: ... frozen modules"
     # lines on Python 3.11+ (Windows always); EWALD does not debug the kernel, so skip that check
     os.environ.setdefault("PYDEVD_DISABLE_FILE_VALIDATION", "1")
+    from .viewport import wait_view_modules
+
+    wait_view_modules()   # not IPython and pyvista on two threads at once (see wait_view_modules)
     from qtconsole.inprocess import QtInProcessKernelManager
     from qtconsole.rich_jupyter_widget import RichJupyterWidget
 
