@@ -37,7 +37,10 @@ dependencies = ["numpy>=2.0", "scipy", "ase>=3.23", "matplotlib", "pillow", "pyv
 
 [project.optional-dependencies]
 # Only what is heavy, platform-specific or pins other packages stays optional.
-gui = ["PySide6>=6.5", "pyvistaqt>=0.13", "qtconsole>=5.5", "pygments"]   # PySide6 only: no PyQt5/PyQt6 (see ewald/gui/__init__.py)
+# PySide6-Essentials, not the PySide6 metapackage: EWALD uses only QtCore/Gui/Widgets/Svg/OpenGL, and the
+# metapackage adds PySide6-Addons, -WebEngine and -Pdf (about 450 MB) that nothing imports. ovito pins
+# PySide6-Essentials too, so the two no longer pull different Qt versions. No PyQt5/PyQt6 (ewald/gui/__init__.py).
+gui = ["PySide6-Essentials>=6.5", "pyvistaqt>=0.13", "qtconsole>=5.5", "pygments"]
 gpu = ["cupy-cuda12x; sys_platform != 'darwin'"]   # no CUDA on macOS: the extra installs nothing there
 opencl = ["pyopencl>=2022.1"]   # ray tracing on Intel, AMD, NVIDIA and Apple GPUs; needs the GPU's OpenCL driver
 metal = ["pyobjc-framework-Metal>=10; sys_platform == 'darwin'"]   # ray tracing on a Mac's GPU
