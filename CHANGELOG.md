@@ -105,7 +105,7 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 - The window no longer freezes for seconds right after a cold start (seen as a freeze when
   maximizing it on Windows): pyvistaqt and VTK are imported on a thread and the 3D view is built
-  when they are in (#138).
+  when they are in (#140).
 - "Plot bands" in a workflow notebook (relax, scf and bands loaded, `pipe` the relaxation) could
   draw the relaxation's k-mesh eigenvalues as a band structure. A VASP run on a uniform k-mesh
   (Gamma, Monkhorst-Pack, automatic) no longer gets a `Bands` table (`ElectronicStructure.kmesh`;
