@@ -392,6 +392,9 @@ written answers `Mentions` (a value quoted in the prose), `Prose` (a paragraph, 
 
 ## From Claude Code and other MCP clients
 
+The MCP server needs the `mcp` extra (`pip install 'ewald[mcp]'`; part of `[all]` and the
+standalone apps).
+
 ```bash
 ewald mcp                                   # the same tools over MCP (stdio)
 claude mcp add ewald -- ewald mcp           # register them in Claude Code

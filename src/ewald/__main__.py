@@ -185,10 +185,10 @@ def build_parser():
 
 
 # optional package -> the extra that installs it (for "ewald CMD" without that extra)
-EXTRAS = {"PySide6": "gui", "pyvistaqt": "gui", "qtconsole": "gui", "MDAnalysis": "formats", "cupy": "gpu"}
+EXTRAS = {"PySide6": "gui", "pyvistaqt": "gui", "qtconsole": "gui", "MDAnalysis": "formats", "cupy": "gpu",
+          "mcp": "mcp", "anyio": "mcp", "imageio_ffmpeg": "movie"}
 # core packages missing anyway (an install that skipped dependencies): name the package itself
-CORE = {"anthropic": "anthropic", "openai": "openai", "mcp": "mcp", "anyio": "mcp", "h5py": "h5py",
-        "imageio_ffmpeg": "imageio-ffmpeg", "spglib": "spglib"}
+CORE = {"anthropic": "anthropic", "openai": "openai", "h5py": "h5py", "spglib": "spglib"}
 
 
 def _gpu_cmd(args):

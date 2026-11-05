@@ -92,9 +92,8 @@ installed.
 
 ## Extras
 
-The plain install already has every feature that needs no Qt, GPU or OVITO: symmetry (spglib),
-MP4/AVI/MOV export (imageio-ffmpeg), H5MD/vaspout.h5/MDTraj HDF5 (h5py), Ask AI with every
-provider and the MCP server (anthropic, openai, mcp), kernels for notebooks whose cells run in
+The plain install already has almost every feature that needs no Qt, GPU or OVITO: symmetry
+(spglib), H5MD/vaspout.h5/MDTraj HDF5 (h5py), Ask AI with every provider (anthropic, openai), kernels for notebooks whose cells run in
 another Python (jupyter_client, ipykernel; [Kernels](notebooks.md#kernels)), and files on SSH
 hosts (paramiko, keyring). Only heavy or platform-specific parts are extras:
 
@@ -104,14 +103,16 @@ hosts (paramiko, keyring). Only heavy or platform-specific parts are extras:
 | `gpu` | `device="cuda"` through CuPy (NVIDIA, CUDA 12) | `pip install -e ".[gpu]"` |
 | `opencl` | `device="opencl"`: the ray tracer on Intel, AMD or NVIDIA GPUs (pyopencl) | `pip install -e ".[opencl]"` |
 | `metal` | `device="metal"`: the ray tracer on a Mac's GPU (PyObjC's Metal; installs nothing elsewhere) | `pip install -e ".[metal]"` |
+| `movie` | MP4/AVI/MOV export with a bundled ffmpeg (imageio-ffmpeg, about 170 MB); GIF and PNG need nothing, and an `ffmpeg` on PATH works without it. Preferences › Compute › Optional components can install it | `pip install -e ".[movie]"` |
+| `mcp` | `ewald mcp`, the MCP server for Claude Desktop/Claude Code (mcp and its 12 packages) | `pip install -e ".[mcp]"` |
 | `formats` | GROMACS XTC/TRR, DCD, NetCDF through MDAnalysis | `pip install -e ".[formats]"` |
 | `ovito` | `DislocationAnalysis` (DXA) and `OvitoModifier`; the `ovito` wheel pins its own PySide6, so install it in the same command as `gui` | `pip install -e ".[gui,ovito]"` |
-| `all` | `gui`, `formats`, `ovito`, `opencl` and `metal` together (not `gpu`) | `pip install -e ".[all]"` |
+| `all` | `gui`, `movie`, `mcp`, `formats`, `ovito`, `opencl` and `metal` together (not `gpu`) | `pip install -e ".[all]"` |
 | `dev` | pytest | `pip install -e ".[dev]"` |
 
 For a desktop, `pip install -e ".[all]"` is the usual command; add `gpu` on a machine with an
 NVIDIA GPU: `pip install -e ".[all,gpu]"`. On a cluster without a display, the plain
-`pip install -e .` is enough. The old extras `symmetry`, `movie`, `llm`, `kernel` and `remote`
+`pip install -e .` is enough. The old extras `symmetry`, `llm`, `kernel` and `remote`
 still work in existing commands and add nothing.
 
 The GUI uses PySide6 only. PyQt5 or PyQt6 in the same environment is harmless as long as nothing

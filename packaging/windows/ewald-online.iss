@@ -88,7 +88,7 @@ begin
   Result := PipOk;
 end;
 
-{ "ewald[gui] @ <url>"; a local wheel path becomes a file: URL }
+{ "ewald[gui,movie,mcp] @ <url>"; a local wheel path becomes a file: URL }
 function Requirement: String;
 var Source, Extras: String;
 begin
@@ -98,8 +98,8 @@ begin
     StringChangeEx(Source, '\', '/', True);
     Source := 'file:///' + Source;
   end;
-  Extras := 'gui';
-  if WizardIsTaskSelected('gpu') then Extras := 'gui,gpu';
+  Extras := 'gui,movie,mcp';
+  if WizardIsTaskSelected('gpu') then Extras := 'gui,movie,mcp,gpu';
   Result := '"ewald[' + Extras + '] @ ' + Source + '"';
 end;
 

@@ -125,8 +125,9 @@ of them. The specs build with `noarchive=True`: the bytecode lies as files in `_
 by `ewald.exe` and `ewald-gui.exe`, where a PYZ archive was embedded in each (62 MB apiece). On
 Linux both changes together took the gzip-compressed folder from 536 MB to 431 MB; on Windows
 (2026-10-28, with the whole standard library now bundled) the setup.exe went from 294 MB to
-204 MB and the zip from 396 MB to 322 MB (the folder is 1.0 GB). Left to look at: Qt modules and translations, and movie export's ffmpeg
-(imageio-ffmpeg, about 80 MB), which could become an installable component like GPU compute.
+204 MB and the zip from 396 MB to 322 MB (the folder is 1.0 GB). Left to look at: Qt modules and translations. Movie export's ffmpeg (imageio-ffmpeg, about
+80 MB) is the `movie` extra since D98 and still bundled (`.[gui,movie,mcp]`); dropping it from the
+apps would leave it to Preferences › Compute › Optional components, like GPU compute.
 
 ## Installer: Inno Setup
 
