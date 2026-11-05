@@ -31,6 +31,13 @@ workload *Desktop development with C++* (MSVC and the Windows SDK), then open a 
 pip finds it. `EWALD_REQUIRE_NATIVE=1 pip install -e .` makes a failed C++ build an error instead
 of a warning; CI and the release wheels use it.
 
+Building `ewald._native` compiles about 50 C++ files, in parallel on every CPU core (set
+`EWALD_BUILD_JOBS=N` to use fewer). pip and uv print nothing meanwhile, so `uv pip install -e .`
+can sit at "Preparing packages" for a minute or more; add `-v` to watch the compiler. uv rebuilds
+it whenever `pyproject.toml` or `setup.py` changes (for example after a `git pull`). An editable
+install picks up changed `.py` files without reinstalling, so reinstall only after the
+dependencies or `src/ewald/_csrc/` change.
+
 ## From a release
 
 Each GitHub Release carries prebuilt wheels with `ewald._native` included, so no compiler is
