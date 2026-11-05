@@ -818,7 +818,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 - Plugins side bar on the owner's Windows environment (2026-10-26): installing, updating and
   removing a pip plugin (ewald-mp) keeps the window responsive (it froze for seconds when the
   package metadata was read on the GUI thread), no console window flashes, and *Update to 0.1.x*
-  shows once a newer version is in the index.
+  shows once a newer version is in the index. Closing the window or pressing *Restart now*
+  while uv/pip still runs asks first and no longer prints the "QProcess: Destroyed while
+  process is still running" warning and `_pip_done` traceback (2026-11-05).
 - The large vector figure estimate (D67) on the owner's Windows PC and Mac: render a few thousand
   bonded atoms to SVG and PDF and compare with `python benchmarks/vector_size.py`; the *Large
   vector figure* dialog at 200 % scaling.

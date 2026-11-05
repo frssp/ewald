@@ -6,6 +6,7 @@ import html
 import time
 from pathlib import Path
 
+import shiboken6
 from PySide6 import QtCore, QtGui, QtWidgets
 
 from .. import plugin_catalog as pc
@@ -650,8 +651,9 @@ class PluginsPanel(QtWidgets.QWidget):
         p.readyReadStandardOutput.connect(lambda: self.log.appendPlainText(
             bytes(p.readAllStandardOutput()).decode(errors="replace").rstrip()))
         p.finished.connect(lambda code, status: self._pip_done(
-            action, requirement, -1 if status == QtCore.QProcess.CrashExit else code))
-        p.errorOccurred.connect(lambda err: err == QtCore.QProcess.FailedToStart and self._pip_done(action, requirement, -1))
+            action, requirement, -1 if status == QtCore.QProcess.CrashExit else code, p))
+        p.errorOccurred.connect(lambda err: err == QtCore.QProcess.FailedToStart
+                                and self._pip_done(action, requirement, -1, p))
         reqs = requirement if isinstance(requirement, str) else " ".join(requirement)
         verb = {"install": "Installing", "update": "Updating", "uninstall": "Removing"}.get(action, "Running pip for")
         self._set_busy(key or "", busy or "", f"{verb} {reqs} with pip…")
@@ -688,13 +690,48 @@ class PluginsPanel(QtWidgets.QWidget):
             else:
                 self._process.kill()
 
+    @property
+    def pip_running(self) -> bool:
+        """pip (or uv) is getting ready or running."""
+        return self._process is not None
+
+    def pip_description(self) -> str:
+        """What the running pip does, e.g. ``"install ewald-mp"`` (``""`` when none runs)."""
+        if self._pip_job is None or self._process is None:
+            return ""
+        action, requirement = self._pip_job
+        return f"{action} {requirement if isinstance(requirement, str) else ' '.join(requirement)}"
+
+    def stop_pip(self, wait_ms: int = 5000):
+        """Stop a running pip before the panel goes away (Quit, Restart now): its signals are
+        cut off, the process is killed and waited for, so Qt never destroys a QProcess whose
+        program still runs and its ``finished`` never reaches a half-deleted panel."""
+        p, self._process = self._process, None
+        self._pip_job = self._pip_key = self._before = None
+        if p is None or not shiboken6.isValid(p):
+            return
+        for signal in (p.finished, p.errorOccurred, p.readyReadStandardOutput):
+            try:
+                signal.disconnect()
+            except (RuntimeError, TypeError):   # nothing connected
+                pass
+        if p.state() != QtCore.QProcess.NotRunning:
+            p.kill()
+            p.waitForFinished(wait_ms)
+        p.deleteLater()
+
     def install_requirements(self, requirements: list[str]):
         """pip install the packages a notebook needs (one confirmation, one pip run)."""
         if requirements:
             self._run_pip("install", list(requirements))
 
-    def _pip_done(self, action, requirement, code):
+    def _pip_done(self, action, requirement, code, process=None):
         if self._process is None:            # FailedToStart and finished both report
+            return
+        if process is not None and process is not self._process:   # an earlier, stopped run
+            return
+        if not shiboken6.isValid(self) or not shiboken6.isValid(self._process):
+            self._process = None             # Qt is tearing the panel down: nothing left to update
             return
         self._process.deleteLater()
         self._process, key = None, self._pip_key
