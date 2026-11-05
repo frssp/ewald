@@ -113,7 +113,7 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
   minute when the host is out of reach: the new notebook's `check_run` cell is left out for remote
   files (run it in a cell), local run files are read on a worker, and workflows are described on
   a worker with Cancel. After an update, numba compiles its kernels in a separate Python process
-  instead of holding the window's GIL. SSH connects on the GUI thread now fail the tests (#142).
+  instead of holding the window's GIL. SSH connects on the GUI thread now fail the tests (#144).
 - The window no longer freezes for seconds right after a cold start (seen as a freeze when
   maximizing it on Windows): pyvistaqt and VTK are imported on a thread and the 3D view is built
   when they are in (#140).
