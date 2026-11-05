@@ -1655,7 +1655,7 @@ class NotebookPanel(QtWidgets.QWidget):
         if name is None:
             src = getattr(pipeline.source, "paths", None) or [getattr(pipeline.source, "path", "")]
             name = os.path.splitext(os.path.basename(str(src[0])))[0] or self._next_name()
-        nb = Notebook.from_pipeline(pipeline, source_code, name=name)
+        nb = Notebook.from_pipeline(pipeline, source_code, name=name, check=_may_check_here(pipeline))
         blank = self.view if self.view is not None and self._is_blank(self.view) else None
         view = self.add_notebook(nb)
         if blank is not None:
@@ -1719,3 +1719,17 @@ class NotebookPanel(QtWidgets.QWidget):
 
     def _current(self):
         return None
+
+
+def _may_check_here(pipeline) -> bool:
+    """Whether a new notebook gets its check_run cell, which runs at once on the GUI thread: only
+    for local files. For a file on an SSH host (a sim-agent job) the check reads the run's input
+    files and logs over SSH, and a host out of reach froze the window for over a minute
+    (2026-11-05); ``check_run(pipe)`` in a cell still does it, on the kernel's worker."""
+    from ..io.remote import is_remote
+    from ..runinfo import _source_paths
+
+    try:
+        return not any(is_remote(p) for p in _source_paths(pipeline))
+    except Exception:  # noqa: BLE001
+        return False

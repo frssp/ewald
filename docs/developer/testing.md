@@ -60,6 +60,11 @@ regenerates the LAMMPS ones.
   three or four parallel `xvfb-run -a python -m pytest -v tests/test_gui.py` runs makes it frequent;
   that is how issue #145 was found (pyvistaqt's stale GL surface wrapper, threads that outlived
   their widget). GUI threads go through `gui/workers.py` (`detach`, `relay`).
+- An SSH connection opened on the GUI thread fails the test (`ewald.io.remote.GuiThreadWarning`,
+  turned into an error in `pyproject.toml`): the window cannot respond until it connects, and a
+  host out of reach froze it for over a minute (2026-11-05). Each `MainWindow` marks its thread
+  (`remote.gui_thread`); the conftest clears it per test. Network and other long work in the GUI
+  goes through `gui.busy.wait_for`, the compute worker or `gui/workers.py`.
 - Core dependencies (paramiko, keyring) are imported directly, not skipped: a missing core
   dependency should fail the run. SSH tests share one RSA client key and one host key per run.
 - Analyses ported from OVITO compare against the stored OVITO reference; see

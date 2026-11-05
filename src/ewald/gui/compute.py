@@ -131,6 +131,7 @@ class ComputeRunner(QtCore.QObject):
         if job.cancel.is_set():
             job.error = ComputeCancelled()
         else:
+            wait_child_compile()   # after an update: load numba's kernels, do not compile them here
             t = time.perf_counter()
             try:
                 job.data = job.pipeline.compute(job.frame, device=job.device, errors="skip", cancel=job.cancel)
@@ -197,6 +198,7 @@ def warm_up_jit():
     _warmed = True
 
     def run():
+        wait_child_compile()   # after an update another Python fills numba's cache first
         try:
             import numpy as np
 
@@ -211,3 +213,49 @@ def warm_up_jit():
             pass
 
     threading.Thread(target=run, name="ewald-jit-warmup", daemon=True).start()
+
+
+# what a child Python runs to compile the kernels into numba's cache (see compile_in_child)
+WARM_UP_CODE = ("import numpy as np\n"
+                "from ewald.data import Cell\n"
+                "from ewald.io._textparse import parse_table\n"
+                "from ewald.neighbors import find_pairs\n"
+                "parse_table(b'1 1 0.0 0.0 0.0\\n', 1, 5, [0, 1, 2, 3, 4])\n"
+                "find_pairs(np.random.default_rng(0).random((64, 3)) * 8.0, Cell(np.eye(3) * 8.0), 2.5, method='numba')\n")
+
+
+_child = None   # the Python compiling the kernels into numba's cache (start_child_compile)
+
+
+def start_child_compile(popen=None):
+    """After an install or update (``first_run.cold``): compile the kernels every file open needs
+    in another Python process, so their cache files exist before this process loads them. numba
+    holds the GIL while it compiles (tens of seconds for the parallel neighbor list on a slow
+    laptop after an update, 2026-11-05), which froze the window even from the compute worker; a
+    child process has its own GIL and runs while the window is built. A frozen app has no Python
+    to start: then the kernels compile in-process as before. Started once."""
+    global _child
+    import subprocess
+    import sys
+
+    if _child is not None or getattr(sys, "frozen", False) or not sys.executable:
+        return _child
+    try:
+        _child = (popen or subprocess.Popen)(
+            [sys.executable, "-c", WARM_UP_CODE], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except OSError:
+        _child = None
+    return _child
+
+
+def wait_child_compile(timeout: float = 900) -> None:
+    """Before this process's first numba call: let the child finish filling the cache (waiting
+    holds no GIL), so the call loads the kernels instead of compiling them."""
+    child = _child
+    if child is None:
+        return
+    try:
+        child.wait(timeout)
+    except Exception:  # noqa: BLE001 - a hung child: compile here as before
+        pass

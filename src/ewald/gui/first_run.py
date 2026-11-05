@@ -141,6 +141,8 @@ def start(argv=None):
         current = stamp()
         if not is_first_run(current):
             return None
+        global cold
+        cold = True
         from .application import _app
 
         notice = show_notice(_app())
@@ -148,6 +150,9 @@ def start(argv=None):
         return notice
     except Exception:  # never let the notice stop the GUI from starting
         return None
+
+
+cold = False   # this start is a first run (start() found a new stamp): numba's cache is cold too
 
 
 def finish(window=None) -> None:

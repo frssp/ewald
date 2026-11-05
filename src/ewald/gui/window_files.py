@@ -126,6 +126,8 @@ class FilesMixin:
             self.message(f"Load failed: {path}: {text}", error=True)
             QtWidgets.QMessageBox.critical(self, "Load failed", f"{path}\n\n{text}")
             return None
+        if not remote:
+            self._read_run_info(pipe, name)
         if _has_phonon_modes(pipe) and not any(isinstance(m, mods.PhononMode) for m in pipe.modifiers):
             pipe.modifiers.append(mods.PhononMode())  # a phonon file opens playing a mode
         self._check_bond_limit = True
@@ -136,6 +138,25 @@ class FilesMixin:
         if not several:   # the recent list reopens one path
             add_recent(path)
         return pipe
+
+    def _read_run_info(self, pipe, name: str):
+        """Read a local run's input files (INCAR, in.lammps, logs) and frame timing on a worker, so
+        the new notebook's check_run cell finds them cached instead of reading on the GUI thread.
+        Files on an SSH host get no such cell (``notebook_panel._may_check_here``). Cancel opens
+        the file without it."""
+        from ..runinfo import RunInfo, run_info
+
+        def read():
+            try:
+                run_info(pipe)
+            except Exception:  # noqa: BLE001 - never stop a file from opening
+                pipe._run_info = RunInfo()
+
+        try:
+            wait_for(read, f"Reading the run files of {name}…", self, say=self.message)
+        except Cancelled:
+            pipe._run_info = RunInfo()   # no check cell; check_run(pipe, refresh=True) reads them later
+            self.message(f"Skipped reading the run files of {name}")
 
     def open_dialog(self):
         """File › Open: one file, or several (notebooks open in tabs, data files as one trajectory)."""
@@ -406,10 +427,15 @@ class FilesMixin:
         from .. import workflow as wf_module
         from ..notebook import Notebook
 
-        try:
-            with busy(self.message, "Reading the workflow…"):
-                wf = workflow if isinstance(workflow, wf_module.Workflow) else wf_module.describe(str(workflow))
-                text = wf_module.notebook_text(wf)
+        def read():
+            wf = workflow if isinstance(workflow, wf_module.Workflow) else wf_module.describe(str(workflow))
+            return wf, wf_module.notebook_text(wf)
+
+        try:   # a workflow source asks a server or an SSH host: on a worker, with Cancel
+            wf, text = wait_for(read, "Reading the workflow…", self, say=self.message)
+        except Cancelled:
+            self.message(f"Cancelled opening {workflow}")
+            return None
         except Exception as exc:
             self.message(f"Open failed: {workflow}: {exc}", error=True)
             QtWidgets.QMessageBox.critical(self, "Open failed", f"{workflow}\n\n{exc}")

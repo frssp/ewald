@@ -7841,3 +7841,80 @@ def test_view_waits_for_its_modules_imported_on_a_thread(app, monkeypatch):
     assert v.view_built
     v.close()
     _dispose(v)
+
+
+def test_gui_thread_ssh_connects_warn_and_remote_files_get_no_auto_check(app, monkeypatch, tmp_path):
+    # freezes.log 2026-11-05: opening a sim-agent job (a file on an SSH host) ran the new
+    # notebook's check_run cell on the GUI thread, which connected to a host out of reach: 64 s
+    import threading
+    import warnings
+
+    from ewald.gui import notebook_panel
+    from ewald.gui.app import MainWindow
+    from ewald.io import remote
+
+    w = MainWindow()
+    assert remote.gui_thread is threading.current_thread()
+    made = []
+    monkeypatch.setattr(remote, "_require_paramiko", lambda: None)
+    monkeypatch.setattr(remote, "Connection", lambda *a: made.append(a) or type("C", (), {"is_active": lambda s: True})())
+    monkeypatch.setattr(remote, "_connections", {})
+    with pytest.raises(remote.GuiThreadWarning):   # the test suite turns it into an error
+        remote.connect("hpc")
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        t = threading.Thread(target=remote.connect, args=("hpc2",))
+        t.start()
+        t.join(5)
+    assert ("hpc2", None, None) in made          # a worker may connect
+    from types import SimpleNamespace
+
+    far = SimpleNamespace(source=SimpleNamespace(path="hpc:/scratch/run/dump.lammpstrj"))
+    near = SimpleNamespace(source=SimpleNamespace(path=str(tmp_path / "dump.lammpstrj")))
+    assert not notebook_panel._may_check_here(far) and notebook_panel._may_check_here(near)
+    w.close()
+
+
+def test_open_file_reads_the_run_files_on_a_worker(app, tmp_path, monkeypatch):
+    import threading
+
+    from ewald import runinfo
+    from ewald.gui.app import MainWindow
+
+    path = tmp_path / "POSCAR"
+    path.write_text("Cu\n1.0\n3.6 0 0\n0 3.6 0\n0 0 3.6\nCu\n1\nDirect\n0 0 0\n", encoding="utf-8", newline="\n")
+    where = []
+    real = runinfo.run_info
+    monkeypatch.setattr(runinfo, "run_info", lambda *a, **k: (where.append(threading.current_thread()), real(*a, **k))[1])
+    w = MainWindow()
+    pipe = w.open_file(str(path))
+    assert pipe is not None and pipe._run_info is not None
+    assert where and where[0] is not threading.current_thread()
+    w.close()
+
+
+def test_numba_compiles_in_a_child_python_after_an_update(monkeypatch):
+    import sys
+
+    from ewald.gui import compute
+
+    started = []
+
+    class Child:
+        def __init__(self, args, **kw):
+            started.append(args)
+            self.waited = False
+
+        def wait(self, timeout=None):
+            self.waited = True
+
+    monkeypatch.setattr(compute, "_child", None)
+    child = compute.start_child_compile(popen=Child)
+    assert started == [[sys.executable, "-c", compute.WARM_UP_CODE]]
+    assert compute.start_child_compile(popen=Child) is child and len(started) == 1   # once
+    compute.wait_child_compile()
+    assert child.waited
+    monkeypatch.setattr(compute, "_child", None)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert compute.start_child_compile(popen=Child) is None   # a frozen app has no Python to start
+    compute.wait_child_compile()

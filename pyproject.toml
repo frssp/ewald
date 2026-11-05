@@ -78,3 +78,5 @@ ewald = ["tables/*.json", "examples/files/*", "_csrc/README.md", "_csrc/LICENSE*
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# an SSH connect on the GUI thread froze the window for a minute (ewald.io.remote.GuiThreadWarning)
+filterwarnings = ["error::ewald.io.remote.GuiThreadWarning"]
