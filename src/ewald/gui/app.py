@@ -845,6 +845,13 @@ def main(argv=None):
     ap.add_argument("--device", default=None, help="cpu, cuda or auto")
     args = ap.parse_args(strip_psn(sys.argv[1:] if argv is None else argv))
     app = _app()
+    from . import viewport_backend
+    from .. import settings as settings_mod
+
+    if viewport_backend(settings_mod.load()["viewport.backend"]) == "vtk":
+        from .viewport import preload_view_modules
+
+        preload_view_modules()   # while the main window is built (seconds on a cold Windows start)
     win = MainWindow(device=args.device)
     kw = {"type_map": dict(p.split("=") for p in args.type_map.split(","))} if args.type_map else {}
     for path in args.file:
