@@ -3956,6 +3956,100 @@ def test_plugins_side_bar_keeps_the_window_responsive_around_pip(app, monkeypatc
     panel.close()
 
 
+def _slow_pip(monkeypatch, plugins_panel, pc):
+    import sys
+
+    monkeypatch.setattr(pc, "loaded_versions", lambda: {})
+    monkeypatch.setattr(pc, "pip_env", lambda req: {})
+    monkeypatch.setattr(pc, "pip_command", lambda action, req: [sys.executable, "-c", "import time; time.sleep(60)"])
+    monkeypatch.setattr(plugins_panel.QtWidgets.QMessageBox, "question",
+                        lambda *a, **k: plugins_panel.QtWidgets.QMessageBox.Yes)
+
+
+def _until(app, cond, seconds=10):
+    import time
+
+    deadline = time.monotonic() + seconds
+    while not cond() and time.monotonic() < deadline:
+        app.processEvents()
+        time.sleep(0.01)
+    return cond()
+
+
+def test_plugins_side_bar_deleted_while_pip_runs(app, monkeypatch):
+    """Owner's Windows traceback: the window went away while uv still ran, Qt destroyed the
+    QProcess, its finished signal reached _pip_done, which called deleteLater on the deleted
+    QProcess. stop_pip kills and waits for pip first; a teardown without it raises nothing."""
+    import sys
+
+    import shiboken6
+
+    from ewald import plugin_catalog as pc
+    from ewald import settings
+    from ewald.gui import plugins_panel
+
+    _slow_pip(monkeypatch, plugins_panel, pc)
+    errors = []
+    monkeypatch.setattr(sys, "excepthook", lambda *exc: errors.append(exc))
+
+    # torn down without stop_pip (a parent deleted by Qt): no exception from the signal
+    holder = QtWidgets.QWidget()
+    panel = plugins_panel.PluginsPanel(settings=settings.Settings(), parent=holder)
+    panel.wait()
+    panel._run_pip("install", "ewald-something")
+    assert _until(app, lambda: panel._process is not None
+                  and panel._process.state() == QtCore.QProcess.Running)
+    shiboken6.delete(holder)
+    app.processEvents()
+    assert errors == []
+
+    # stop_pip (Quit, Restart now): the process is killed and gone before the panel is
+    panel = plugins_panel.PluginsPanel(settings=settings.Settings())
+    panel.wait()
+    panel._run_pip("install", ["ewald-a", "ewald-b"])
+    assert panel.pip_running and panel.pip_description() == "install ewald-a ewald-b"
+    assert _until(app, lambda: panel._process.state() == QtCore.QProcess.Running)
+    process = panel._process
+    panel.stop_pip()
+    assert process.state() == QtCore.QProcess.NotRunning
+    assert not panel.pip_running and panel.pip_description() == "" and panel._pip_job is None
+    panel.stop_pip()                                               # nothing running: no-op
+    app.processEvents()
+    assert errors == [] and "failed" not in panel.log.toPlainText()  # its finished never arrived
+    panel.close()
+
+
+def test_quit_asks_before_stopping_a_running_pip(app, monkeypatch):
+    """Quit (and Restart now, which closes the window) while pip runs: Cancel keeps the window
+    and pip; Yes stops pip before the window goes away."""
+    from ewald import plugin_catalog as pc
+    from ewald.gui import plugins_panel, window_plugins
+    from ewald.gui.app import MainWindow
+
+    _slow_pip(monkeypatch, plugins_panel, pc)
+    w = MainWindow()
+    w.show()
+    w.plugins_panel.wait()
+    w.plugins_panel._run_pip("update", "ewald-mp")
+    assert _until(app, lambda: w.plugins_panel._process.state() == QtCore.QProcess.Running)
+    asked = []
+
+    def answer(reply):
+        def question(parent, title, text, *a, **k):
+            asked.append(text)
+            return reply
+        return question
+
+    monkeypatch.setattr(window_plugins.QtWidgets.QMessageBox, "question", answer(QtWidgets.QMessageBox.Cancel))
+    assert not w.close()
+    assert "pip update ewald-mp" in asked[-1] and w.plugins_panel.pip_running
+    process = w.plugins_panel._process
+    monkeypatch.setattr(window_plugins.QtWidgets.QMessageBox, "question", answer(QtWidgets.QMessageBox.Yes))
+    assert w.close()
+    assert len(asked) == 2 and process.state() == QtCore.QProcess.NotRunning
+    assert not w.plugins_panel.pip_running
+
+
 def test_plugins_side_bar_reads_old_catalogs_again_when_shown(app, monkeypatch):
     """A side bar left open for hours learns about a newer plugin version (ewald-mp 0.1.1)."""
     from ewald import plugin_catalog as pc

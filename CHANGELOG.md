@@ -112,6 +112,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Fixed
 
+- Closing the window or pressing *Restart now* while the Plugins side bar's pip/uv still ran
+  printed "QProcess: Destroyed while process is still running" and a `_pip_done` traceback; Quit
+  now asks first and stops pip cleanly (#142).
 - The window no longer freezes for seconds right after a cold start (seen as a freeze when
   maximizing it on Windows): pyvistaqt and VTK are imported on a thread and the 3D view is built
   when they are in (#140).
