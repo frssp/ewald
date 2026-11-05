@@ -1275,6 +1275,19 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Alternatives:** only a copy button for Open location (Ctrl+L), with no change to EWALD.
 - **Landed:** public PR #138.
 
+### D98. Movie export's ffmpeg and the MCP server become extras; pymatgen stays in core (2026-11-05)
+
+- **Decision:** `imageio-ffmpeg` and `mcp` leave the required dependencies for the `movie` and
+  `mcp` extras, which `[all]`, the standalone apps and the Windows online installer include.
+  pymatgen stays a core dependency (D79).
+- **Why:** the owner asked to check whether EWALD has too many dependencies ("의존성이 지나치게
+  많지 않은지 확인"). The audit measured a 121-package, 1.5 GB core install on Linux, with
+  imageio-ffmpeg a 170 MB binary used only for MP4/AVI/MOV and mcp bringing 12 packages for
+  `ewald mcp` alone. The owner picked "ffmpeg와 mcp만 extra로" on the decision card.
+- **Alternatives:** also moving pymatgen (160 MB, 18 packages) to an extra, which reverts D79;
+  keeping the core install as it was.
+- **Landed:** public PR #143 (after #141, which made the `gui` extra install PySide6-Essentials).
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

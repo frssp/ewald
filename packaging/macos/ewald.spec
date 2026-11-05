@@ -1,7 +1,7 @@
 # PyInstaller spec for the macOS app: EWALD.app with ewald-gui (the bundle's executable) and the
 # ewald CLI side by side in Contents/MacOS, sharing one set of libraries.
 #
-#   pip install ".[gui]" pyinstaller setuptools
+#   pip install ".[gui,movie,mcp]" pyinstaller setuptools
 #   pyinstaller --noconfirm packaging/macos/ewald.spec          # -> dist/EWALD.app
 #   packaging/macos/make_dmg.sh                                  # -> dist/ewald-X.Y.Z-macos-<arch>.dmg
 #

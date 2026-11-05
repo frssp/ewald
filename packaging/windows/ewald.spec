@@ -1,7 +1,7 @@
 # PyInstaller spec for the Windows app: one folder with ewald.exe (console CLI) and
 # ewald-gui.exe (windowed), sharing one _internal/ directory.
 #
-#   pip install ".[gui]" pyinstaller setuptools
+#   pip install ".[gui,movie,mcp]" pyinstaller setuptools
 #   pyinstaller --noconfirm packaging/windows/ewald.spec
 #
 # CuPy is never bundled: GPU compute is installed from the app (Preferences › Compute › Optional
