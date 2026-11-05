@@ -78,6 +78,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- The `gui` extra installs `PySide6-Essentials` instead of the `PySide6` metapackage: the Addons,
+  WebEngine and Pdf wheels (about 450 MB, 3 distributions) were never imported, and ovito pins
+  `PySide6-Essentials` too, so `[gui,ovito]` no longer mixes two Qt versions.
 - Opening a big LAMMPS dump, XDATCAR or extxyz file again skips the frame scan: the index of local
   files of 32 MB or more is kept in the cache folder while the file is unchanged (340 MB XDATCAR
   3.9 s -> 0.02 s; `EWALD_INDEX_CACHE=0` turns it off) (D96, #137).
