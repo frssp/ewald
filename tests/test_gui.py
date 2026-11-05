@@ -7843,6 +7843,31 @@ def test_view_waits_for_its_modules_imported_on_a_thread(app, monkeypatch):
     _dispose(v)
 
 
+def test_view_built_early_waits_for_the_preload_thread(app, monkeypatch):
+    # the 3D view asked for (``plotter``) while the preload thread still imported pyvista got a
+    # half-initialized module ("cannot import name 'global_theme' from 'pyvista'"), and every
+    # later GUI test failed with it; matplotlib is imported before the thread starts for the same
+    # reason (cells and plots import it on other threads)
+    import sys
+    import threading
+    import time
+
+    from ewald.gui import viewport as vpmod
+    from ewald.view_style import ViewStyle
+
+    vpmod.preload_view_modules()
+    assert "matplotlib.pyplot" in sys.modules
+    vpmod._preload_thread.join(30)
+    done = threading.Event()
+    slow = threading.Thread(target=lambda: (time.sleep(0.3), done.set()), daemon=True)
+    monkeypatch.setattr(vpmod, "_preload_thread", slow)
+    slow.start()
+    v = vpmod.Viewport(ViewStyle())
+    assert v.plotter is not None and done.is_set()
+    v.close()
+    _dispose(v)
+
+
 def test_gui_thread_ssh_connects_warn_and_remote_files_get_no_auto_check(app, monkeypatch, tmp_path):
     # freezes.log 2026-11-05: opening a sim-agent job (a file on an SSH host) ran the new
     # notebook's check_run cell on the GUI thread, which connected to a host out of reach: 64 s

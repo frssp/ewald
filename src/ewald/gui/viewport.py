@@ -123,9 +123,29 @@ def preload_view_modules():
         except Exception:  # noqa: BLE001 - the GUI thread imports again and reports it
             pass
 
+    # matplotlib first, here: pyvista imports it, and so do cells and plots on other threads.
+    # Its submodules import each other, so two threads importing it at once can take their module
+    # locks in opposite orders, and Python then hands one of them a half-initialized module
+    # ("partially initialized module 'matplotlib.pyplot'", then "cannot import name
+    # 'global_theme' from 'pyvista'") that stays broken. It takes a fraction of the VTK time.
+    try:
+        import matplotlib.pyplot  # noqa: F401
+    except Exception:  # noqa: BLE001 - whoever needs it imports again and reports it
+        pass
     _preload_thread = threading.Thread(target=run, name="ewald-view-import", daemon=True)
     _preload_thread.start()
     return _preload_thread
+
+
+def wait_view_modules(timeout: float = 120.0) -> None:
+    """Block until the preload thread is done, before importing pyvista, or IPython (pyvista
+    imports IPython's completer when IPython is in ``sys.modules``, even half-imported), on
+    another thread: two threads importing them at once can deadlock on their module locks, and
+    Python then leaves one of the modules half-initialized. Call it from code that holds no
+    import lock (never at module level)."""
+    thread = _preload_thread
+    if thread is not None and thread is not __import__("threading").current_thread():
+        thread.join(timeout)
 
 
 def view_modules_ready() -> bool:
@@ -345,6 +365,7 @@ class Viewport(QtWidgets.QWidget):
 
     def _create_view(self) -> QtWidgets.QWidget:
         """The 3D widget: a VTK QtInteractor (``self.plotter``) wired to the pick and LOD handlers."""
+        wait_view_modules()   # the window asked for the view before the preload thread finished
         from pyvistaqt import QtInteractor
 
         # always interactive, even when PYVISTA_OFF_SCREEN is set for headless rendering

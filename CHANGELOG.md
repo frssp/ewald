@@ -117,6 +117,10 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
   files (run it in a cell), local run files are read on a worker, and workflows are described on
   a worker with Cancel. After an update, numba compiles its kernels in a separate Python process
   instead of holding the window's GIL. SSH connects on the GUI thread now fail the tests (#144).
+- The 3D view's modules, imported on a thread since #140, could meet another thread importing
+  matplotlib, pyvista or IPython (a cell, the console, an early view) and leave one of them
+  half-initialized ("partially initialized module", "cannot import name 'global_theme'"), so
+  the view or the cells failed until a restart. matplotlib is imported first and the others wait (#144).
 - The window no longer freezes for seconds right after a cold start (seen as a freeze when
   maximizing it on Windows): pyvistaqt and VTK are imported on a thread and the 3D view is built
   when they are in (#140).

@@ -1056,6 +1056,11 @@ class NotebookView(QtWidgets.QWidget):
             self.awaiting_run = False
             self._update_banner()
         if self.notebook.kernel is None:
+            # pyvista imports IPython's completer while IPython is being imported: the cells'
+            # shell must not import IPython while the 3D view's modules are still coming in
+            from .viewport import wait_view_modules
+
+            wait_view_modules()
             _cells_draw_off_screen()
         worker = self._worker = workers.detach(_CellWorker(fn))  # survives closing the tab
         self._queued = [c for c in marked if c.kind != "markdown"]
