@@ -4,11 +4,12 @@ Without a C++17 compiler (on Windows: Microsoft C++ Build Tools) the build is sk
 warning and ewald installs without ``ewald._native``: everything works except the modifiers
 listed in ``NEEDS_NATIVE``, which then raise an ImportError saying how to get it.
 ``EWALD_REQUIRE_NATIVE=1`` turns the warning back into a build error (CI, release wheels).
+The ~50 C++ files compile in parallel on every CPU core; ``EWALD_BUILD_JOBS=N`` limits that.
 """
 import os
 import sys
 
-from pybind11.setup_helpers import Pybind11Extension, build_ext
+from pybind11.setup_helpers import ParallelCompile, Pybind11Extension, build_ext
 from setuptools import setup
 
 NEEDS_NATIVE = ("PolyhedralTemplateMatching", "VoronoiAnalysis", "CentroSymmetry(mode='matching')",
@@ -55,6 +56,9 @@ sources = [os.path.join(native, "native.cpp"), os.path.join(native, "cna.cpp"), 
            os.path.join(native, "mwm_csp", "matching.cpp")]
 sources += sorted(os.path.join(native, "ptm", f) for f in os.listdir(os.path.join(native, "ptm"))
                   if f.endswith(".cpp"))
+# compile the sources on all cores instead of one after another (pip and uv show no output meanwhile)
+ParallelCompile("EWALD_BUILD_JOBS", default=0).install()
+
 ext_modules = [Pybind11Extension("ewald._native", sources, include_dirs=[native], cxx_std=17)]
 
 setup(ext_modules=ext_modules, cmdclass={"build_ext": optional_build_ext})
