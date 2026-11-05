@@ -453,7 +453,7 @@ never a local file, an SSH path or a notebook, and nothing in it is run. Without
 link is refused with a message. "Don't ask again for links" in the box, or Preferences › General
 › Ask before opening links, opens links without the box.
 
-The Windows installer and EWALD.app register `ewald://` links. A pip install registers them with
+The Windows installer and EWALD.app register `ewald://` links ([Install](install.md#open-in-ewald-buttons-on-web-pages)). A pip install registers them with
 `ewald register-links` (Windows: for this user in the registry; Linux: a hidden desktop entry for
 `x-scheme-handler/ewald`); `ewald register-links --remove` undoes it. Without EWALD the browser
 does nothing on such a link, so pages that link here should also offer the location as text to
