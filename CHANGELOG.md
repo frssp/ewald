@@ -81,6 +81,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- `imageio-ffmpeg` (MP4/AVI/MOV export) and `mcp` (`ewald mcp`) are no longer installed by
+  `pip install ewald`: use the `movie` and `mcp` extras, or `[all]`. The apps still bundle both,
+  and Preferences › Compute › Optional components installs the ffmpeg (D98, #143).
 - The `gui` extra installs `PySide6-Essentials` instead of the `PySide6` metapackage: the Addons,
   WebEngine and Pdf wheels (about 450 MB, 3 distributions) were never imported, and ovito pins
   `PySide6-Essentials` too, so `[gui,ovito]` no longer mixes two Qt versions.

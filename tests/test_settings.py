@@ -77,5 +77,6 @@ def test_installable_components(monkeypatch):
     monkeypatch.setattr(settings.sys, "platform", "win32")
     assert settings.installable("cupy") == ["cupy-cuda12x[ctk]"]
     assert settings.installable("pyopencl") and settings.installable("ovito") == []
+    assert settings.installable("imageio_ffmpeg") == ["imageio-ffmpeg"]   # movie extra (D98)
     monkeypatch.setattr(settings.sys, "platform", "darwin")
     assert settings.installable("cupy") == []

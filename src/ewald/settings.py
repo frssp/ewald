@@ -399,7 +399,7 @@ COMPONENTS = (
     ("cupy", "GPU compute (CUDA, NVIDIA)", "pip install 'ewald[gpu]'"),
     ("pyopencl", "GPU ray tracing on any GPU (OpenCL)", "pip install 'ewald[opencl]'"),
     ("ovito", "Dislocation analysis (DXA)", "pip install 'ewald[gui,ovito]'"),
-    ("imageio_ffmpeg", "Movie export (.mp4)", "pip install imageio-ffmpeg (part of the ewald install)"),
+    ("imageio_ffmpeg", "Movie export (.mp4)", "pip install 'ewald[movie]'"),
     ("qtconsole", "IPython console in the GUI", "pip install 'ewald[gui]'"),
 )
 
@@ -409,7 +409,7 @@ COMPONENTS = (
 # CuPy with [ctk] brings the CUDA 12 libraries as wheels, so only an NVIDIA driver is needed
 # (D80: the GPU support is an installable feature, not a separate Windows build).
 CUDA_REQUIREMENT = "cupy-cuda12x[ctk]"
-INSTALLABLE = {"cupy": [CUDA_REQUIREMENT], "pyopencl": ["pyopencl>=2022.1"]}
+INSTALLABLE = {"cupy": [CUDA_REQUIREMENT], "pyopencl": ["pyopencl>=2022.1"], "imageio_ffmpeg": ["imageio-ffmpeg"]}
 
 
 def installable(module: str) -> list[str]:

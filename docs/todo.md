@@ -1081,9 +1081,9 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
   not the suite; manylinux wheels so PTM/Voronoi/CSP are not missing without a compiler.
 - Lighter install (dependency audit 2026-11-05, Linux py3.13: core 121 distributions / 1.5 GB,
   `.[all]` 147 / 2.1 GB after `gui` moved to PySide6-Essentials): the big core items are VTK 590 MB
-  (headless OpenGL render), numba+llvmlite 195 MB, imageio-ffmpeg 173 MB (MP4 only), pymatgen with
-  pandas/sympy/plotly/networkx 160 MB and 18 packages (D79), SciPy 112 MB; `mcp` brings 12 packages
-  (starlette, uvicorn) for `ewald mcp` only. Moving any of them to an extra waits for the owner.
+  (headless OpenGL render), numba+llvmlite 195 MB, pymatgen with pandas/sympy/plotly/networkx
+  160 MB and 18 packages (kept in core, D79), SciPy 112 MB. imageio-ffmpeg and mcp became the
+  `movie` and `mcp` extras (D98, about 180 MB and 13 packages less in the core).
   `import ewald` takes 0.25 s, 0.15 s of it numba (pulled in by `io._textparse`); a lazy numba
   import there is open.
 - GitHub Actions minutes ran out on 2026-10-19, so every workflow now runs only on manual
@@ -1096,7 +1096,7 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 - CI installs each extra on its own only through the test suite's `importorskip`s; a job that
   installs `.[all]` (and the plain core) in a clean venv and imports its modules would catch broken
   extras (`tests/test_dependencies.py` only checks that every import is declared). The frozen apps
-  now carry spglib, h5py, imageio-ffmpeg, anthropic/openai/mcp and ipykernel as core packages:
+  now carry spglib, h5py, anthropic/openai and ipykernel as core packages and imageio-ffmpeg/mcp as extras:
   check their size and that PyInstaller bundles them.
 - A step that failed for a missing package retries only when its settings change or the pipeline
   is invalidated; installing the package while the app runs needs a Run of that cell (a GUI
