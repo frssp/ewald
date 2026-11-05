@@ -10,7 +10,8 @@ import ewald.gui as gui
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 # import name -> distribution name, where they differ
 DIST = {"PIL": "pillow", "cupyx": "cupy-cuda12x", "cupy": "cupy-cuda12x", "imageio_ffmpeg": "imageio-ffmpeg",
-        "MDAnalysis": "mdanalysis", "PySide6": "pyside6", "shiboken6": "pyside6",  # shiboken6 ships with PySide6
+        "MDAnalysis": "mdanalysis", "PySide6": "pyside6-essentials",
+        "shiboken6": "pyside6-essentials",  # ships with PySide6
         "vtkmodules": "vtk",
         "Metal": "pyobjc-framework-metal"}
 # used opportunistically when installed, or arriving with a declared package
@@ -54,7 +55,7 @@ def test_gui_requires_pyside6_not_pyqt():
     tomllib = pytest.importorskip("tomllib")
     extras = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["optional-dependencies"]
     names = _requirement_names(extras["gui"])
-    assert "pyside6" in names and not names & {"pyqt5", "pyqt6", "pyside2"}
+    assert "pyside6-essentials" in names and not names & {"pyqt5", "pyqt6", "pyside2"}
 
 
 def test_other_qt_binding_already_imported_is_reported(monkeypatch):

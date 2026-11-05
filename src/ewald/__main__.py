@@ -58,6 +58,8 @@ def build_parser():
     g.add_argument("input", nargs="*", help="structure/trajectory files, notebooks or .ewald sessions")
     g.add_argument("--type-map", default=None)
     g.add_argument("--device", default=None)
+    rl = sub.add_parser("register-links", help="open ewald:// links from web pages with this install")
+    rl.add_argument("--remove", action="store_true", help="remove the registration instead")
     ex = sub.add_parser("examples", help="list the shipped example files (POSCAR, CIF, extxyz, LAMMPS, ...)")
     ex.add_argument("--copy", default=None, metavar="DIR", help="copy them into DIR")
     ex.add_argument("--papers", action="store_true", help="list the published datasets that --fetch downloads")
@@ -319,6 +321,15 @@ def _run(args):
 
         extra = list(args.input) + (["--type-map", args.type_map] if args.type_map else [])
         return gui_main(extra + (["--device", args.device] if args.device else []))
+    if args.cmd == "register-links":
+        from . import deeplink
+
+        try:
+            print(deeplink.unregister() if args.remove else deeplink.register())
+        except deeplink.DeepLinkError as exc:
+            print(exc, file=sys.stderr)
+            return 1
+        return
     if args.cmd == "api":
         from .llm.reference import api_reference
 

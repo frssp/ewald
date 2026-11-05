@@ -1265,6 +1265,16 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   or frame rate on battery), which changes what the view looks like.
 - **Landed:** public PR #136 (scene build on the worker), public PR #137 (frame indexes on disk).
 
+### D97. Web pages open calculations in EWALD with ewald:// links (2026-11-04)
+
+- **Decision:** asked whether a button on a results web page could open EWALD, the owner picked
+  a custom URL scheme (`ewald://open?location=...`, opened like Open location after a
+  confirmation) together with a button that copies the location, over the copy button alone.
+  The owner also asked what happens without EWALD installed ("만약 사용자가 ewald가 없다면?");
+  the page answers with an install hint, since it cannot detect an unhandled link.
+- **Alternatives:** only a copy button for Open location (Ctrl+L), with no change to EWALD.
+- **Landed:** public PR #138.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

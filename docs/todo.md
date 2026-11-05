@@ -788,6 +788,10 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- `ewald://` links (Links from web pages, `ewald/deeplink.py`): a click in Chrome and Edge on the
+  owner's Windows PC with the installer's registration and with `ewald register-links` from a pip
+  install, on macOS with EWALD.app, and on a Linux desktop; with EWALD closed (starts and opens)
+  and running (opens in the same window; the local-socket hand-over is tested under xvfb only).
 - OpenCode provider (D92) on the owner's Windows with the company's OpenCode: `opencode.cmd` from
   npm found on PATH and started without a console window, Test connection lists the company
   models, an answer streams into the AI chat, Stop ends it, and closing EWALD leaves no `opencode`
@@ -1074,8 +1078,14 @@ From the 2026-10-19 review (expression sandbox, session classes, Forge consent a
 - From the 2026-10-20 systems review (/mnt/project-files/ewald-review/senior-systems-review.md;
   its refactors are merged, #129-#135): a self-hosted runner (xvfb + Mesa) to restore the PR
   gate without Actions minutes; render/VTK tests in a subprocess so a VTK abort fails one test,
-  not the suite; a lighter core install (`vtk`/`pyvista` and `paramiko`/`keyring` as extras or
-  lazy imports) and manylinux wheels so PTM/Voronoi/CSP are not missing without a compiler.
+  not the suite; manylinux wheels so PTM/Voronoi/CSP are not missing without a compiler.
+- Lighter install (dependency audit 2026-11-05, Linux py3.13: core 121 distributions / 1.5 GB,
+  `.[all]` 147 / 2.1 GB after `gui` moved to PySide6-Essentials): the big core items are VTK 590 MB
+  (headless OpenGL render), numba+llvmlite 195 MB, imageio-ffmpeg 173 MB (MP4 only), pymatgen with
+  pandas/sympy/plotly/networkx 160 MB and 18 packages (D79), SciPy 112 MB; `mcp` brings 12 packages
+  (starlette, uvicorn) for `ewald mcp` only. Moving any of them to an extra waits for the owner.
+  `import ewald` takes 0.25 s, 0.15 s of it numba (pulled in by `io._textparse`); a lazy numba
+  import there is open.
 - GitHub Actions minutes ran out on 2026-10-19, so every workflow now runs only on manual
   dispatch and pull requests are verified locally (`xvfb-run -a python -m pytest -q`,
   `mkdocs build --strict`). Restore the `push`/`pull_request`/tag triggers once minutes are

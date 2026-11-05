@@ -50,6 +50,11 @@ Name: "{group}\Uninstall ewald"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\ewald"; Filename: "{app}\ewald-gui.exe"; Tasks: desktopicon
 
 [Registry]
+; ewald:// links from web pages ("Open in EWALD" buttons; src/ewald/deeplink.py)
+Root: HKA; Subkey: "Software\Classes\ewald"; ValueType: string; ValueData: "URL:EWALD link"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\ewald"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\ewald\DefaultIcon"; ValueType: string; ValueData: "{app}\ewald-gui.exe,0"
+Root: HKA; Subkey: "Software\Classes\ewald\shell\open\command"; ValueType: string; ValueData: """{app}\ewald-gui.exe"" ""%1"""
 Root: HKA; Subkey: "Software\Classes\ewald.trajectory"; ValueType: string; ValueData: "Atomistic trajectory"; Flags: uninsdeletekey; Tasks: assoc
 Root: HKA; Subkey: "Software\Classes\ewald.trajectory\shell\open\command"; ValueType: string; ValueData: """{app}\ewald-gui.exe"" ""%1"""; Tasks: assoc
 Root: HKA; Subkey: "Software\Classes\.lammpstrj\OpenWithProgids"; ValueType: string; ValueName: "ewald.trajectory"; ValueData: ""; Flags: uninsdeletevalue; Tasks: assoc

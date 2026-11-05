@@ -10,6 +10,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- Links from web pages: `ewald://open?location=...` opens a reader location (`aiida:…`, plugin
+  schemes) after a confirmation, in the EWALD already running when there is one; the Windows
+  installers and EWALD.app register the scheme, `ewald register-links` a pip install (#138).
 - Freeze report: when the window stops responding for 5 s (Preferences › General › Report freezes
   after), every thread's stack goes to `freezes.log` in the settings folder; Help › Freeze log opens
   it. `ewald gpu` and Help › About show battery or mains, and the status bar warns when High
@@ -78,6 +81,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- The `gui` extra installs `PySide6-Essentials` instead of the `PySide6` metapackage: the Addons,
+  WebEngine and Pdf wheels (about 450 MB, 3 distributions) were never imported, and ovito pins
+  `PySide6-Essentials` too, so `[gui,ovito]` no longer mixes two Qt versions.
 - Opening a big LAMMPS dump, XDATCAR or extxyz file again skips the frame scan: the index of local
   files of 32 MB or more is kept in the cache folder while the file is unchanged (340 MB XDATCAR
   3.9 s -> 0.02 s; `EWALD_INDEX_CACHE=0` turns it off) (D96, #137).

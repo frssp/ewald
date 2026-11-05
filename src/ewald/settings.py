@@ -90,6 +90,9 @@ OPTIONS = (
            "Seconds the window may not respond before EWALD writes what every thread was doing to "
            "freezes.log in the settings folder (Help › Freeze log). 0 turns it off. Takes effect at the next start.",
            minimum=0, maximum=600),
+    Option("general.confirm_links", True, "Ask before opening links",
+           "Links from a web page (ewald://open?location=...) show what they open and wait for OK. "
+           "Off: they open at once. Either way a link opens only a location of an installed reader."),
     Option("general.docs_url", "", "Documentation URL",
            "Where Help opens the manual. Empty = the docs folder on GitHub; or a hosted or built site."),
 

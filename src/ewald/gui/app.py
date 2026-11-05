@@ -19,6 +19,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 skip_pyside_feature_scan()  # before the heavy imports below and the 3D view's
 
 from .. import modifiers as mods
+from ..deeplink import is_deep_link
 from ..raytrace import RenderCancelled
 from ..render import camera_state, opengl_available, render
 from .busy import busy, finish_orphans
@@ -256,7 +257,7 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
             self.set_pipeline(pipeline)
         app = QtWidgets.QApplication.instance()
         if isinstance(app, EwaldApplication):  # files from Finder (Open With, Dock icon, double-click)
-            app.set_file_open_target(self.open_any)
+            app.set_file_open_target(self.open_from_os)
 
     # ---------------------------------------------------------------- chrome
     def _dock(self, widget, title, area, width):
@@ -858,9 +859,16 @@ def main(argv=None):
         preload_view_modules()   # while the main window is built (seconds on a cold Windows start)
     win = MainWindow(device=args.device)
     kw = {"type_map": dict(p.split("=") for p in args.type_map.split(","))} if args.type_map else {}
+    from . import links
+
     for path in args.file:
-        win.open_any(path, ask_types=False, **kw)
+        if not is_deep_link(path):
+            win.open_any(path, ask_types=False, **kw)
     win.show()
+    win._link_server = links.LinkServer(win.open_from_os, win)   # links from later ewald-gui starts
+    for path in args.file:
+        if is_deep_link(path):
+            QtCore.QTimer.singleShot(0, lambda path=path: win.open_from_os(path))
     from . import first_run
 
     first_run.finish(win)

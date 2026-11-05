@@ -60,6 +60,10 @@ Name: "{group}\Uninstall ewald (online install)"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\ewald"; Filename: "{app}\python\pythonw.exe"; Parameters: "-m ewald gui"; IconFilename: "{app}\ewald.ico"; WorkingDir: "{userdocs}"; Tasks: desktopicon; Check: Installed
 
 [Registry]
+; ewald:// links from web pages ("Open in EWALD" buttons; src/ewald/deeplink.py)
+Root: HKA; Subkey: "Software\Classes\ewald"; ValueType: string; ValueData: "URL:EWALD link"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\ewald"; ValueType: string; ValueName: "URL Protocol"; ValueData: ""
+Root: HKA; Subkey: "Software\Classes\ewald\shell\open\command"; ValueType: string; ValueData: """{app}\python\pythonw.exe"" -m ewald gui ""%1"""
 Root: HKA; Subkey: "Software\Classes\ewald.trajectory"; ValueType: string; ValueData: "Atomistic trajectory"; Flags: uninsdeletekey; Tasks: assoc
 Root: HKA; Subkey: "Software\Classes\ewald.trajectory\DefaultIcon"; ValueType: string; ValueData: "{app}\ewald.ico"; Tasks: assoc
 Root: HKA; Subkey: "Software\Classes\ewald.trajectory\shell\open\command"; ValueType: string; ValueData: """{app}\python\pythonw.exe"" -m ewald gui ""%1"""; Tasks: assoc

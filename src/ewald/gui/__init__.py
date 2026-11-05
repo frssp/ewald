@@ -384,9 +384,25 @@ def show(pipeline=None, device=None, block: bool = True):
     return _show(pipeline, device, block)
 
 
+def _forward_links(argv) -> bool:
+    """A browser starts ``ewald-gui ewald://open?...`` per click: when only links were given and
+    an EWALD of this user is running, hand them to it (:mod:`.links`) instead of a new window."""
+    args = list(sys.argv[1:] if argv is None else argv)
+    from ..deeplink import is_deep_link
+
+    if not args or not all(is_deep_link(a) for a in args):
+        return False
+    check_qt_binding()
+    from .links import forward
+
+    return forward(args)
+
+
 def main(argv=None):
     """``ewald-gui``: a failure to load or start Qt is one explanatory message, not a traceback."""
     try:
+        if _forward_links(argv):
+            return 0
         from . import first_run
 
         first_run.start(argv)  # on screen while gui.app imports, the slow part of a first start

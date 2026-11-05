@@ -69,7 +69,7 @@ class EwaldApplication(QtWidgets.QApplication):
     """QApplication that hands macOS file-open events to the newest main window.
 
     Finder sends a QFileOpenEvent, not argv, when a file is opened with the .app (double-click,
-    Open With, a drop on the Dock icon). It can arrive before the main window exists, so paths
+    Open With, a drop on the Dock icon); so does macOS for an ``ewald://`` link. It can arrive before the main window exists, so paths
     wait until a window registers itself with :meth:`set_file_open_target`.
     """
 
@@ -90,7 +90,10 @@ class EwaldApplication(QtWidgets.QApplication):
 
     def event(self, event):
         if event.type() == QtCore.QEvent.FileOpen:
-            path = event.file() or event.url().toLocalFile()
+            url = event.url()
+            # an ewald:// link (the app's CFBundleURLTypes) comes as a URL with no local file
+            link = url.toString() if url.scheme().lower() == "ewald" else ""
+            path = link or event.file() or url.toLocalFile()
             if path:
                 self._pending_files.append(path)
                 if self._file_open_target is not None:

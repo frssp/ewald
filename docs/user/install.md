@@ -68,6 +68,28 @@ Windows releases also carry installers that need no Python of your own
 installed version; what changed between versions is in
 [CHANGELOG.md](https://github.com/frssp/ewald/blob/main/CHANGELOG.md).
 
+## Open in EWALD buttons on web pages
+
+A web page (a results server, a lab wiki) can open a calculation in EWALD with an "Open in
+EWALD" button, an `ewald://` link ([Links from web pages](gui.md#links-from-web-pages)). For that
+the operating system must know that `ewald://` links go to EWALD:
+
+- **Windows installers and EWALD.app (macOS)** register it during setup; nothing to do.
+- **pip install (Windows, Linux)**: run once, in the Python where EWALD is installed,
+
+  ```bash
+  python -m ewald register-links
+  ```
+
+  It prints which program opens the links (`... ewald-gui.exe "%1"` on Windows, a desktop entry
+  on Linux). Run it again after moving to another Python or virtual environment; `--remove`
+  undoes it. With both an installer and a pip install, the one registered last gets the links.
+
+Check on Windows with `reg query HKCU\Software\Classes\ewald /s` (the key is missing when
+nothing is registered). When a button does nothing, the link is not registered; when EWALD opens
+but refuses the link, the reader plugin for that location (for example `simagent:`) is not
+installed.
+
 ## Extras
 
 The plain install already has every feature that needs no Qt, GPU or OVITO: symmetry (spglib),
@@ -90,17 +112,19 @@ hosts (paramiko, keyring). Only heavy or platform-specific parts are extras:
 For a desktop, `pip install -e ".[all]"` is the usual command; add `gpu` on a machine with an
 NVIDIA GPU: `pip install -e ".[all,gpu]"`. On a cluster without a display, the plain
 `pip install -e .` is enough. The old extras `symmetry`, `movie`, `llm`, `kernel` and `remote`
-still work in existing commands and add nothing. pymatgen is used when it happens to be
-installed (bond-valence oxidation states for the Shannon ionic radii) but is not needed.
+still work in existing commands and add nothing.
 
 The GUI uses PySide6 only. PyQt5 or PyQt6 in the same environment is harmless as long as nothing
 imports them before the GUI starts; if something does (matplotlib's Qt backend, IPython's
 `%gui qt`), `ewald gui` stops with a message saying so. `import ewald.gui` sets `QT_API=pyside6`,
 so importing it first makes matplotlib, QtPy and IPython pick PySide6 too.
 
-`pip install ovito` on its own, after the GUI, downgrades only `PySide6-Essentials` to the version
-ovito pins and leaves the rest of PySide6 newer (`pip check` reports it). Install both extras in one
-command so pip picks versions that agree, or rerun `pip install -e ".[gui,ovito]"` to repair it.
+The `gui` extra installs `PySide6-Essentials` (QtCore, QtGui, QtWidgets, QtSvg, QtOpenGL), not the
+`PySide6` metapackage, whose Addons, WebEngine and Pdf wheels add about 450 MB that EWALD never
+imports. ovito pins `PySide6-Essentials` as well, so `pip install ovito` after the GUI may move
+PySide6 to the version ovito wants but leaves no mismatched halves; installing both extras in one
+command (`pip install -e ".[gui,ovito]"`) picks that version right away. An environment that already
+has the full `PySide6` keeps working.
 
 If your CUDA is not 12.x, install the matching CuPy wheel yourself (for example
 `pip install cupy-cuda11x`) instead of the `gpu` extra. [GPU compute](gpu.md) explains how
