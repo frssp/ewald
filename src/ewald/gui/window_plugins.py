@@ -176,6 +176,19 @@ class PluginPanelsMixin:
         prefs.apply_settings(self, self.settings)
         self.message(f"UI theme: {name}")
 
+    def confirm_stop_pip(self) -> bool:
+        """True when no pip runs in the Plugins side bar, or the user lets Quit stop it (the
+        package may be left half installed); False keeps the window open."""
+        job = self.plugins_panel.pip_description()
+        if not job:
+            return True
+        answer = QtWidgets.QMessageBox.question(
+            self, "pip is still running",
+            f"pip {job} has not finished yet. Stop it and quit? The package may be left half "
+            "installed; running the same action again repairs it.",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.Cancel, QtWidgets.QMessageBox.Cancel)
+        return answer == QtWidgets.QMessageBox.Yes
+
     def restart_app(self) -> bool:
         """Close the window (asking to save notebooks, as Quit does) and start ewald again with
         the saved notebooks open (Plugins side bar › Restart now). False when the close was

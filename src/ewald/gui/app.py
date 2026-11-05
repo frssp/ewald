@@ -776,6 +776,10 @@ class MainWindow(MenusMixin, PluginPanelsMixin, FilesMixin, ViewportMenuMixin, L
         if self.isVisible() and not self.panel.confirm_discard(title="Quit"):
             event.ignore()
             return
+        if self.isVisible() and not self.confirm_stop_pip():
+            event.ignore()
+            return
+        self.plugins_panel.stop_pip()      # Qt must not destroy a QProcess whose pip/uv still runs
         self.cancel_render()               # a ray trace still running stops after its current rows
         self.wait_render()
         finish_orphans()                   # an open or SSH call the user cancelled

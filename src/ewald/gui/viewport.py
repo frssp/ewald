@@ -143,8 +143,10 @@ def wait_view_modules(timeout: float = 120.0) -> None:
     another thread: two threads importing them at once can deadlock on their module locks, and
     Python then leaves one of the modules half-initialized. Call it from code that holds no
     import lock (never at module level)."""
+    import threading
+
     thread = _preload_thread
-    if thread is not None and thread is not __import__("threading").current_thread():
+    if thread is not None and thread is not threading.current_thread():
         thread.join(timeout)
 
 
