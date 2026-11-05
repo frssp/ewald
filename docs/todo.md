@@ -190,9 +190,13 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   it held the GIL while the window built, and with a cold numba cache (fresh install, or after
   an update touched the kernels) that pushed the usable window from 2.9 s to 6 s. The View tab's
   cards are built once instead of twice, and picking and the render frame import single VTK
-  modules instead of `import vtk` (0.3 s and ~150 MB on the first click). Left: the pyvistaqt
-  import (~0.9 s, blocks the window right after its first paint; on a thread it does not help,
-  the GIL serializes it), `import ewald.gui.app` (~0.6 s: numba, scipy, the modifier modules),
+  modules instead of `import vtk` (0.3 s and ~150 MB on the first click). The pyvistaqt/VTK
+  import now runs on a thread from startup (`viewport.preload_view_modules`, 2026-11-05) and the
+  3D widget is built when it is done: in the container the window's longest busy stretches after
+  the first paint went from 0.9 + 0.8 s to 0.6 + 0.3 s (the GIL serializes the CPU part), and on
+  a cold Windows start, where a `freezes.log` showed the GUI thread stuck 9 s in that import
+  while the owner maximized the window, the file reads now leave the window responding. Left:
+  `import ewald.gui.app` (~0.6 s: numba, scipy, the modifier modules),
   the in-process IPython console (~0.4 s, built when its tab first paints) and peak memory
   (~700 MB with VTK, Qt, numba and IPython). On the owner's Windows laptop (2026-10-26, Intel
   Arc) everything takes 3-4 times as long: import 1.8-2.1 s, `MainWindow()` 5.3-5.8 s, 3D view

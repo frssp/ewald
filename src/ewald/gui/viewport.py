@@ -99,6 +99,39 @@ class _Placeholder(QOpenGLWidget):
             QtCore.QTimer.singleShot(0, self._build)
 
 
+_preload_thread = None
+
+
+def preload_view_modules():
+    """Import pyvistaqt, pyvista's plotting and the VTK modules the 3D view needs on a thread.
+
+    On a cold start these imports read a few thousand files; on Windows, with the antivirus
+    scanning each one, that took 9 s on the owner's laptop, during which the window could not
+    respond (or be resized) when it ran on the GUI thread. On a thread the GUI thread runs
+    whenever the import waits for the disk; :meth:`Viewport._build_when_ready` builds the widget
+    once :func:`view_modules_ready`. Started once per process."""
+    global _preload_thread
+    if _preload_thread is not None:
+        return _preload_thread
+    import threading
+
+    def run():
+        try:
+            import pyvistaqt  # noqa: F401
+            from pyvista import plotting  # noqa: F401
+            from vtkmodules import vtkRenderingOpenGL2  # noqa: F401
+        except Exception:  # noqa: BLE001 - the GUI thread imports again and reports it
+            pass
+
+    _preload_thread = threading.Thread(target=run, name="ewald-view-import", daemon=True)
+    _preload_thread.start()
+    return _preload_thread
+
+
+def view_modules_ready() -> bool:
+    return _preload_thread is None or not _preload_thread.is_alive()
+
+
 def release_gl(widget) -> None:
     """Drop pyvistaqt's Python wrappers of a QOpenGLWidget's context and surface.
 
@@ -250,7 +283,9 @@ class Viewport(QtWidgets.QWidget):
         if self.uses_vtk:
             use_vtk_surface_format()  # before the placeholder: see use_vtk_surface_format
         if self.lazy_view:
-            self._placeholder = _Placeholder(self.ensure_view, self.style.background)
+            if self.uses_vtk:
+                preload_view_modules()   # import them on a thread while the window comes up
+            self._placeholder = _Placeholder(self._build_when_ready, self.style.background)
             grid.addWidget(self._placeholder, 1, 1)
         grid.setColumnStretch(1, 1)
         grid.setRowStretch(1, 1)
@@ -278,6 +313,16 @@ class Viewport(QtWidgets.QWidget):
     @property
     def view_built(self) -> bool:
         return self._plotter is not None
+
+    def _build_when_ready(self):
+        """The placeholder painted: build the 3D widget once its modules are imported (on the
+        thread :func:`preload_view_modules` started), so the window keeps responding meanwhile."""
+        if self._plotter is not None:
+            return
+        if self.uses_vtk and not view_modules_ready():
+            QtCore.QTimer.singleShot(25, self._build_when_ready)
+            return
+        self.ensure_view()
 
     def ensure_view(self):
         """Build the 3D widget now if it is not yet (normally right after the first paint)."""

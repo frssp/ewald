@@ -7721,3 +7721,33 @@ def test_notebook_tab_drag_stays_inside_the_tab_row(app):
     assert rect is not None and rect.right() <= min(b.x() for b in arrows) - 1 + grab
     tabs.close()
     tabs.deleteLater()
+
+
+def test_view_waits_for_its_modules_imported_on_a_thread(app, monkeypatch):
+    # a cold Windows start spent 9 s importing pyvistaqt/VTK on the GUI thread (freezes.log,
+    # 2026-11-05): the window could not be resized meanwhile. Now a thread imports them and the
+    # 3D widget is built once they are in.
+    import threading
+
+    from ewald.gui import viewport as vpmod
+    from ewald.view_style import ViewStyle
+
+    assert vpmod.preload_view_modules() is vpmod.preload_view_modules()   # one thread per process
+    vpmod._preload_thread.join(30)
+    gate = threading.Event()
+    slow = threading.Thread(target=gate.wait, daemon=True)
+    slow.start()
+    monkeypatch.setattr(vpmod, "_preload_thread", slow)
+    v = vpmod.Viewport(ViewStyle())
+    v._build_when_ready()             # what the placeholder's first paint does
+    for _ in range(5):
+        app.processEvents()
+    assert not v.view_built and not vpmod.view_modules_ready()
+    gate.set()
+    slow.join(5)
+    deadline = __import__("time").time() + 5
+    while not v.view_built and __import__("time").time() < deadline:
+        app.processEvents()
+    assert v.view_built
+    v.close()
+    _dispose(v)
