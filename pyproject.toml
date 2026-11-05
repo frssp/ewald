@@ -28,9 +28,8 @@ dependencies = ["numpy>=2.0", "scipy", "ase>=3.23", "matplotlib", "pillow", "pyv
                 # small wheels that used to be extras: one install has every feature that needs no GPU, Qt or OVITO
                 "spglib>=2.0",   # SymmetryAnalysis (space group, Wyckoff positions)
                 "pymatgen>=2024.2",   # to_pymatgen/from_pymatgen, bond-valence oxidation states; shared by plugins and notebooks (D79)
-                "imageio-ffmpeg",   # bundled ffmpeg binary for MP4/AVI/MOV
                 "h5py",   # H5MD, vaspout.h5, MDTraj HDF5
-                "anthropic>=1.0", "openai>=1.40", "mcp",   # Ask AI (Claude, OpenAI-compatible providers), MCP server
+                "anthropic>=1.0", "openai>=1.40",   # Ask AI (Claude, OpenAI-compatible providers)
                 "ipython>=8.12", "traitlets",   # notebook cells run in IPython shells (ewald.shell): magics, display(), rich outputs
                 "tqdm",   # progress bars (ewald.progress): downloads and long loops, drawn live under the cell
                 "jupyter_client>=7", "ipykernel"]   # notebooks whose cells run in another Python (ewald.kernel)
@@ -44,14 +43,17 @@ gui = ["PySide6-Essentials>=6.5", "pyvistaqt>=0.13", "qtconsole>=5.5", "pygments
 gpu = ["cupy-cuda12x; sys_platform != 'darwin'"]   # no CUDA on macOS: the extra installs nothing there
 opencl = ["pyopencl>=2022.1"]   # ray tracing on Intel, AMD, NVIDIA and Apple GPUs; needs the GPU's OpenCL driver
 metal = ["pyobjc-framework-Metal>=10; sys_platform == 'darwin'"]   # ray tracing on a Mac's GPU
+# movie and mcp left the core install (D98): imageio-ffmpeg is a 170 MB ffmpeg binary used only for
+# MP4/AVI/MOV (GIF and PNG need none; an ffmpeg on PATH works too), mcp brings 12 packages for `ewald mcp`
+movie = ["imageio-ffmpeg"]
+mcp = ["mcp"]
 formats = ["MDAnalysis>=2.7"]   # GROMACS XTC/TRR, DCD, NetCDF
 ovito = ["ovito"]   # DislocationAnalysis (DXA) and OvitoModifier bridge; pins its PySide6, so install with gui
-all = ["ewald[gui,formats,ovito,opencl,metal]"]   # everything but gpu (needs an NVIDIA GPU with CUDA 12)
+all = ["ewald[gui,movie,mcp,formats,ovito,opencl,metal]"]   # everything but gpu (needs an NVIDIA GPU with CUDA 12)
 dev = ["pytest", "nbformat", "jupytext"]   # nbformat/jupytext: round-trip tests of .ipynb and percent .py notebooks
 # kept so old install commands work: these packages are in the core install now
 kernel = []
 symmetry = []
-movie = []
 llm = []
 remote = []
 

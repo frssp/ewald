@@ -6,7 +6,7 @@ Lets Claude Desktop, Claude Code or any MCP client drive ewald directly::
     claude mcp add ewald -- ewald mcp
     claude mcp add ewald -- ewald mcp --allow-code   # also let it run cells it writes (run_cell)
 
-Needs ``pip install mcp``.
+Needs the ``mcp`` extra: ``pip install 'ewald[mcp]'``.
 """
 from __future__ import annotations
 
