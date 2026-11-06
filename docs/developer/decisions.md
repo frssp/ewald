@@ -1303,7 +1303,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Alternatives:** option A, typed fields with both builders kept; option C, a richer JSON
   description on the server (rejected 2026-10-27); a running workflow keeping its full tree from
   the JSON description.
-- **Landed:** public PR #N.
+- **Landed:** public PR #145.
 
 ## Adding an entry
 
