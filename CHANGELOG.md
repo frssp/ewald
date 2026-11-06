@@ -112,6 +112,10 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Fixed
 
+- Trajectory tubes no longer leave dots behind: a redraw of the 3D view removes every actor the last
+  scene added (the tubes' round caps stayed). View › Redraw from scratch (F5) forgets cached frames,
+  step results and bonds and draws the view anew; wrapped trajectory paths break where they cross the
+  cell (#146).
 - Opening a sim-agent job or another file on an SSH host no longer freezes the window for a
   minute when the host is out of reach: the new notebook's `check_run` cell is left out for remote
   files (run it in a cell), local run files are read on a worker, and workflows are described on

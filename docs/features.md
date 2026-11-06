@@ -638,6 +638,7 @@ One section per simulation code (`ewald.codes`; plugins add codes with `@simulat
   - Isometric
 - Orthographic
 - Zoom to fit (`Ctrl+0`)
+- Redraw from scratch (`F5`)
 - Show
   - Bonds
   - Simulation cell
@@ -891,6 +892,7 @@ One section per simulation code (`ewald.codes`; plugins add codes with `@simulat
   - c*
 - Orthographic
 - Zoom to fit
+- Redraw from scratch
 - Ask AI about selection…
 
 ### Toolbar

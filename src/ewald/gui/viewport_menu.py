@@ -107,6 +107,7 @@ class ViewportMenuMixin:
         ortho.setChecked(self.viewport.ortho)
         ortho.toggled.connect(self.viewport.ortho_button.setChecked)
         menu.addAction(icon("fit"), "Zoom to fit", self.viewport.zoom_fit)
+        menu.addAction(icon("refresh"), "Redraw from scratch", self.redraw_from_scratch)
         menu.addSeparator()
         self.add_plugin_viewport_items(menu, everything)   # @menu_item(menu="3D view") plugins
         menu.addAction(icon("ai"), "Ask AI about selection…" if picks or everything else "Ask AI about this structure…",

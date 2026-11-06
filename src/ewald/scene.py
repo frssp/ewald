@@ -604,7 +604,9 @@ class TrajectoryLinesVis(VisualElement):
             pos = np.clip(np.searchsorted(here[order], ids[starts]), 0, data.count - 1)
             hit = here[order][pos] == ids[starts]
             colors[hit] = np.clip(default_colors(data, self.type_colors), 0, 1)[order][pos[hit]]
-        # a strip per run of kept points of one line, at least two points long
+        # a strip per run of kept points of one line, at least two points long; wrapped paths
+        # (GenerateTrajectoryLines unwrapped=False) break where a step jumps across the cell
+        jump = _periodic_jumps(pts, data.cell)
         strips, owner = [], []
         for k, (s, m) in enumerate(zip(starts, sizes)):
             idx = np.arange(s, s + m)
@@ -612,7 +614,8 @@ class TrajectoryLinesVis(VisualElement):
                 idx = idx[keep[s:s + m]]
             if len(idx) < 2:
                 continue
-            for run in np.split(idx, np.flatnonzero(np.diff(idx) > 1) + 1):
+            cut = (np.diff(idx) > 1) | jump[idx[1:]]
+            for run in np.split(idx, np.flatnonzero(cut) + 1):
                 if len(run) > 1:
                     strips.append(run)
                     owner.append(k)
@@ -709,6 +712,19 @@ class TrajectoryLinesVis(VisualElement):
                                            and c not in TRAJECTORY_COLOR_BY)]
         raise KeyError(f"trajectory lines cannot be colored by {name!r}; use one of {', '.join(options)} "
                        f"or a numeric particle property")
+
+
+def _periodic_jumps(points, cell) -> np.ndarray:
+    """Per point of a trajectory-lines table: whether the step from the point before it is a jump
+    to another periodic image (wrapped coordinates), i.e. its nearest image is much shorter. Such a
+    step crosses the whole cell, so the path is broken there instead of drawn across the box."""
+    out = np.zeros(len(points), bool)
+    if len(points) < 2 or not (cell.is_valid and cell.pbc.any()):
+        return out
+    d = np.diff(points, axis=0)
+    near = cell.minimum_image(d)
+    out[1:] = np.linalg.norm(d - near, axis=1) > 1e-6 * max(1.0, float(np.abs(cell.matrix).max()))
+    return out
 
 
 def line_tubes(lines: Lines, radius: float, bend: float = 20.0) -> Cylinders:

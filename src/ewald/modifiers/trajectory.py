@@ -329,7 +329,7 @@ class GenerateTrajectoryLines(_TrajectoryModifier):
     and frame (``Position``, ``Particle Identifier``, ``Time`` (the timestep), ``Frame``), and the
     particle properties 'Path Length' (summed step lengths), 'Net Displacement' and 'Max Displacement' (from the
     position at ``start``); untraced particles get 0. ``unwrapped`` (OVITO: ``unwrap_trajectories``) keeps paths
-    continuous across periodic boundaries.
+    continuous across periodic boundaries; wrapped paths are drawn broken where a particle crosses the cell.
     """
 
     ALIASES = {"unwrap_trajectories": "unwrapped"}

@@ -153,6 +153,10 @@ class LegacyViewport(Viewport):
     def scene_prebuilder(self, interactive: bool = False):
         return None   # draws its own display lists from the data (bonds are still searched ahead)
 
+    def redraw_from_scratch(self):
+        """Every redraw compiles the whole scene again here: just redraw."""
+        self.redraw()
+
     def redraw(self, coarse: bool = False):
         from ..scene import SceneContext, build
 

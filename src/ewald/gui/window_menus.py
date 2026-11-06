@@ -425,6 +425,8 @@ class MenusMixin:
         self.ortho_action.toggled.connect(lambda on: self.viewport.ortho_button.setChecked(on))
         v.aboutToShow.connect(lambda: self.ortho_action.setChecked(self.viewport.ortho))
         v.addAction("&Zoom to fit", self.viewport.zoom_fit, "Ctrl+0")
+        v.addAction("&Redraw from scratch", self.redraw_from_scratch, "F5").setToolTip(
+            "Forget cached frames, step results and bonds, compute the frame again and draw the 3D view anew")
         show = v.addMenu("&Show")
         show.aboutToShow.connect(lambda: self.fill_show_menu(show))
         self.fill_show_menu(show)

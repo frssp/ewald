@@ -183,6 +183,24 @@ class ViewSyncMixin:
         self.write_view(camera=True)
         self.message("Wrote the camera and frame into the notebook's view cell")
 
+    def redraw_from_scratch(self):
+        """View › Redraw from scratch: forget every cached frame, step result and bond search, compute
+        the current frame again and draw every structure view anew (the camera stays). For a view
+        that keeps showing something stale."""
+        from ..bonds import clear_cached_bonds
+
+        if self.pipeline is not None:
+            self.pipeline.clear_caches()
+        clear_cached_bonds()
+        views = [self.viewport] + [t.viewport for t in self.__dict__.get("view_tabs", {}).values()]
+        for vp in views:
+            vp.redraw_from_scratch()
+        if self.pipeline is not None:
+            self.recompute(wait=True)
+            for vp in views:   # the new frame, if it came back as the same data, is drawn anew too
+                vp.redraw_from_scratch()
+        self.message("Redrew the structure view from scratch")
+
     # ---------------------------------------------------------------- view tabs (pipe.views)
     def follow_view_tabs(self, data):
         """Before drawing ``data``: one 3D viewport tab per view tab of the pipeline (``view(pipe,
