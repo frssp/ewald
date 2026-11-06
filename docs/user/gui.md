@@ -78,7 +78,9 @@ the main Structure view.
 
 **Viewport.** Drag to orbit and scroll to zoom (VTK's standard mouse controls). View › Look
 along › a, b, c, a*, b*, c* aligns the view with a cell vector or reciprocal vector, as in
-VESTA, and View › Zoom to fit (Ctrl+0) frames the cell. View › Structure theme applies a theme (Default,
+VESTA, and View › Zoom to fit (Ctrl+0) frames the cell. View › Redraw from scratch (F5, also in the
+right-click menu) is for a view that keeps showing something stale: it forgets every cached frame,
+step result and bond search, computes the frame again and draws the 3D view anew; the camera stays. View › Structure theme applies a theme (Default,
 VESTA, CPK, Journal, ASE, Dark slide, or a [theme plugin](../plugins/styles.md#themes)): element
 colors, background, cell color and radius preset in one step; its Dark background and White
 background entries change only the background.
@@ -141,7 +143,7 @@ volumetric grid adds Add isosurface (or Edit isosurface once there is one). A tr
 Play/Pause and Overlay other frames, which draws every other frame as see-through copies behind
 the current one (`OverlayFrames`; on by default for NEB folders), with its transparency (50 to
 95 %) and whether only the atoms that move get copies. Show (bonds, simulation cell), Look
-along, Orthographic, Zoom to fit and Ask AI are always there.
+along, Orthographic, Zoom to fit, Redraw from scratch and Ask AI are always there.
 
 **Plugin side bars.** A plugin can bring its own side bar (a sim-agent panel, a database
 browser, ...): installing it adds a button to the activity bar (after AI chat, before Remotes) and an entry
@@ -359,7 +361,7 @@ nothing typed, the commands you ran from it last come first.
 Location, NEB folder, Workflow folder), saves and exports (Export › Image, Data, Movie, Session).
 Edit undoes and edits cells (cut, copy, paste, delete, merge; Jupyter's Esc keys are in the
 tooltips). View is the camera and what is drawn: Look along a, b, c, a*, b*, c* and the standard
-directions, Orthographic, Zoom to fit, Show (bonds, cell, render frame), Replicate cell, Structure
+directions, Orthographic, Zoom to fit, Redraw from scratch (F5), Show (bonds, cell, render frame), Replicate cell, Structure
 theme, Layout, Focus on the structure view, Minimal mode and Full screen (F11; Ctrl+Cmd+F on macOS).
 Insert adds cells (code, text, Step, Plot, Quick analysis, a snapshot), Notebook runs them and holds
 the kernel, Tools are the structure view's tools and the command palette, Window shows the side bars

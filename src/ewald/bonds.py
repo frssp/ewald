@@ -321,6 +321,12 @@ def _content_key(data, cutoff, pairs):
     return h.digest(), None if pairs else float(cutoff or 0.0), repr(normalize_pairs(pairs))
 
 
+def clear_cached_bonds():
+    """Forget every bond search :func:`cached_bonds` kept (View › Redraw from scratch)."""
+    with _FOUND_LOCK:
+        _FOUND.clear()
+
+
 def cached_bonds(data, cutoff: float | None = None, pairs=None) -> Bonds:
     """:func:`find_bonds` for drawing: the views redraw the same frame for every style, color or
     label change (and the Bonds card counts them), so the last few searches are kept, keyed by

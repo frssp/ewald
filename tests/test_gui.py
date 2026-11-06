@@ -296,6 +296,46 @@ def test_view_tab_trajectory_color_map(app, pipe):
     _dispose(panel)
 
 
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_redraw_drops_tube_caps_and_redraw_from_scratch(app, cu_fcc, rng):
+    """Every actor a scene added goes with the next redraw: a tube's round caps ("trajectories:caps",
+    sphere impostors) stayed on screen as dots after the tubes became lines or went away. View › Redraw
+    from scratch clears every actor and cache and draws the frame again."""
+    from ewald.gui.app import MainWindow
+
+    frames = []
+    for _ in range(4):   # every atom takes small random steps: bent joints get round caps
+        d = cu_fcc.copy()
+        d.positions = cu_fcc.positions + rng.normal(0, 0.2, cu_fcc.positions.shape)
+        frames.append(d)
+    pipe = Pipeline(StaticSource(frames))
+    pipe.add(mods.GenerateTrajectoryLines(only_selected=False))
+    pipe.view.trajectory_style = "tube"
+    w = MainWindow(pipe)
+    w.show()
+    app.processEvents()
+    vp = w.viewport
+    vp.redraw()
+    assert "trajectories:caps" in vp.plotter.actors   # tubes as stick impostors + sphere caps
+    w.style.trajectory_style = "line"
+    vp.redraw()
+    assert "trajectories" in vp.plotter.actors and "trajectories:caps" not in vp.plotter.actors
+    # from scratch: a foreign leftover goes, the scene comes back, the step is computed again
+    import pyvista as pv
+
+    vp.plotter.add_mesh(pv.Sphere(), name="leftover", render=False)
+    traced = pipe.modifiers[0]
+    old = traced.__dict__["_result"]
+    acts = {a.text().replace("&", ""): a for a in w.menuBar().findChildren(QtGui.QAction)}
+    assert acts["Redraw from scratch"].shortcut().toString() == "F5"
+    acts["Redraw from scratch"].trigger()
+    app.processEvents()
+    assert "leftover" not in vp.plotter.actors and "trajectories" in vp.plotter.actors
+    assert traced.__dict__["_result"] is not old
+    w.close()
+    w.deleteLater()
+
+
 def test_view_tab_cards_and_notebook_marks(app, pipe):
     """The View tab shows the look as cards, marks what the notebook's view sets, and an edit there
     changes the style without rebuilding the card being edited."""

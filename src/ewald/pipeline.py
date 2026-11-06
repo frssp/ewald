@@ -103,6 +103,16 @@ class Modifier:
     #: -> ``range``) also defines ``_legacy_arguments(kwargs)``, which rewrites them in place.
     ALIASES: dict = {}
 
+    #: Instance attributes where a modifier keeps results across frames (trajectory lines, unwrap
+    #: checkpoints, a frozen property); :meth:`forget` drops them.
+    CACHE_ATTRS: tuple = ("_result", "_unwrap", "_cache")
+
+    def forget(self):
+        """Drop what this modifier kept across evaluations (:attr:`CACHE_ATTRS`), so the next
+        evaluation starts from scratch. Settings stay."""
+        for name in self.CACHE_ATTRS:
+            self.__dict__.pop(name, None)
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         init = cls.__dict__.get("__init__")
@@ -624,6 +634,14 @@ class Pipeline:
             for frame in [f for f in self._cache if f >= first]:
                 del self._cache[frame]
             self._outputs.clear()
+
+    def clear_caches(self):
+        """Start over: forget every cached source frame and step result (:meth:`invalidate`) and
+        what each modifier kept across frames (:meth:`Modifier.forget`), so the next
+        :meth:`compute` recomputes everything. The GUI's View › Redraw from scratch calls it."""
+        self.invalidate()
+        for mod in self.modifiers:
+            mod.forget()
 
     def _trim_cache(self):
         while len(self._cache) > max(self._cache_size, 1):

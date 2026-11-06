@@ -748,6 +748,7 @@ class Viewport(QtWidgets.QWidget):
 
     playing = False
     _play_coarse = None
+    _scene_actors: set = frozenset()   # the actors the last redraw's scene added (removed by the next one)
 
     def set_playing(self, playing: bool):
         """The timeline plays: frames keep the level of detail the first one got and are not
@@ -878,9 +879,14 @@ class Viewport(QtWidgets.QWidget):
         self._refine_timer.stop()
         self._lod_cloud = None
         stale = [n for n in p.actors if n.startswith(("surface:", "surface-edges:", "vectors:", "visual:", "bonds:", "_legend"))]
+        # every actor the last scene added, also the parts a layer splits into (a tube's round caps
+        # "trajectories:caps", one actor per radius, flat outlines): left behind, they stayed on screen
+        # under the new scene, as dots, until the window closed
+        stale += [n for n in self._scene_actors if n in p.actors]
         for name in ("atoms", "atoms:glass", "atoms_lod", "bonds", "cell", "trajectories", "_legend", "_overlay",
                      "_labels-labels", "measurements", "_measurements-labels", *stale):
             p.remove_actor(name, render=False)
+        self._scene_actors = set()
         for title in list(p.scalar_bars.keys()):
             p.remove_scalar_bar(title, render=False)
         self._show_empty(self.data is None)
@@ -914,7 +920,9 @@ class Viewport(QtWidgets.QWidget):
                 if scene.bonds is not None or scene.vectors:
                     scene = scene.copy()
                     scene.bonds, scene.vectors = None, {}
+        before = set(p.actors)
         drawn = build_scene(p, scene, mesh_limit=self.mesh_limit, scene=built, **kw)
+        self._scene_actors = set(p.actors) - before
         self._limit_bonds(p)
         # boundary and replicated images are hovered through the drawn spheres (each knows its real atom)
         atoms = drawn["atoms"].primitive if ("boundary" in kw or "replicate" in kw) and not coarse and "atoms" in drawn else None
@@ -953,6 +961,32 @@ class Viewport(QtWidgets.QWidget):
         if not coarse:
             t2 = time.perf_counter()
             self._render_time, self._build_time = t2 - t1, t2 - t0
+
+    def redraw_from_scratch(self):
+        """Throw away every actor of the 3D view (scene, color bars, labels, the coarse copy) and the
+        scenes built ahead on the compute worker, then draw the current data anew. The camera stays.
+        View › Redraw from scratch, for a view that keeps showing something stale."""
+        self._prebuilt = collections.deque(maxlen=2)
+        self._lod_cloud = None
+        self._scene_actors = frozenset()
+        if self._plotter is None:
+            return
+        p = self.plotter
+        # named actors only: the axis plane and slab of a pick tool stay, and so do the unnamed ones
+        # other widgets own (the Render frame's 2D outline)
+        keep = ("_axis_plane", "_axis_slab", "vtk")
+        for name in [n for n in p.actors if not str(n).startswith(keep)]:
+            p.remove_actor(name, render=False)
+        for title in list(p.scalar_bars.keys()):
+            p.remove_scalar_bar(title, render=False)
+        if getattr(self, "_peeling", False):   # sticky once on: the redraw turns it on again if needed
+            p.disable_depth_peeling()
+            self._peeling = False
+        self.coarse = False
+        if self.parked:
+            self._parked_stale = True
+            return
+        self.redraw()
 
     def _limit_bonds(self, p):
         """Leave the bond sticks out when there are more than ``max_bond_sticks`` (before the first

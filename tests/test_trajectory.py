@@ -502,3 +502,45 @@ def test_overlay_layout_stacks_color_bars():
     assert [t for t in ("0", "1000", "2000", "3000", "4000", "5000") if t in texts] == \
         ["0", "1000", "2000", "3000", "4000", "5000"]
     assert "colorbars" not in overlay_layout(d, (800, 600), legend=False, colorbars=bars)
+
+
+def test_wrapped_trajectory_lines_break_at_periodic_jumps():
+    """A wrapped path (``unwrapped=False``) jumps across the cell where the atom leaves it: the line
+    breaks there instead of drawing a piece (or a tube) through the whole box."""
+    from ewald.scene import TrajectoryLinesVis, build, SceneContext
+
+    cell = Cell(np.eye(3) * BOX, pbc=(True, True, True))
+    frames = []
+    for k in range(6):   # x walks 8.5 -> 11.0, wrapped back into the box after 10
+        x = (8.5 + 0.5 * k) % BOX
+        d = DataCollection(np.array([[x, 5.0, 5.0], [2.0, 2.0, 2.0 + 0.1 * k]]), np.array(["A", "A"]), cell)
+        frames.append(d)
+    for unwrapped, pieces in ((False, 2), (True, 1)):
+        pipe = Pipeline(StaticSource(frames))
+        pipe.add(GenerateTrajectoryLines(only_selected=False, unwrapped=unwrapped))
+        data = pipe.compute(0)
+        for style in ("line", "tube"):
+            prim = build(data, [TrajectoryLinesVis(style=style)], SceneContext())["trajectories"].primitive
+            if style == "line":
+                assert len(prim.strips) == pieces + 1                      # the moving atom, plus the other one
+            else:
+                assert np.linalg.norm(prim.end - prim.start, axis=1).max() < 1.0   # no tube across the box
+                assert prim.count == 5 + 5 - (pieces - 1)
+
+
+def test_clear_caches_forgets_frames_step_results_and_trajectories(rng):
+    """Pipeline.clear_caches (View › Redraw from scratch) starts over: no cached frame, step result or
+    trajectory a modifier kept across frames; the next compute gives the same answer."""
+    from ewald.modifiers import UnwrapTrajectories
+
+    pipe, _ = _traced(rng)
+    pipe.add(UnwrapTrajectories())
+    before = pipe.compute(5)
+    traced = pipe.modifiers[0]
+    assert "_result" in traced.__dict__ and pipe._cache
+    pipe.clear_caches()
+    assert not pipe._cache and not pipe._outputs
+    assert all(name not in m.__dict__ for m in pipe.modifiers for name in m.CACHE_ATTRS)
+    after = pipe.compute(5)
+    np.testing.assert_allclose(after.tables["trajectory-lines"]["Position"], before.tables["trajectory-lines"]["Position"])
+    np.testing.assert_allclose(after.positions, before.positions)
