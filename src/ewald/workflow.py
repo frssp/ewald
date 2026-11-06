@@ -65,7 +65,16 @@ class WorkflowStep:
     ``path`` opens the step's own result (its trajectory or final structure; "" if none);
     ``runs`` counts the restarts joined into it (a relaxation resubmitted after a walltime);
     ``id`` is the source's own id (an AiiDA PK); ``work_dir`` where it ran, as the source knows
-    it; ``scalars`` its numbers (energies, band gap, ...)."""
+    it; ``scalars`` its numbers (energies, band gap, ...).
+
+    What the step was run with, for analyses that find steps by what they computed rather than
+    by name (all optional; a source fills what it knows): ``uuid`` the stable id of the
+    calculation these facts were read from (a restart step's last run; a UUID survives copying
+    the data to another database, a PK does not); ``inputs`` its inputs as plain data (for VASP
+    ``parameters`` = the INCAR, ``kpoints``, ``structure``, ``parents``); ``shape`` what it
+    computed, ``{"kind": "static" | "relax" | "bands" | ..., "flags": [...]}``; ``files`` the
+    names of the files kept from it; ``extras`` the source's own metadata on the step.
+    :meth:`as_dict` leaves ``inputs`` out (a structure's sites make it long)."""
 
     name: str
     path: str = ""
@@ -77,6 +86,11 @@ class WorkflowStep:
     outputs: list = field(default_factory=list)
     steps: list = field(default_factory=list)
     scalars: dict = field(default_factory=dict)
+    uuid: str = ""
+    inputs: dict = field(default_factory=dict)
+    shape: dict = field(default_factory=dict)
+    files: list = field(default_factory=list)
+    extras: dict = field(default_factory=dict)
 
     @property
     def failed(self) -> bool:
@@ -97,7 +111,7 @@ class WorkflowStep:
 
     def as_dict(self) -> dict:
         out = {"name": self.name}
-        for key in ("path", "state", "id", "work_dir"):
+        for key in ("path", "state", "id", "uuid", "work_dir"):
             if getattr(self, key):
                 out[key] = getattr(self, key)
         if self.exit_status is not None:
@@ -106,6 +120,12 @@ class WorkflowStep:
             out["runs"] = self.runs
         if self.scalars:
             out["scalars"] = dict(self.scalars)
+        if self.shape:
+            out["shape"] = dict(self.shape)
+        if self.files:
+            out["files"] = list(self.files)
+        if self.extras:
+            out["extras"] = dict(self.extras)
         if self.outputs:
             out["outputs"] = [o.as_dict() for o in self.outputs]
         if self.steps:

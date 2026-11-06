@@ -1288,6 +1288,23 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   keeping the core install as it was.
 - **Landed:** public PR #143 (after #141, which made the `gui` extra install PySide6-Essentials).
 
+### D99. A workflow step carries what it was run with as fields; finished workflows come from one builder (2026-11-06)
+
+- **Decision:** `WorkflowStep` gains `uuid`, `inputs`, `shape`, `files` and `extras` as real
+  fields (in `as_dict()` except `inputs`). A plugin that reads a results server through another
+  plugin's archive reader takes that reader's step tree for finished workflows instead of
+  building a second one and copying facts onto it by UUID. A workflow that is still running
+  lists only its calculations, each opened on its own, until it finishes.
+- **Why:** the owner picked option B ("archive-first") of the workflow line review ("B안으로
+  가면 될 것 같은데"), and for running workflows proposed "실행 중인 건 그냥 개별 계산만 다운
+  가능하도록". The facts used to be attributes set on dataclass instances that `as_dict()`, the
+  AI's `describe_workflow` and type checks never saw, and two tree builders could disagree
+  silently.
+- **Alternatives:** option A, typed fields with both builders kept; option C, a richer JSON
+  description on the server (rejected 2026-10-27); a running workflow keeping its full tree from
+  the JSON description.
+- **Landed:** public PR #145.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

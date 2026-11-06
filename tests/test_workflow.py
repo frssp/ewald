@@ -72,6 +72,18 @@ def test_model_walks_marks_and_serializes():
     assert "CHGCAR  (on the cluster)  -> demo:7/relax/CHGCAR" in text
 
 
+def test_step_facts_are_fields_and_serialize_without_inputs():
+    step = WorkflowStep("static", uuid="3f9c2e1a-0000", inputs={"parameters": {"LVHAR": True}},
+                        shape={"kind": "static", "flags": ["slab"]}, files=["vasprun.xml"],
+                        extras={"role": "film"})
+    d = step.as_dict()
+    assert d["uuid"] == "3f9c2e1a-0000" and d["shape"] == {"kind": "static", "flags": ["slab"]}
+    assert d["files"] == ["vasprun.xml"] and d["extras"] == {"role": "film"}
+    assert "inputs" not in d                      # a structure's sites would make it long
+    assert set(WorkflowStep("bare").as_dict()) == {"name"}
+    assert Workflow("wf", shape={"kind": "relax"}).as_dict()["shape"] == {"kind": "relax"}
+
+
 def test_source_registry_and_describe_by_scheme():
     p = plugins.workflow_source("demo", title="Demo")(Demo)
     src = plugins.workflow_sources()["demo"]
