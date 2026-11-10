@@ -25,7 +25,7 @@ import numpy as np
 
 from ..data import Cell, DataCollection
 from .base import (FrameReader, IncompleteFileError, complete_size, file_size, floats, grep_lines, head_lines, open_binary,
-                   strip_compression)
+                   read_table, strip_compression)
 from .xdatcar import species_name
 
 _KB_TO_EV_A3 = 1e-1 / 160.21766208  # kBar -> GPa -> eV/A^3 (ase.units.GPa)
@@ -218,6 +218,14 @@ class OutcarReader(FrameReader):
             raise ValueError(f"{self.path}: truncated block at byte {offset}")
         return rows
 
+    def _table(self, fh, offset, skip, n, ncols) -> np.ndarray:
+        """``_block`` as an array of the first ``ncols`` columns, read in one piece."""
+        fh.seek(offset)
+        for _ in range(skip):
+            fh.readline()
+        table = read_table(fh, n, ncols)
+        return table if table is not None else np.array([r[:ncols] for r in self._block(fh, offset, skip, n)])
+
     def read(self, index: int) -> DataCollection:
         step, rec = self._steps[index]
         n = self.natoms
@@ -228,7 +236,7 @@ class OutcarReader(FrameReader):
             if rec.get("initial"):
                 table = np.array([r[:3] + [0.0] * 3 for r in self._block(fh, rec["pos"], 1, n) if len(r) >= 3])
             else:
-                table = np.array([r[:6] for r in self._block(fh, rec["pos"], 2, n)])
+                table = self._table(fh, rec["pos"], 2, n, 6)
             mags = {axis: np.array([r[-1] for r in self._block(fh, off, 4, n)])
                     for axis, off in sorted(rec["mag"].items())}
         if table.shape != (n, 6):

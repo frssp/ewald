@@ -201,3 +201,19 @@ def test_fast_table_parser_matches_loadtxt():
         parse_table(block, 701, 4, [0])
     with pytest.raises(ValueError):
         parse_table(b"1 2\n3\n", 2, 2, [0, 1])
+
+
+def test_small_and_large_tables_parse_alike(monkeypatch):
+    """Tables up to ``SERIAL_ROWS`` rows are parsed on the calling thread (numba's threads cost
+    more than a few hundred rows), larger ones in parallel: the same numbers either way."""
+    from ewald.io import _textparse
+
+    rng = np.random.default_rng(3)
+    ref = rng.normal(scale=50, size=(300, 4)).round(5)
+    block = "\r\n".join(" ".join(f"{v:.5f}" for v in row) for row in ref).encode()
+    serial = _textparse.parse_table(block, 300, 4, [0, 1, 2, 3])
+    monkeypatch.setattr(_textparse, "SERIAL_ROWS", 0)
+    parallel = _textparse.parse_table(block, 300, 4, [0, 1, 2, 3])
+    np.testing.assert_array_equal(serial, ref)
+    np.testing.assert_array_equal(parallel, ref)
+    _textparse.warm_up()

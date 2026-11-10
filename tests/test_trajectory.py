@@ -544,3 +544,94 @@ def test_clear_caches_forgets_frames_step_results_and_trajectories(rng):
     after = pipe.compute(5)
     np.testing.assert_allclose(after.tables["trajectory-lines"]["Position"], before.tables["trajectory-lines"]["Position"])
     np.testing.assert_allclose(after.positions, before.positions)
+
+
+def test_msd_curves_is_msd_fft_per_group_and_axis_and_particle_msd(rng, backend):
+    from ewald.kernels import fit_lags, msd_curves, msd_fft, particle_msd
+
+    x = np.cumsum(rng.normal(size=(61, 23, 3)), axis=0)
+    types = rng.choice(["Li", "S", "P"], 23)
+    groups = {t: np.nonzero(types == t)[0] for t in np.unique(types)}
+    window = fit_lags(61)
+    curves, each = msd_curves(x, groups, window, backend, chunk_bytes=2**14)   # several chunks of atoms
+    np.testing.assert_allclose(curves[None].sum(axis=1), msd_fft(x, backend), atol=1e-9)
+    for t, idx in groups.items():
+        np.testing.assert_allclose(curves[t].sum(axis=1), msd_fft(x[:, idx], backend), atol=1e-9)
+        np.testing.assert_allclose(curves[t][:, 2], msd_fft(x[:, idx, 2:3], backend), atol=1e-9)
+    np.testing.assert_allclose(each, particle_msd(x, window, backend), atol=1e-9)
+    curves, each = msd_curves(x[:2], groups, None, backend)      # too short for a fit window
+    assert curves[None].shape == (2, 3) and not each.any()
+    assert msd_curves(x[:0], groups, None, backend)[0][None].shape == (0, 3)
+
+
+def test_trajectory_steps_share_one_pass_over_the_frames(rng):
+    """msd, then vacf: the second step takes the frames the first one stacked. A step in
+    between that changes the particles, another frame range or a changed file reads again."""
+    from ewald.modifiers import AffineTransformation, VanHoveCorrelation
+
+    T = 14
+    pipe, _ = _walk_pipeline(rng, T=T, n=10)
+    pipe.modifiers.append(MeanSquaredDisplacement())
+    alone = pipe.compute(0).tables["msd"]["MSD"]
+    reads = pipe.source.reads
+    assert reads <= T + 2                                      # the sweep, plus the frame computed
+    pipe.modifiers.append(VelocityAutocorrelation(velocities="positions"))
+    pipe.modifiers.append(VanHoveCorrelation())
+    d = pipe.compute(0)
+    assert pipe.source.reads == reads and "vacf" in d.tables   # no second and third sweep
+    np.testing.assert_array_equal(d.tables["msd"]["MSD"], alone)
+    solo, _ = _walk_pipeline(np.random.default_rng(0), T=T, n=10)
+    both, _ = _walk_pipeline(np.random.default_rng(0), T=T, n=10)
+    solo.modifiers.append(VelocityAutocorrelation(velocities="positions"))
+    both.modifiers.extend([MeanSquaredDisplacement(), VelocityAutocorrelation(velocities="positions")])
+    np.testing.assert_allclose(both.compute(0).tables["vacf"]["VACF"], solo.compute(0).tables["vacf"]["VACF"])
+
+    pipe.modifiers.append(MeanSquaredDisplacement(step=2))     # another range: its own sweep
+    pipe.compute(0)
+    assert pipe.source.reads > reads
+    reads = pipe.source.reads
+    pipe.modifiers[:] = [MeanSquaredDisplacement(), AffineTransformation(matrix=np.eye(3) * 2.0),
+                         VelocityAutocorrelation(velocities="positions")]
+    pipe.compute(0)
+    assert pipe.source.reads >= reads + 2 * (T - 1)            # the transformation moved the atoms: read again
+    pipe.modifiers[:] = [MeanSquaredDisplacement()]
+    pipe.compute(0)
+    reads = pipe.source.reads
+    pipe.invalidate()                                          # the file changed
+    assert "_trajectories" not in pipe.__dict__
+    import pickle
+
+    pipe.compute(0)
+    assert "_trajectories" not in pickle.loads(pickle.dumps(pipe)).__dict__
+
+
+def test_sweep_over_frames_leaves_caches_and_step_status_alone(rng):
+    """``ctx.input_frames`` (what trajectory steps and ``@all_frames`` read through): the same
+    data as ``input_frame``, but the frames on screen stay cached and the steps above keep the
+    summary of the frame being computed."""
+    from ewald.pipeline import ComputeContext
+    from ewald.backend import get_backend
+
+    pipe, _ = _walk_pipeline(rng, T=30, n=10)
+    select = SelectType("A")
+    pipe.modifiers.append(select)
+    shown = pipe.compute(3)
+    summary, cached, outputs = select.last_output, list(pipe._cache), list(pipe._outputs)
+    assert summary["frame"] == 3
+    ctx = ComputeContext(3, pipe, get_backend(None), modifier_index=1)
+    swept = list(ctx.input_frames(range(30)))
+    assert len(swept) == 30 and select.last_output is summary
+    assert list(pipe._cache) == cached and list(pipe._outputs) == outputs
+    for k in (0, 3, 29):
+        ref = ctx.input_frame(k)
+        np.testing.assert_array_equal(swept[k].positions, ref.positions)
+        np.testing.assert_array_equal(swept[k]["Selection"], ref["Selection"])
+    with pytest.raises(ValueError, match="read-only"):
+        swept[5].positions[0, 0] = 1.0                         # frozen like any frame of the pipeline
+    assert shown.count == 10
+
+    # the memory budget: small frames skip the count, big ones are still trimmed
+    pipe.cache_memory = 3 * swept[0].positions.nbytes
+    for k in range(8):
+        pipe.source_frame(k)
+    assert len(pipe._cache) < 8

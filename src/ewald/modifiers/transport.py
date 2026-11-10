@@ -68,6 +68,8 @@ class IonicConductivity(_TrajectoryModifier):
     ``.haven_ratio``, ``.volume`` (A^3, mean over frames) and ``.temperature`` (K).
     """
 
+    reads_only = True
+
     def __init__(self, temperature: float = 300.0, time_per_frame: float = 0.0, charges: dict | None = None,
                  start: int = 0, stop: int | None = None, step: int = 1, fit_range: tuple = (0.2, 0.8),
                  unwrapped: bool = False, subtract_drift: bool = True, only_selected: bool = False,
@@ -160,6 +162,8 @@ class VanHoveCorrelation(_TrajectoryModifier):
     origin, uses up to a fifth of them. ``only_selected`` uses the particles selected at ``start``.
     """
 
+    reads_only = True
+
     ALIASES = {"nbins": "bins"}
 
     def __init__(self, times: tuple | None = None, part: str = "self", r_max: float = 6.0, bins: int = 120,
@@ -230,6 +234,8 @@ class SelfIntermediateScattering(_TrajectoryModifier):
     several) and ``.q``. ``only_selected`` uses the particles selected at ``start``.
     """
 
+    reads_only = True
+
     def __init__(self, q=None, directions: int = 16, time_per_frame: float = 0.0, start: int = 0,
                  stop: int | None = None, step: int = 1, unwrapped: bool = False, only_selected: bool = False):
         self.q = q
@@ -281,6 +287,8 @@ class NonGaussianParameter(_TrajectoryModifier):
     ``NonGaussianParameter.max`` and ``.peak_time``. ``only_selected`` uses the particles
     selected at ``start``.
     """
+
+    reads_only = True
 
     def __init__(self, time_per_frame: float = 0.0, start: int = 0, stop: int | None = None, step: int = 1,
                  max_origins: int = 200, unwrapped: bool = False, only_selected: bool = False):
@@ -395,6 +403,8 @@ class SiteHopping(_TrajectoryModifier):
     (6 N t), the uncorrelated random-walk D to compare with the tracer D for the correlation
     factor; A^2 per unit of ``time_per_frame``).
     """
+
+    reads_only = True
 
     ALIASES = {"nbins": "bins"}
 

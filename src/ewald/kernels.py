@@ -111,16 +111,30 @@ def unwrap(positions, cells=None, pbc=(True, True, True), backend=None):
     return out
 
 
+def _fft(xp, T: int):
+    """``(rfft, irfft, nfft)`` along axis 0 for autocorrelations of ``T`` samples: on the CPU
+    SciPy's transform on every core at the next fast length (numpy's runs on one core, and a
+    length such as 2 x 20000 is slow for it); on the GPU the array module's own."""
+    if xp is np:
+        import scipy.fft as sf
+
+        nfft = sf.next_fast_len(2 * T, real=True)
+        return (lambda a: sf.rfft(a, n=nfft, axis=0, workers=-1),
+                lambda a: sf.irfft(a, n=nfft, axis=0, workers=-1), nfft)
+    nfft = 2 * T
+    return (lambda a: xp.fft.rfft(a, n=nfft, axis=0)), (lambda a: xp.fft.irfft(a, n=nfft, axis=0)), nfft
+
+
 def _acf_sum(x, xp, chunk_bytes):
     """sum over atoms and components of sum_t x(t) x(t+m), for every lag m, via FFT."""
     T = x.shape[0]
-    nfft = 2 * T
+    rfft, irfft, nfft = _fft(xp, T)
     per_atom = int(np.prod(x.shape[2:], dtype=np.int64)) or 1
     chunk = max(1, int(chunk_bytes // (nfft * per_atom * 16)))
     acf = xp.zeros(T)
     for s in range(0, x.shape[1], chunk):
-        F = xp.fft.rfft(x[:, s:s + chunk], n=nfft, axis=0)
-        acf += xp.fft.irfft(F * F.conj(), n=nfft, axis=0)[:T].reshape(T, -1).sum(axis=1)
+        F = rfft(x[:, s:s + chunk])
+        acf += irfft(F * F.conj())[:T].reshape(T, -1).sum(axis=1)
     return acf
 
 
@@ -161,7 +175,7 @@ def particle_msd(positions, lags=None, backend=None, chunk_bytes=2**28):
     m = np.arange(T)[lags if lags is not None else slice(1, None)]
     if len(m) == 0:
         raise ValueError(f"no lags in {lags} for {T} frames")
-    nfft = 2 * T
+    rfft, irfft, nfft = _fft(xp, T)
     chunk = max(1, int(chunk_bytes // (nfft * 3 * 16)))
     count = xp.asarray((T - m).astype(np.float64))[:, None]
     m_x = xp.asarray(m)
@@ -171,10 +185,66 @@ def particle_msd(positions, lags=None, backend=None, chunk_bytes=2**28):
         D = (c * c).sum(axis=2)                                  # (T, k)
         csum, rsum = xp.cumsum(D, axis=0), xp.cumsum(D[::-1], axis=0)
         Q = 2.0 * D.sum(axis=0)[None] - xp.concatenate([xp.zeros((1, c.shape[1])), csum[:-1] + rsum[:-1]])
-        F = xp.fft.rfft(c, n=nfft, axis=0)
-        acf = xp.fft.irfft(F * F.conj(), n=nfft, axis=0)[:T].sum(axis=2)   # (T, k)
+        F = rfft(c)
+        acf = irfft(F * F.conj())[:T].sum(axis=2)   # (T, k)
         out.append(((Q[m_x] - 2.0 * acf[m_x]) / count).mean(axis=0))
     return be.to_numpy(xp.concatenate(out))
+
+
+def msd_curves(positions, groups=None, lags=None, backend=None, chunk_bytes=2**28):
+    """Everything :class:`~ewald.modifiers.MeanSquaredDisplacement` reports, from one pass of
+    transforms over the particles of an unwrapped trajectory ``(T, N, 3)`` (:func:`msd_fft` for
+    all atoms, again for each type and axis, and :func:`particle_msd` each transformed every
+    particle on their own).
+
+    ``groups`` maps a name to the particle indices of a group (e.g. one per type). Returns
+    ``(curves, per_particle)``: ``curves[name]`` is a ``(T, 3)`` array, the group's MSD along
+    x, y and z for every lag (their sum is its MSD; ``curves[None]`` is all particles), and
+    ``per_particle`` is :func:`particle_msd` over ``lags`` (None: not computed, zeros).
+    """
+    be = get_backend(backend)
+    xp = be.xp
+    x = xp.asarray(positions, dtype=xp.float64)
+    T, n = x.shape[0], x.shape[1]
+    groups = {None: np.arange(n), **{k: np.asarray(v, dtype=np.int64) for k, v in (groups or {}).items()}}
+    if n == 0 or T == 0:
+        return {k: np.zeros((T, 3)) for k in groups}, np.zeros(n)
+    member = {k: np.isin(np.arange(n), idx) for k, idx in groups.items() if k is not None}
+    sq = {k: xp.zeros((T, 3)) for k in groups}     # sum over the group's atoms of x(t)^2, per axis
+    acf = {k: xp.zeros((T, 3)) for k in groups}    # ... of sum_t x(t) x(t+m)
+    m = None if lags is None or T < 2 else np.arange(T)[lags]
+    if m is not None and len(m) == 0:
+        raise ValueError(f"no lags in {lags} for {T} frames")
+    if m is not None:
+        count, m_x = xp.asarray((T - m).astype(np.float64))[:, None], xp.asarray(m)
+    rfft, irfft, nfft = _fft(xp, T)
+    chunk = max(1, int(chunk_bytes // (nfft * 3 * 16)))
+    per_particle = []
+    for s in range(0, n, chunk):
+        c = x[:, s:s + chunk]                                    # (T, k, 3)
+        D3 = c * c
+        F = rfft(c)
+        A3 = irfft(F * F.conj())[:T]                             # (T, k, 3)
+        sq[None] += D3.sum(axis=1)
+        acf[None] += A3.sum(axis=1)
+        for name, mask in member.items():
+            sel = xp.asarray(np.nonzero(mask[s:s + chunk])[0])
+            if len(sel):
+                sq[name] += D3[:, sel].sum(axis=1)
+                acf[name] += A3[:, sel].sum(axis=1)
+        if m is not None:
+            D = D3.sum(axis=2)                                   # (T, k)
+            csum, rsum = xp.cumsum(D, axis=0), xp.cumsum(D[::-1], axis=0)
+            Q = 2.0 * D.sum(axis=0)[None] - xp.concatenate([xp.zeros((1, c.shape[1])), csum[:-1] + rsum[:-1]])
+            per_particle.append(((Q[m_x] - 2.0 * A3.sum(axis=2)[m_x]) / count).mean(axis=0))
+    left = xp.arange(T, 0, -1, dtype=xp.float64)[:, None]        # T - m time origins
+    curves = {}
+    for name, idx in groups.items():
+        D = sq[name]
+        csum, rsum = xp.cumsum(D, axis=0), xp.cumsum(D[::-1], axis=0)
+        Q = 2.0 * D.sum(axis=0)[None] - xp.concatenate([xp.zeros((1, 3)), csum[:-1] + rsum[:-1]])
+        curves[name] = be.to_numpy((Q - 2.0 * acf[name]) / left / max(len(idx), 1))
+    return curves, (be.to_numpy(xp.concatenate(per_particle)) if per_particle else np.zeros(n))
 
 
 def fit_lags(n: int, fit_range=(0.2, 0.8), time=None, fit_time=None) -> slice:

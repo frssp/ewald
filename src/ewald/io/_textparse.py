@@ -115,7 +115,13 @@ def _parse_rows(buf, starts, ends, ncols, colmap, tokmap, pow10, out, tok_s, tok
 
 
 if HAVE_NUMBA:
+    # the same kernel twice: starting numba's threads costs more than parsing a few hundred
+    # rows, and milliseconds per call when the cores are busy (a 200-atom frame under load took
+    # 5 ms instead of 0.03 ms), so small tables are parsed on the calling thread
+    _parse_rows_serial = njit(cache=True, nogil=True)(_parse_rows)
     _parse_rows = njit(parallel=True, cache=True, nogil=True)(_parse_rows)
+
+SERIAL_ROWS = 20_000   # tables up to this many rows are parsed without threads
 
 
 def _rows(block: bytes, n: int):
@@ -140,7 +146,8 @@ def _run(buf, starts, ends, ncols, usecols, textcols):
     tok_s = np.zeros((n, len(textcols)), dtype=np.int64)
     tok_e = np.zeros((n, len(textcols)), dtype=np.int64)
     bad = np.zeros(n, dtype=np.bool_)
-    _parse_rows(buf, starts, ends, ncols, colmap, tokmap, _POW10, out, tok_s, tok_e, bad)
+    kernel = _parse_rows_serial if n <= SERIAL_ROWS else _parse_rows
+    kernel(buf, starts, ends, ncols, colmap, tokmap, _POW10, out, tok_s, tok_e, bad)
     return out, tok_s, tok_e, bad
 
 
@@ -213,3 +220,12 @@ def _loadtxt(block, n, usecols):
     if values.shape != (n, len(usecols)):
         raise ValueError(f"atom table has {len(values)} rows, expected {n}")
     return values
+
+
+def warm_up():
+    """Compile (or load from numba's cache) both kernels, so the first file does not wait."""
+    if HAVE_NUMBA:
+        buf, starts, ends = _rows(b"1 1 0.0 0.0 0.0\n", 1)
+        for kernel in (_parse_rows_serial, _parse_rows):
+            kernel(buf, starts, ends, 5, np.arange(5), np.full(5, -1), _POW10, np.empty((1, 5)),
+                   np.zeros((1, 0), dtype=np.int64), np.zeros((1, 0), dtype=np.int64), np.zeros(1, dtype=np.bool_))

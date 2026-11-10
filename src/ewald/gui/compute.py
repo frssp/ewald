@@ -204,10 +204,10 @@ def warm_up_jit():
             import numpy as np
 
             from ..data import Cell
-            from ..io._textparse import parse_table
+            from ..io._textparse import warm_up
             from ..neighbors import find_pairs
 
-            parse_table(b"1 1 0.0 0.0 0.0\n", 1, 5, [0, 1, 2, 3, 4])
+            warm_up()
             pos = np.random.default_rng(0).random((64, 3)) * 8.0
             find_pairs(pos, Cell(np.eye(3) * 8.0), 2.5, method="numba")
         except Exception:  # noqa: BLE001 - only a head start; the real call reports errors
@@ -219,9 +219,9 @@ def warm_up_jit():
 # what a child Python runs to compile the kernels into numba's cache (see compile_in_child)
 WARM_UP_CODE = ("import numpy as np\n"
                 "from ewald.data import Cell\n"
-                "from ewald.io._textparse import parse_table\n"
+                "from ewald.io._textparse import warm_up\n"
                 "from ewald.neighbors import find_pairs\n"
-                "parse_table(b'1 1 0.0 0.0 0.0\\n', 1, 5, [0, 1, 2, 3, 4])\n"
+                "warm_up()\n"
                 "find_pairs(np.random.default_rng(0).random((64, 3)) * 8.0, Cell(np.eye(3) * 8.0), 2.5, method='numba')\n")
 
 
