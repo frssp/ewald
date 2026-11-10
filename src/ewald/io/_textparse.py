@@ -160,12 +160,23 @@ def parse_table(block: bytes, n: int, ncols: int, usecols) -> np.ndarray:
     if not HAVE_NUMBA or n == 0:
         return _loadtxt(block, n, usecols)
     buf, starts, ends = _rows(block, n)
+    return parse_rows(buf, starts, ends, ncols, usecols, block)
+
+
+def parse_rows(buf: np.ndarray, starts, ends, ncols: int, usecols, block: bytes | None = None) -> np.ndarray:
+    """The rows ``buf[starts[k]:ends[k]]`` (bytes as uint8, rows anywhere in ``buf``) of
+    ``ncols`` numbers each -> float array of the ``usecols`` columns. One call for the rows of
+    many frames spreads them over the cores. Raises ValueError when a row cannot be read."""
+    usecols = list(usecols)
+    n = len(starts)
+    if not HAVE_NUMBA:  # pragma: no cover - numba is a core dependency
+        return _loadtxt(b"\n".join(buf[s:e].tobytes() for s, e in zip(starts, ends)), n, usecols)
     out, _, _, bad = _run(buf, starts, ends, ncols, usecols, [])
     if bad.any():
         rows = np.flatnonzero(bad)
-        if len(rows) > n // 4:  # mostly full-precision numbers: one loadtxt pass is simpler
+        if block is not None and len(rows) > n // 4:  # mostly full-precision numbers: one loadtxt pass
             return _loadtxt(block, n, usecols)
-        lines = b"\n".join(block[starts[r]:ends[r]] for r in rows)
+        lines = b"\n".join(buf[starts[r]:ends[r]].tobytes() for r in rows)
         out[rows] = _loadtxt(lines, len(rows), usecols)
     return out
 

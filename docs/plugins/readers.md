@@ -84,6 +84,15 @@ that are complete. Leave out the half-written last frame and record why with
 `refresh()` method that returns the first frame that may have changed (or None) lets live
 reload follow the file.
 
+For long trajectories a reader can also offer `read_positions(indices, check=None)`: the
+positions of many frames at once as a dict of `Position` `(T, N, 3)`, `cells` `(T, 3, 3)` and
+`Timestep` `(T,)`, with the particles in the order `read()` gives them. MSD, VACF and the other
+all-frames steps use it when no step above them changes the particles, which skips building a
+`DataCollection` per frame (the XDATCAR reader parses the atom lines of 32 MB of file in one
+call: an MSD over 20000 frames of 200 atoms took 5.8 s and takes 2.5 s). Call `check()` between
+pieces so the step can be cancelled, and return None for frames you cannot read this way; the
+steps then read frame by frame.
+
 ## How the format is chosen
 
 Every format, built-in or plugin, is a `ReaderPlugin` in one registry (`ewald plugins` lists

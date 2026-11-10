@@ -1320,6 +1320,18 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Landed:** public PR #148 (playback plots), public PR #149 (all-frames analyses), public
   PR #150 (notebook cells).
 
+### D101. Of what D100 left, the batch reader and plot blitting; the notebook's widgets on open wait (2026-11-10)
+
+- **Decision:** of the three items D100 left open, do two, one pull request each: a reader call
+  that returns many frames' positions at once for the all-frames analyses, then redrawing only
+  the frame marker of the plot on screen (blitting) during playback. Building only the cell
+  widgets on screen when a notebook opens or runs all stays in docs/todo.md.
+- **Why:** the owner picked "batch reader + plot blitting" from the options, as recommended:
+  the first two show in everyday AIMD analysis and playback, the third only in notebooks of
+  hundreds of cells, and it touches many GUI code paths.
+- **Alternatives:** all three; the batch reader alone; none.
+- **Landed:** public PR #PRNUM (batch reader).
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

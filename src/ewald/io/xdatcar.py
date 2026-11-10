@@ -11,6 +11,7 @@ import os
 import numpy as np
 
 from ..data import Cell, DataCollection
+from ._textparse import parse_rows
 from .base import FrameReader, IncompleteFileError, file_size, floats, head_lines, open_binary, read_table, strip_compression
 
 
@@ -170,3 +171,79 @@ class XdatcarReader(FrameReader):
         except ValueError:
             data.attributes["Timestep"] = index
         return data
+
+    #: bytes of the file read at once by :meth:`read_positions`
+    BLOCK_BYTES = 32 << 20
+
+    def read_positions(self, indices, check=None) -> dict | None:
+        """:meth:`FrameReader.read_positions`: the configurations are read in pieces of about
+        :attr:`BLOCK_BYTES` and every atom line of a piece goes to the compiled parser in one
+        call, instead of one :meth:`read` per frame. None for a file whose atom counts change or
+        whose lines the parser cannot take (columns run together); :meth:`read` handles those."""
+        indices = np.asarray(indices, dtype=np.int64)
+        if len(indices) == 0 or np.any(np.diff(indices) <= 0):
+            return None
+        headers = {self._frames[i][0] for i in indices.tolist()}
+        info = {h: self._read_header(h) for h in headers}
+        if len({sum(v[3]) for v in info.values()}) != 1:
+            return None
+        n = sum(next(iter(info.values()))[3])
+        offsets = np.array([self._frames[i][1] for i in indices.tolist()], dtype=np.int64)
+        ends = np.array([self._frames[i + 1][1] if i + 1 < len(self._frames) else -1
+                         for i in indices.tolist()], dtype=np.int64)
+        pos, cells, steps = [], [], []
+        with open_binary(self.path) as fh:
+            k = 0
+            while k < len(indices):
+                if check is not None:
+                    check()
+                stop = k + 1   # frames k..stop-1 in this piece: at most BLOCK_BYTES of file
+                while stop < len(indices) and ends[stop] >= 0 and ends[stop] - offsets[k] <= self.BLOCK_BYTES:
+                    stop += 1
+                piece = self._piece(fh, indices[k:stop], offsets[k:stop], ends[stop - 1], n, info)
+                if piece is None:
+                    return None
+                pos.append(piece[0])
+                cells.append(piece[1])
+                steps.append(piece[2])
+                k = stop
+        return {"Position": np.concatenate(pos), "cells": np.concatenate(cells),
+                "Timestep": np.concatenate(steps)}
+
+    def _piece(self, fh, indices, offsets, end, n, info):
+        start = int(offsets[0])
+        fh.seek(start)
+        block = fh.read(int(end) - start) if end >= 0 else fh.read()
+        buf = np.frombuffer(block, dtype=np.uint8)
+        newlines = np.flatnonzero(buf == 10)
+        line_s = np.concatenate(([0], newlines + 1))
+        line_e = np.concatenate((newlines, [len(buf)]))
+        first = np.searchsorted(line_s, offsets - start)   # the "Direct configuration=" lines
+        if np.any(first >= len(line_s)) or np.any(line_s[first] != offsets - start):
+            return None
+        rows = (first[:, None] + 1 + np.arange(n)).ravel()
+        if len(rows) and rows.max() >= len(line_s):
+            return None
+        try:
+            coords = parse_rows(buf, line_s[rows], line_e[rows], 3, range(3)).reshape(len(indices), n, 3)
+        except ValueError:
+            return None
+        cells = np.empty((len(indices), 3, 3))
+        steps = np.empty(len(indices), dtype=np.int64)
+        direct = np.empty(len(indices), dtype=bool)
+        for j, (i, line) in enumerate(zip(indices.tolist(), first.tolist())):
+            kind = block[line_s[line]:line_e[line]].strip().lower()
+            lattice, scale, _, _ = info[self._frames[i][0]]
+            cells[j] = lattice
+            direct[j] = kind.startswith(b"direct")
+            if not direct[j]:
+                coords[j] *= scale
+            try:
+                steps[j] = int(kind.split(b"=")[-1])
+            except ValueError:
+                steps[j] = i
+        if direct.all() and len(info) == 1:
+            coords = coords @ cells[0]
+        else:
+            coords[direct] = np.einsum("tni,tij->tnj", coords[direct], cells[direct])
+        return coords, cells, steps

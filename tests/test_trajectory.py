@@ -635,3 +635,44 @@ def test_sweep_over_frames_leaves_caches_and_step_status_alone(rng):
     for k in range(8):
         pipe.source_frame(k)
     assert len(pipe._cache) < 8
+
+
+def test_trajectory_steps_read_positions_straight_from_the_file(tmp_path, monkeypatch):
+    """With nothing above that changes particles, MSD takes the positions from
+    ``source.read_positions`` (a few reads of the file) instead of frame by frame through the
+    pipeline, with the same result; a step that moves atoms, a selection by identifier and
+    several files are handled too."""
+    from ewald import verbs
+    from ewald.io import XdatcarReader
+    from ewald.modifiers import AffineTransformation
+    from test_vasp_readers import _xdatcar_walk
+
+    paths = [_xdatcar_walk(tmp_path / f"{k}.XDATCAR", frames=30, seed=k) for k in (1, 2)]
+    calls = []
+    real = XdatcarReader.read_positions
+
+    def counted(self, indices, check=None):
+        calls.append(len(indices))
+        return real(self, indices, check)
+
+    def results(declined: bool, path, setup=lambda pipe: None):
+        monkeypatch.setattr(XdatcarReader, "read_positions",
+                            (lambda self, indices, check=None: None) if declined else counted)
+        pipe = import_file(path)
+        setup(pipe)
+        return verbs.msd(pipe), pipe
+
+    plain = {}
+    for path in (paths[0], paths):
+        calls.clear()
+        fast, _ = results(False, path)
+        assert calls and sum(calls) == 30 * (2 if isinstance(path, list) else 1)
+        slow, _ = results(True, path)
+        for column in ("MSD", "MSD Li", "MSD S"):
+            np.testing.assert_allclose(fast[column], slow[column], rtol=1e-12, atol=1e-12)
+        plain[isinstance(path, list)] = np.asarray(slow["MSD"])
+
+    calls.clear()
+    moved, _ = results(False, paths[0], lambda pipe: pipe.add(AffineTransformation(np.diag([2.0, 2, 2]))))
+    assert not calls   # positions change above: frame by frame
+    np.testing.assert_allclose(moved["MSD"], 4 * plain[False], rtol=1e-9)

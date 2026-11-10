@@ -172,9 +172,11 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   axes and per-particle values from one pass of threaded transforms, and trajectory steps that
   only read share the stacked frames. XDATCAR of 200 atoms x 20000 frames in the container: `msd`
   7.8 s, now 4.5 s; `vacf` after it 18 s, now 1.2 s; LAMMPS dump 4000 x 1000: 3.1 and 3.1 s, now
-  2.3 and 1.0 s. Left: the first sweep is still about 0.2 ms per small frame of Python around the
-  parser (one `DataCollection`, `Cell` and file open per frame; a reader call that returns many
-  frames' positions at once would remove most of it), and steps that change particles between
+  2.3 and 1.0 s. Then (D101) the XDATCAR reader's `read_positions` gives the
+  steps every frame's positions in a few reads when nothing above changes the particles: `msd`
+  5.8 s, now 2.5 s. Left: the LAMMPS dump and OUTCAR readers have no `read_positions` yet
+  (a dump's atoms may come in a different order each frame); a selection step above (not
+  `reads_only`) sends the steps back to frame by frame; steps that change particles between
   two analyses (a selection is fine, a transformation is not) make the second one read again;
   (3) the notebook built every cell widget again when one cell was added, removed, moved or
   undone, done: widgets that still show their cell are kept (`CellWidget.fits`; tutorial notebook
