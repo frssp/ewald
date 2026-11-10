@@ -1330,7 +1330,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   the first two show in everyday AIMD analysis and playback, the third only in notebooks of
   hundreds of cells, and it touches many GUI code paths.
 - **Alternatives:** all three; the batch reader alone; none.
-- **Landed:** public PR #PRNUM (batch reader).
+- **Landed:** public PR #151 (batch reader).
 
 ## Adding an entry
 
