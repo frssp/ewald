@@ -853,6 +853,7 @@ class CellWidget(QtWidgets.QFrame):
         self.editor = None
         self.plot_panel = None
         self.built_for = _shape(cell)
+        self._built = (cell.title, cell.id)
         self.setObjectName("cell")
         self.setProperty("kind", "step" if cell.is_step else "view" if cell.is_view else cell.kind)
         self.setFrameShape(QtWidgets.QFrame.StyledPanel)
@@ -932,6 +933,15 @@ class CellWidget(QtWidgets.QFrame):
         self._hovered = False
         self._show_controls()
         super().leaveEvent(event)
+
+    def fits(self, cell: Cell) -> bool:
+        """Whether this widget still shows ``cell`` as a new one would (the notebook keeps it
+        when cells around it are added, removed or moved): the same cell, step and kind, its
+        title, and its source as the editor has it. Results, state and folding are refreshed
+        on a kept widget (``update_state``, ``set_collapsed``)."""
+        if not _same_shape(self.built_for, _shape(cell)) or self._built != (cell.title, cell.id):
+            return False
+        return self.editor is not None and self.editor.toPlainText() == cell.source
 
     def set_collapsed(self, on: bool):
         """Fold the cell to one line (its title, step name or first line of code), or unfold it."""

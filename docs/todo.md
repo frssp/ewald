@@ -176,8 +176,11 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   parser (one `DataCollection`, `Cell` and file open per frame; a reader call that returns many
   frames' positions at once would remove most of it), and steps that change particles between
   two analyses (a selection is fine, a transformation is not) make the second one read again;
-  (3) the notebook rebuilds every cell widget when one cell is added, removed, moved or undone
-  (0.75-1.0 s with four plot cells in the container), open.
+  (3) the notebook built every cell widget again when one cell was added, removed, moved or
+  undone, done: widgets that still show their cell are kept (`CellWidget.fits`; tutorial notebook
+  with four plot cells in the container: a new cell 746 ms, now 10 ms; undo at 47 cells 1.0 s,
+  now 35 ms). Left: opening a notebook and Run all still build every widget, and a notebook of
+  hundreds of cells builds them all at once instead of the ones on screen.
 - Pipeline output cache: plugin modifiers are never reused (`Modifier.cacheable` is None for
   them); first-party plugins (ewald-phonopy, ewald-plumed) could set `cacheable = True` where
   their output depends only on their settings.

@@ -5080,6 +5080,62 @@ def test_command_mode_cell_keys_like_jupyter(app, pipe):
     w.close()
 
 
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="main window needs an X display with OpenGL (xvfb-run)")
+def test_notebook_keeps_the_widgets_of_cells_that_did_not_change(app):
+    """Adding, deleting, moving a cell or undoing built every cell widget and plot again (most
+    of a second with a few plots). A widget that still shows its cell is kept; one whose cell
+    was replaced, retitled or rewritten from outside is built anew."""
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(settings=settings.Settings())
+    nb_path = os.path.join(os.path.dirname(__file__), "..", "examples", "notebooks", "cu_md_trajectory.py")
+    view = w.panel.open_notebook(nb_path, trusted=True)
+    view.run_all()
+    app.processEvents()
+    nb = view.notebook
+    before = {id(c): view.widget_for(c) for c in nb.cells}
+    plots = [p for x in view.widgets for p in x.panels()]
+    assert len(plots) >= 4
+    made = []
+    view.plotCreated.connect(made.append)
+
+    def kept():
+        return [c for c in nb.cells if view.widget_for(c) is before.get(id(c))]
+
+    new = view.add_cell("code", "x = 1")
+    assert len(kept()) == len(before) and view.widget_for(new) not in before.values()
+    assert [x.cell for x in view.widgets] == nb.cells                       # in the notebook's order
+    assert [view.cells_layout.itemAt(i).widget() for i in range(len(nb.cells))] == view.widgets
+    assert made == [] and [p for x in view.widgets for p in x.panels()] == plots   # the plots were not rebuilt
+    view.move_cells([new], -1)
+    assert len(kept()) == len(before) and [x.cell for x in view.widgets] == nb.cells
+    view.delete_cells([new])
+    assert len(kept()) == len(before) == len(view.widgets)
+
+    first, second, third = nb.cells[1], nb.cells[2], nb.cells[3]
+    old = {c.id: view.widget_for(c) for c in (first, second, third)}
+    first.source = first.source + "\n# changed by the AI"                    # rewritten from outside
+    second.title = "renamed"
+    third.collapsed = True
+    view.rebuild()
+    assert view.widget_for(first) is not old[first.id] and view.widget_for(second) is not old[second.id]
+    assert view.widget_for(first).editor.toPlainText() == first.source
+    assert view.widget_for(third) is old[third.id] and third.collapsed and old[third.id].content.isHidden()
+    typed = view.widget_for(third)
+    typed.editor.setPlainText(third.source + "\n")                           # typed into its own editor
+    assert view.widget_for(third).fits(third)
+    view.rebuild()
+    assert view.widget_for(third) is typed
+
+    kept_now = list(view.widgets)
+    view.rebuild(fresh=True)
+    assert not set(map(id, kept_now)) & set(map(id, view.widgets)) and [x.cell for x in view.widgets] == nb.cells
+    view.undo()
+    assert [x.cell for x in view.widgets] == nb.cells
+    w.close()
+
+
 def test_cell_type_switches_and_add_bar_like_jupyter(app, pipe):
     """+ Code, + Text, + Step (with Plugins), + View under the cells; Esc then M / Y turns a cell
     into text / code, A / B insert; the menu and the cell's ⋯ menu do the same; Ask AI about this cell."""

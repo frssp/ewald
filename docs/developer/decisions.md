@@ -1317,8 +1317,8 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   with the notebook state fixes of public PR #147.
 - **Alternatives:** only the playback plots; only the all-frames analyses; only the notebook
   cells.
-- **Landed:** public PR #148 (playback plots), public PR #149 (all-frames analyses); the
-  notebook cells follow.
+- **Landed:** public PR #148 (playback plots), public PR #149 (all-frames analyses), public
+  PR #PRNUM (notebook cells).
 
 ## Adding an entry
 
