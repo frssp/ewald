@@ -269,9 +269,21 @@ class PlotsPanel(QtWidgets.QWidget):
         self._drawn = None   # a full redraw, not just a moved marker
         self.redraw()
 
+    def _hidden_tab(self) -> bool:
+        """Whether nobody can see the plot although its window is on screen: a tab behind
+        another one, a folded panel. A plot no window shows yet (a script, a test) is drawn."""
+        return not self.isVisible() and self.window() is not self and self.window().isVisible()
+
     @_styled
     def redraw(self, *_):
         self._fill_columns()
+        if self._range is None and not self._exporting and self._hidden_tab():
+            # playback redrew every plot of the notebook on every frame, also the tabs behind
+            # the one in front; a hidden plot is drawn when it is shown (showEvent). One with a
+            # dragged range keeps following the frame: its particles are selected in the 3D view.
+            self._redraw_stale = True
+            return
+        self._redraw_stale = False
         key = self._content_key()
         link = None if self._phonon_modes() is not None or self._electronic() is not None else self._make_link()
         if link != self.link:
@@ -285,9 +297,12 @@ class PlotsPanel(QtWidgets.QWidget):
         if key is not None and _same_content(key, self._drawn):
             # same data as on the canvas (a frame-independent or trajectory-wide result during
             # playback): move the current-frame marker only, no fig.clear()
+            moved = False
             if self._marker is not None:
+                before = self._marker_state()
                 self._place_marker()
-            self._draw_overlays()
+                moved = self._marker_state() != before
+            self._draw_overlays(changed=moved)
             self._update_controls()
             return
         if key is not None and self._update_in_place(key):
@@ -610,7 +625,10 @@ class PlotsPanel(QtWidgets.QWidget):
 
     def set_highlight(self, indices):
         """Draw the particles selected in the viewport on the plot (no signal)."""
-        self.highlight = list(np.asarray(indices, dtype=int)) if indices is not None else []
+        new = list(np.asarray(indices, dtype=int)) if indices is not None else []
+        if not new and not self.highlight:
+            return   # nothing picked before or now (every frame of playback): the canvas stays
+        self.highlight = new
         self._draw_overlays()
         if self._elec is not None:
             self._update_controls()
@@ -682,7 +700,10 @@ class PlotsPanel(QtWidgets.QWidget):
 
     def showEvent(self, event):
         super().showEvent(event)
-        if getattr(self, "_overlays_stale", False):
+        if getattr(self, "_redraw_stale", False):
+            self._overlays_stale = False
+            self.redraw()   # frames went by while the tab was hidden
+        elif getattr(self, "_overlays_stale", False):
             self._overlays_stale = False
             self._draw_overlays()
 
@@ -706,8 +727,26 @@ class PlotsPanel(QtWidgets.QWidget):
         if expr:
             self.expressionRequested.emit(expr)
 
+    def _overlay_state(self) -> tuple:
+        """What the overlays show; with the same state and plot they need no new drawing."""
+        d = self.space_data() if self.link is not None and self.link.kind == "space" else self.data
+        marks = bool(self.highlight or self.frame_selection)
+        return (id(self._ax), self.link, self._range, self._box, tuple(self.frame_selection),
+                hash(np.asarray(self.highlight, dtype=np.int64).tobytes()), id(d) if marks else None,
+                self._elec is None, self.isVisible())
+
+    def _draw_overlays(self, changed: bool = True):
+        """Draw the selection marks again and repaint the canvas. ``changed=False`` (the plot on
+        the canvas is the one drawn before): only when the marks differ, since repainting
+        draws the whole figure."""
+        state = self._overlay_state()
+        if not changed and state == getattr(self, "_overlay_drawn", None):
+            return
+        self._overlay_drawn = state
+        self._draw_overlays_now()
+
     @_styled
-    def _draw_overlays(self):
+    def _draw_overlays_now(self):
         for a in self._overlays:
             try:
                 a.remove()
@@ -1271,6 +1310,10 @@ class PlotsPanel(QtWidgets.QWidget):
             return "No band projections in this run (LORBIT >= 10 writes them)"
         return f"Fat bands: {what}weight of {n} selected atom{'s' if n != 1 else ''}" if n else \
             "Select atoms in the view to see their weight in each band"
+
+    def _marker_state(self) -> tuple:
+        m = self._marker
+        return (m.get_visible(), *(tuple(np.ravel(np.asarray(v, dtype=float))) for v in m.get_data()))
 
     def _place_marker(self):
         if _is_neb(self._table()):

@@ -81,6 +81,10 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- Playback with a notebook's plots open is lighter: a plot in a tab behind another one is drawn
+  when its tab is shown instead of on every frame, and a frame that changes nothing on a plot (no
+  pick, the same table) no longer repaints its canvas. The tutorial notebook with four plots
+  open took 177 ms per frame until the window was idle and takes about 100 ms (container) (#PRNUM).
 - `imageio-ffmpeg` (MP4/AVI/MOV export) and `mcp` (`ewald mcp`) are no longer installed by
   `pip install ewald`: use the `movie` and `mcp` extras, or `[all]`. The apps still bundle both,
   and Preferences › Compute › Optional components installs the ffmpeg (D98, #143).
