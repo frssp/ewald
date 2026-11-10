@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from .backend import get_backend
+from .backend import format_bytes, get_backend
 from .data import Cell
 from .neighbors import find_pairs
 
@@ -46,6 +46,14 @@ def rdf_from_pairs(dist, n: int, volume: float, cutoff: float, nbins: int, backe
         types = np.asarray(types)
         names, codes = np.unique(types, return_inverse=True)
         nt = len(names)
+        # one histogram per ordered type pair, and its float copy: labels that differ on every
+        # atom (identifiers passed as types) would ask for n^2 of them
+        need = 16.0 * nt * nt * nbins
+        short = be.short_of_memory(need)
+        if short is not None:
+            raise MemoryError(f"partial g(r) for {nt} particle types needs too much memory: {nt} x {nt} "
+                              f"type pairs of {nbins} bins take {format_bytes(need)}, and {short[1]}. Use "
+                              "partial=False (types=None), fewer bins, or types with fewer distinct values.")
         counts = np.bincount(codes, minlength=nt)
         c = xp.asarray(codes)
         ti, tj = c[i], c[j]
@@ -396,6 +404,17 @@ def msd_axes(fn, x, be, column, table):
     return table
 
 
+def _frame_range(pipeline, start, stop, step) -> range:
+    """The frames ``start:stop:step`` of ``pipeline``, counted as ``pipe.frames()`` and a slice
+    count them: a ``stop`` past the end ends at the last frame (it used to read frames from
+    the start again), negative values count from the end. An empty range raises ValueError."""
+    frames = range(*slice(start, stop, step).indices(pipeline.num_frames))
+    if len(frames) == 0:
+        raise ValueError(f"empty frame range start={start}, stop={stop}, step={step} "
+                         f"for {pipeline.num_frames} frames")
+    return frames
+
+
 def trajectory_msd(pipeline, start: int = 0, stop: int | None = None, step: int = 1,
                    device=None, by_type: bool = True, unwrapped: bool = False, by_axis: bool = False):
     """Time-averaged MSD over the source frames of ``pipeline``.
@@ -407,8 +426,7 @@ def trajectory_msd(pipeline, start: int = 0, stop: int | None = None, step: int 
     adds ``<column> x|y|z`` for each (:func:`msd_axes`).
     """
     be = get_backend(device or pipeline.device)
-    stop = pipeline.num_frames if stop is None else stop
-    traj = collect_trajectory(pipeline.source_frame(k) for k in range(start, stop, step))
+    traj = collect_trajectory(pipeline.source_frame(k) for k in _frame_range(pipeline, start, stop, step))
     x = traj["Position"]
     if not unwrapped:
         x = unwrap(x, traj["cells"], traj["pbc"], be)
@@ -453,10 +471,9 @@ def trajectory_vacf(pipeline, start: int = 0, stop: int | None = None, step: int
     ``VACF (normalized)`` and, with ``by_type``, ``VACF <type>``.
     """
     be = get_backend(device or pipeline.device)
-    stop = pipeline.num_frames if stop is None else stop
-    frames = range(start, stop, step)
+    frames = _frame_range(pipeline, start, stop, step)
     if velocities == "auto":
-        velocities = "property" if "Velocity" in pipeline.source_frame(start) else "positions"
+        velocities = "property" if "Velocity" in pipeline.source_frame(frames[0]) else "positions"
     return vacf_table((pipeline.source_frame(k) for k in frames), time_per_frame * step,
                       velocities, be, by_type)
 
@@ -487,10 +504,9 @@ def trajectory_rdf(pipeline, cutoff: float, bins: int | None = None, start: int 
     ``bins`` shells (default 200; ``nbins`` is the old name)."""
     nbins = _bins(bins, kwargs)
     be = get_backend(device or pipeline.device)
-    stop = pipeline.num_frames if stop is None else stop
     return average_tables(
         rdf(d.positions, d.cell, cutoff, nbins, types=d.types if partial else None, backend=be)
-        for d in (pipeline.source_frame(k) for k in range(start, stop, step)))
+        for d in (pipeline.source_frame(k) for k in _frame_range(pipeline, start, stop, step)))
 
 
 def average_tables(tables):

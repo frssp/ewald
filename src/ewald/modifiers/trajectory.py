@@ -28,13 +28,9 @@ class _TrajectoryModifier(Modifier):
     reads_only: bool = False
 
     def _frames(self, ctx) -> range:
-        n = ctx.pipeline.num_frames
-        stop = n if self.stop is None else min(self.stop, n)
-        frames = range(self.start, stop, self.step)
-        if len(frames) == 0:
-            raise ValueError(f"empty frame range start={self.start}, stop={self.stop}, step={self.step} "
-                             f"for {n} frames")
-        return frames
+        from ..kernels import _frame_range
+
+        return _frame_range(ctx.pipeline, self.start, self.stop, self.step)
 
     def _cached(self, ctx, compute):
         key = (ctx.upstream_key(), repr(self))

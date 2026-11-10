@@ -217,9 +217,11 @@ SETTINGS: dict[str, Setting] = {s.name: s for s in [
     _s("overlays", [], "picture", "Overlay elements: 'Coordinate tripod', 'Attributes', plugins; names or "
        "{'name', 'params'}.", type="array"),
 ]}
-# keys of render() that are not named like the setting
+# keys of render() that are not named like the setting: render_kwargs() writes them, and render_names()
+# reads the view's names with them, so render(cell=False) is view(pipe, cell=False). 'selection' (True,
+# False or a color) also changes its value, to the highlight color or None.
 _RENDER_NAMES = {"colors": "type_colors", "radii": "type_radii", "cell": "show_cell", "atoms": "show_atoms",
-                 "transparency": "type_transparency"}
+                 "transparency": "type_transparency", "selection": "selection_color"}
 SELECTION_COLOR = "red"   # selection=True
 # booleans spelled as text: settings and session files, JSON from an AI model, Qt settings on macOS
 _FALSE_WORDS = frozenset({"false", "off", "no", "none", "null", "0", ""})
@@ -310,6 +312,9 @@ class Image(np.ndarray):
         mode = "RGBA" if self.shape[2] == 4 else "RGB"
         saved = f", saved to {self.filename}" if self.filename else ""
         return f"<Image {self.shape[1]}x{self.shape[0]} {mode}{saved}>"
+
+    def __str__(self):   # print(pipe.render(...)) is that line too, not numpy's screen of pixels
+        return repr(self) if self._is_picture() else str(np.asarray(self))
 
 
 class UnknownSetting(TypeError, KeyError):
@@ -613,9 +618,11 @@ class View:
         return self.pipeline.compute(self.frame if frame is None else frame)
 
     def render(self, filename=None, frame: int | None = None, **overrides):
-        """Draw the pipeline with this view (:func:`ewald.render.render`); ``overrides`` win for this call."""
-        from .render import render
+        """Draw the pipeline with this view (:func:`ewald.render.render`); ``overrides`` win for this call:
+        render() keywords, or this view's setting names for the same things (``cell=False``, ``colors={...}``)."""
+        from .render import check_keywords, render
 
+        overrides = check_keywords(overrides)   # a misspelled keyword raises before the pipeline computes
         data = self._data(frame)
         kw = merge(self.render_kwargs(data, frame), overrides)
         device = getattr(self.pipeline, "device", None)
@@ -625,8 +632,10 @@ class View:
 
     def snapshot(self, frame: int | None = None, **overrides):
         """A :class:`ewald.views.Snapshot` (an image under the cell) of this view."""
+        from .render import check_keywords
         from .views import Snapshot
 
+        check_keywords(overrides)   # raises here, in the cell: a snapshot that fails to draw only shows its text
         return Snapshot(self.pipeline, self.frame if frame is None else frame, view=self, **overrides)
 
     def _repr_png_(self):
@@ -784,10 +793,35 @@ class Elements:
         return "\n".join(repr(el) for _, el in self.items())
 
 
+def render_names(kwargs: dict) -> dict:
+    """``kwargs`` for :func:`ewald.render.render` with the view's setting names spelled as render()
+    keywords: ``cell`` -> ``show_cell``, ``colors`` -> ``type_colors``, ``radii`` -> ``type_radii``,
+    ``atoms`` -> ``show_atoms``, ``transparency`` -> ``type_transparency`` and ``selection`` ->
+    ``selection_color``, each value checked as ``view(pipe, ...)`` checks it. So a picture takes the names
+    a view cell uses; both spellings of one setting in one call raise TypeError."""
+    out = {}
+    for name, value in kwargs.items():
+        key = _RENDER_NAMES.get(name, name)
+        if key != name:
+            if key in kwargs:
+                raise TypeError(f"render() got both {name!r} and {key!r}: they are one setting ({name!r} is the "
+                                f"3D view's name for render()'s {key!r}); give only one")
+            value = _check(name, value)
+            if name == "selection":
+                value = selection_color(value)
+        out[key] = value
+    return out
+
+
 def merge(kwargs: dict, overrides: dict) -> dict:
-    """``kwargs`` of :meth:`View.render_kwargs` with ``overrides`` (render() keywords) on top: an override
-    also drops what it replaces (``bonds=2.8`` the bond table, ``direction=`` the exact camera, ...)."""
-    out = dict(kwargs)
+    """``kwargs`` of :meth:`View.render_kwargs` with ``overrides`` (render() keywords, or the view's names
+    for them: :func:`render_names`) on top: an override also drops what it replaces (``bonds=2.8`` the
+    bond table, ``direction=`` the exact camera, ...)."""
+    overrides = render_names(overrides)
+    # a default under the view's name (ewald.display.options["cell"]) gives way to the same setting under
+    # render()'s name, as it would if both were spelled alike; render() would refuse the two together
+    out = {k: v for k, v in kwargs.items()
+           if k not in _RENDER_NAMES or not (_RENDER_NAMES[k] in kwargs or _RENDER_NAMES[k] in overrides)}
     for key, drops in (("bonds", ("bond_pairs",)), ("bond_pairs", ("bonds",)), ("camera", ("direction", "zoom")),
                        ("direction", ("camera",)), ("zoom", ("camera",))):
         if key in overrides:

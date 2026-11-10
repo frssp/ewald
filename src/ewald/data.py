@@ -184,10 +184,60 @@ def _same_state(a, b) -> bool:
             and np.array_equal(a.cell, b.cell) and np.array_equal(a.pbc, b.pbc))
 
 
+_LISTED = 12   # names a failed lookup lists before "..."
+
+
+def _close(name, names) -> str | None:
+    """The one of ``names`` that ``name`` most likely means: a near miss in spelling or case
+    ("ParticleType", "coordination"), else one it starts ("Coord", "g" for "g(r)": too short for
+    difflib) or is a part of ("rdf"); None without one."""
+    if not isinstance(name, str) or not name.strip():
+        return None
+    import difflib
+
+    lower = {}
+    for n in names:
+        lower.setdefault(str(n).lower(), n)
+    key = name.strip().lower()
+    hit = (difflib.get_close_matches(key, list(lower), n=1) or [n for n in lower if n.startswith(key)]
+           or [n for n in lower if len(key) >= 3 and key in n])
+    return lower[hit[0]] if hit else None
+
+
+def _no_such(what: str, name, names, hint: str = "") -> KeyError:
+    """The KeyError of a lookup by a name the frame does not have: what kind of thing is missing,
+    what the frame has (the first dozen names) and a close match. A bare ``KeyError: 'Coord'``
+    leaves the reader, often a model writing the next cell, guessing the name."""
+    names = [str(n) for n in names]
+    listed = ", ".join(names[:_LISTED]) + (f", ... ({len(names)} in all)" if len(names) > _LISTED else "")
+    close = _close(name, names)
+    return KeyError(f"no {what} {name!r}; this frame has: {listed or 'none'}."
+                    + (f" Did you mean {close!r}?" if close else hint))
+
+
+def _no_column(table: str, name, names) -> KeyError:
+    """The KeyError of a column ``table`` does not have, worded the same wherever it is asked for
+    (``table["g"]``, ``show(pipe, y="g")``)."""
+    names = [str(n) for n in names]
+    close = _close(name, names)
+    return KeyError(f"no column {name!r} in table {table!r}; this table has: {', '.join(names) or 'no columns'}."
+                    + (f" Did you mean {close!r}?" if close else ""))
+
+
 class Particles(dict):
     """``DataCollection.particles``: a dict of property name -> array that also answers OVITO's
     ``particles.count`` and ``particles.positions`` (read-only shortcuts, so code written the OVITO
-    way reads the same numbers)."""
+    way reads the same numbers). Reading a property the frame does not have names the ones it has."""
+
+    def __missing__(self, name):   # only a failed [name]: get(), "in" and iteration are a dict's
+        base, _, comp = name.rpartition(".") if isinstance(name, str) else ("", "", "")
+        column = _COMPONENTS.get(comp.upper())
+        if column is not None and base in self and column < (*np.shape(self[base]), 0, 0)[1]:
+            raise KeyError(f"no particle property {name!r}: {name} is how expressions name a component; "
+                           f"in Python take the column, data[{base!r}][:, {column}]")
+        raise _no_such("particle property", name, self,
+                       " A property that a step computes exists once that step is in the pipeline: "
+                       "pipe.add(...) it, then read pipe.compute(frame).")
 
     @property
     def count(self) -> int:
@@ -197,6 +247,27 @@ class Particles(dict):
     @property
     def positions(self) -> np.ndarray:
         return self["Position"]
+
+
+class Tables(dict):
+    """``DataCollection.tables``: a plain dict of table name -> columns, except that reading a
+    table the frame does not have names the ones it has."""
+
+    __slots__ = ()
+
+    def __missing__(self, name):
+        raise _no_such("table", name, self, " Analysis steps write tables: pipe.add(...) one, then read "
+                                            "pipe.compute(frame).tables.")
+
+
+class Attributes(dict):
+    """``DataCollection.attributes``: a plain dict of global values, except that reading an
+    attribute the frame does not have names the ones it has."""
+
+    __slots__ = ()
+
+    def __missing__(self, name):
+        raise _no_such("attribute", name, self)
 
 
 class DataCollection:
@@ -238,6 +309,32 @@ class DataCollection:
     @particles.setter
     def particles(self, value):
         self._particles = value if type(value) is Particles else Particles(value)
+
+    # tables and attributes are assigned as plain dicts all over (data.tables = {...}); the setters
+    # keep them the dict subclasses whose failed lookup explains itself
+    @property
+    def attributes(self) -> Attributes:
+        """Name -> global value of the frame (a dict; any dict assigned is kept as :class:`Attributes`)."""
+        return self._attributes
+
+    @attributes.setter
+    def attributes(self, value):
+        self._attributes = value if type(value) is Attributes else Attributes(value)
+
+    @property
+    def tables(self) -> Tables:
+        """Name -> data table (a dict; any dict assigned is kept as :class:`Tables`)."""
+        return self._tables
+
+    @tables.setter
+    def tables(self, value):
+        self._tables = value if type(value) is Tables else Tables(value)
+
+    def __setstate__(self, state):
+        # through the setters: a frame pickled before tables and attributes were properties holds
+        # them under their plain names, which the properties would hide
+        for name, value in state.items():
+            setattr(self, name, value)
 
     # ---- convenience accessors -------------------------------------------------
     @property
@@ -289,10 +386,12 @@ class DataCollection:
     def copy(self) -> "DataCollection":
         """Shallow copy: containers are new, arrays are shared (copy-on-write)."""
         new = DataCollection.__new__(DataCollection)
-        new.particles = dict(self.particles)
-        new.attributes = dict(self.attributes)
+        # straight into the slots behind the properties: this runs once per step and frame
+        new._particles = Particles(self._particles)
+        new._attributes = Attributes(self._attributes)
         # a table that carries labels or attributes (an ewald.verbs.Table: levels to draw) keeps them
-        new.tables = {k: dict(v) if type(v) is dict else copy.copy(v) for k, v in self.tables.items()}
+        new._tables = Tables({k: dict(v) if type(v) is dict else copy.copy(v) for k, v in self._tables.items()}) \
+            if self._tables else Tables()
         new.bonds = None if getattr(self, "bonds", None) is None else self.bonds.copy()
         new.surfaces = dict(getattr(self, "surfaces", {}))
         new.grids = {k: v.copy() for k, v in getattr(self, "grids", {}).items()}

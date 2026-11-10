@@ -267,8 +267,7 @@ class AtomicStrain(Modifier):
 
     def modify(self, data, ctx):
         be, xp = ctx.backend, ctx.xp
-        frame = ctx.frame + self.frame_offset if self.frame_offset is not None else self.reference_frame
-        ref = ctx.source_frame(frame)
+        ref = ctx.reference_frame(self.reference_frame, self.frame_offset)
         cur_index = _match_to_reference(data, ref)          # reference particle -> current particle
         ref_pos = ref.positions
         Mref, Mcur = ref.cell.matrix, data.cell.matrix

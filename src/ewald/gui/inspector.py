@@ -1,6 +1,8 @@
 """Data inspector: particle property table, global attributes, tables, cell and data source."""
 from __future__ import annotations
 
+import html
+
 import numpy as np
 from PySide6 import QtCore, QtWidgets
 
@@ -142,5 +144,7 @@ class DataInspector(QtWidgets.QTabWidget):
                 index = np.nonzero(mask)[0]
                 self.filter_status.setText(f"{len(index)} of {self._data.count} particles")
             except Exception as exc:
-                self.filter_status.setText(f"<span style='color:#c00'>{exc}</span>")
+                # escaped: the message quotes the expression, and "a < 5 | b > 11" read as rich
+                # text loses everything between "<" and ">"
+                self.filter_status.setText(f"<span style='color:#c00'>{html.escape(str(exc))}</span>")
         self.model.set_data(self._data, index)

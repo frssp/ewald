@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from ..pipeline import Modifier
+from ..pipeline import Modifier, _token
 
 TEMPLATE = '''import numpy as np
 
@@ -35,6 +35,11 @@ class PythonScript(Modifier):
     @property
     def name(self) -> str:
         return self.title
+
+    def _input_token(self):
+        # repr(self) has the source but not the keyword parameters; the compiled function adds
+        # the script's own globals, should the script change them as it runs
+        return _token((self.params, self._function if self._compiled_for == self.source else None))
 
     def _compile(self):
         if self._compiled_for != self.source:

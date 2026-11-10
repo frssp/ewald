@@ -110,7 +110,7 @@ def scene_from_data(data, *, radius_scale=1.0, type_colors=None, type_radii=None
                     trajectory_colormap="viridis", trajectory_color_range=None, trajectory_time_range=None,
                     trajectory_trail=None, trajectory_radius=None, trajectory_style="line", visuals=None, frame=0, boundary=None, boundary_bonds="half", replicate=None, replicate_cell="super",
                     show_atoms=True, surfaces=None, type_transparency=None, selection_color=None, measurements=None,
-                    pixel=None, flat=False, **_ignored):
+                    pixel=None, flat=False):
     """Build a Scene with the same colors/radii/bonds/arrows as :func:`ewald.render.build_scene`.
 
     ``view_direction`` (scene -> camera) lets 'flat' arrows face the viewer evenly lit.

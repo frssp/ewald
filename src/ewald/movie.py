@@ -130,8 +130,9 @@ def render_animation(pipeline, filename, *, frames=None, fps: float = 10, device
     ='draft'|'standard'|'publication', ...); 'draft' renders half-size frames for quick previews.
     """
     from .overlays import format_label
-    from .render import _rgb, render
+    from .render import _rgb, check_keywords, render
 
+    kwargs = check_keywords(kwargs)   # a misspelled keyword raises before a frame is computed or a file opened
     idx = list(range(pipeline.num_frames) if frames is None else frames)
     bg = (np.asarray(_rgb(kwargs.get("background", "white"))) * 255).astype(int)
     if os.path.splitext(str(filename))[1].lower() not in IMAGE_SUFFIXES:

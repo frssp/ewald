@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from .data import _close, _no_column, _no_such
 from .view3d import view  # noqa: F401 - notebooks import show and view from here
 
 KINDS = ("table", "histogram")
@@ -38,13 +39,13 @@ def view_data(source, table: str | None = None, y: str | None = None, histogram:
         if table not in (None, source.name):
             raise KeyError(f"no table {table!r}; this result is {source.name!r}")
         names = list(source)
-        keep = [names[0]] + ([y] if y is not None else names[1:])
+        keep = [names[0]] + ([_known_column(names, y, source.name)] if y is not None else names[1:])
         return source.name, Table(source.name, {n: source[n] for n in keep}, labels=source.labels,
                                   attributes=source.attributes)
     data = source.compute(frame) if hasattr(source, "compute") else source
     if histogram is not None:
         if histogram not in data.particles:
-            raise KeyError(f"no particle property {histogram!r}; this frame has: {', '.join(data.particles)}")
+            raise _no_property(data, histogram)
         values = np.asarray(data.particles[histogram], float)
         counts, edges = np.histogram(values[np.isfinite(values)], bins=bins)
         return histogram, {histogram: 0.5 * (edges[1:] + edges[:-1]), "count": counts}
@@ -53,13 +54,30 @@ def view_data(source, table: str | None = None, y: str | None = None, histogram:
             raise ValueError("no tables in this data: add an analysis step first, or pass histogram=")
         table = next(iter(data.tables))
     if table not in data.tables:
-        raise KeyError(f"no table {table!r}; this frame has: {', '.join(data.tables) or 'none'}"
-                       + _no_bands_hint(data, table))
-    columns = data.tables[table]
+        bands = _no_bands_hint(data, table)
+        if bands:
+            raise KeyError(f"no table {table!r}; this frame has: {', '.join(data.tables) or 'none'}{bands}")
+    columns = data.tables[table]   # a missing one: the same KeyError as data.tables[...] anywhere
     names = list(columns)
-    keep = [names[0]] + ([y] if y is not None else names[1:])
+    keep = [names[0]] + ([_known_column(names, y, table)] if y is not None else names[1:])
     return table, Table(table, {n: columns[n] for n in keep}, labels=getattr(columns, "labels", None),
                         attributes=getattr(columns, "attributes", None))
+
+
+def _known_column(names: list, y, table: str) -> str:
+    """``y`` when it is a column of ``table``; else the KeyError that names the table, its
+    columns and the one probably meant (a bare ``KeyError: 'g'`` says none of that)."""
+    if y in names:
+        return y
+    if isinstance(y, (list, tuple)):   # unhashable as a key; several columns are a comparison
+        raise TypeError(f"y={y!r}: view_data() draws one column; show(..., y=[...]) compares several")
+    raise _no_column(table, y, names)
+
+
+def _no_property(data, name) -> KeyError:
+    """The KeyError of ``histogram=name`` for a property the frame does not have."""
+    return _no_such("particle property", name, data.particles,
+                    " A property that a step computes needs that step in the pipeline first: pipe.add(...).")
 
 
 def _no_bands_hint(data, table) -> str:
@@ -343,7 +361,7 @@ def is_comparison(args: dict) -> bool:
             or args.get("layout") is not None)
 
 
-def _column(names: list, wanted) -> str:
+def _column(names: list, wanted, table: str) -> str:
     """The column of ``names`` that ``wanted`` names: its name, or its legend label ("Cu-Cu" for
     "g(r) Cu-Cu", "Total" for "g(r)")."""
     if wanted in names:
@@ -354,7 +372,9 @@ def _column(names: list, wanted) -> str:
     for name, short in zip(names, legend_labels(names)):
         if short.replace("\u2013", "-").lower() == key:
             return name
-    raise KeyError(f"no column {wanted!r}; this table has: {', '.join(names)}")
+    close = _close(wanted, names)
+    raise KeyError(f"no column {wanted!r} in table {table!r}; this table has: {', '.join(names)}"
+                   + (f". Did you mean {close!r}?" if close else ""))
 
 
 def _frame(source, f) -> int:
@@ -393,7 +413,7 @@ def compare_data(source, table: str | None = None, y=None, histogram: str | None
         for f in frames:
             data = source.compute(f) if hasattr(source, "compute") else source
             if histogram not in data.particles:
-                raise KeyError(f"no particle property {histogram!r}; this frame has: {', '.join(data.particles)}")
+                raise _no_property(data, histogram)
             v = np.asarray(data.particles[histogram], float)
             values.append(v[np.isfinite(v)])
         every = np.concatenate(values)
@@ -411,7 +431,7 @@ def compare_data(source, table: str | None = None, y=None, histogram: str | None
         title, cols = view_data(source, table, None, None, f, bins)
         names = list(cols)
         ys = names[1:]
-        pick = ys if columns is None else [_column(ys, c) for c in columns]
+        pick = ys if columns is None else [_column(ys, c, title) for c in columns]
         if several and len(pick) > 1:
             raise ValueError(f"table {title!r} has several columns ({', '.join(ys)}); "
                              "give y= to pick the one to compare across frames")
@@ -627,6 +647,10 @@ class Snapshot:
     ``kwargs`` go to :func:`ewald.render.render` (``camera=``, ``size=``, style keywords)."""
 
     def __init__(self, source, frame: int = 0, view=None, **kwargs):
+        from .render import check_keywords
+
+        # here, in the cell: a picture that fails to draw only shows the text repr
+        check_keywords(dict(kwargs))
         self.source, self.frame, self.kwargs = source, frame, kwargs
         self.view = view   # the View to draw with (a view tab); default: the source's pipe.view
 
