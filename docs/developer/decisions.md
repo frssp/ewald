@@ -1350,7 +1350,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   need names and policies picked.
 - **Alternatives:** all of A together with design drafts for B; only A1-A3 (the wrong results);
   the report alone, with the items recorded in docs/todo.md.
-- **Landed:** public PR #NNN.
+- **Landed:** public PR #153.
 
 ## Adding an entry
 
