@@ -517,7 +517,8 @@ def _broken(exc: BaseException, sftp) -> bool:
 
 
 _connections: dict[tuple, Connection] = {}
-_connections_lock = threading.Lock()
+_connections_lock = threading.Lock()   # the dicts only; never held while a host is contacted
+_host_locks: dict[tuple, threading.Lock] = {}   # one connect() at a time per host
 
 
 class GuiThreadWarning(RuntimeWarning):
@@ -537,14 +538,30 @@ def connect(host: str, user: str | None = None, port: int | None = None) -> Conn
     k = (host, user, port)
     with _connections_lock:
         conn = _connections.get(k)
-        if conn is None or not conn.is_active():
-            if gui_thread is not None and threading.current_thread() is gui_thread:
-                import warnings
+        if conn is not None and conn.is_active():
+            return conn
+        lock = _host_locks.setdefault(k, threading.Lock())
+    # the handshake (up to ConnectTimeout, or a password prompt) holds this host's lock only: a
+    # host out of reach no longer stalls every other host's files and listings meanwhile
+    with lock:
+        with _connections_lock:
+            conn = _connections.get(k)
+        if conn is not None and conn.is_active():   # another thread connected meanwhile
+            return conn
+        if gui_thread is not None and threading.current_thread() is gui_thread:
+            import warnings
 
-                warnings.warn(f"connecting to {host} on the GUI thread; the window does not respond "
-                              "until it is up", GuiThreadWarning, stacklevel=2)
-            conn = _connections[k] = Connection(host, user, port)
-        return conn
+            warnings.warn(f"connecting to {host} on the GUI thread; the window does not respond "
+                          "until it is up", GuiThreadWarning, stacklevel=2)
+        if conn is not None:   # dropped (sleep, network change): free its transport and jump host
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+        new = Connection(host, user, port)
+        with _connections_lock:
+            _connections[k] = new
+        return new
 
 
 def disconnect(host: str) -> None:
@@ -575,9 +592,14 @@ def _conn(rp: RemotePath) -> Connection:
 class RemoteFile(io.RawIOBase):
     """Seekable, read-only remote file with an LRU block cache and pipelined reads."""
 
-    def __init__(self, conn: Connection, path: str, block_size: int = 1 << 18, cache_blocks: int = 128):
+    def __init__(self, conn: Connection, path: str, block_size: int = 1 << 18, cache_blocks: int = 128,
+                 key: tuple | None = None):
+        """``key`` (host, user, port) lets the file reconnect through :func:`connect` when its SSH
+        connection dropped (a laptop that slept, a profile that changed): without it a dead
+        transport left the file failing on every read until it was opened again."""
         super().__init__()
         self._conn = conn
+        self._key = key
         self._cache: OrderedDict[int, bytes] = OrderedDict()  # before open, so close() works if it fails
         self._fh, self._gen = None, -1
         self.name = path
@@ -594,6 +616,14 @@ class RemoteFile(io.RawIOBase):
         self._fh = conn.sftp_call(lambda s: s.open(self.name, "rb"))
         self._gen = conn.generation
         return self._fh
+
+    def _live(self) -> Connection:
+        """The file's connection, connected again if its SSH transport is gone."""
+        conn = self._conn
+        if self._key is not None and not conn.is_active():
+            self._conn = conn = connect(*self._key)
+            self._gen = -1   # its handle belonged to the old session: _reopen opens it again
+        return conn
 
     def _reopen(self):
         """The handle again on the current SFTP session (after it was reset); call under the lock."""
@@ -620,6 +650,7 @@ class RemoteFile(io.RawIOBase):
         missing = [b for b in range(first, last + 1) if b not in self._cache]
         if missing:
             ranges = [(b * self._bs, min(self._bs, self.size - b * self._bs)) for b in missing]
+            self._live()
             with self._conn.lock:
                 data = self._conn.sftp_call(lambda s: list(self._reopen().readv(ranges)))
             for b, chunk in zip(missing, data):
@@ -662,7 +693,7 @@ class RemoteFile(io.RawIOBase):
 def open_remote(path, buffering: int = 1 << 16):
     """Open a remote file for binary reading (seekable, buffered)."""
     rp = parse_remote(path)
-    return io.BufferedReader(RemoteFile(_conn(rp), rp.path), buffering)
+    return io.BufferedReader(RemoteFile(_conn(rp), rp.path, key=(rp.host, rp.user, rp.port)), buffering)
 
 
 def stat(path):
