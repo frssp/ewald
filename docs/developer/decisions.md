@@ -1352,6 +1352,44 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   the report alone, with the items recorded in docs/todo.md.
 - **Landed:** public PR #153.
 
+### D103. A structure edited with ASE or pymatgen goes back with `data.with_structure`; a changed atom count drops what cannot follow, with a warning (2026-11-10)
+
+- **Decision:** `DataCollection.with_structure(structure)` returns the frame with its atoms and
+  cell taken from an ASE `Atoms`, a pymatgen `Structure` or `Molecule`, or another
+  `DataCollection`. Attributes, tables, grids and surfaces are always kept; per-atom properties
+  and bonds are kept while the number of atoms is the same. When the number changes, the
+  properties the new structure carries itself are taken from it and the rest is dropped, with
+  one warning that names what was dropped. This is not structure editing (still deferred): it
+  only stops the pipeline from losing its results when the user edits with another library.
+- **Why:** question B3 of the design review (D102): a step that returned
+  `DataCollection.from_ase(...)` lost the attributes and tables of the steps above it. The owner
+  chose "넣음, 원자 수 바뀌면 warning" from the options, as recommended; the recommendation's
+  reason was that the common case then takes one line and what is lost is visible.
+- **Alternatives:** an error when the atom count changes unless the caller passes a mapping
+  (`index=`) or `drop=True` (nothing is lost silently, one more line every time); not adding it
+  and documenting that `from_ase` starts an empty frame.
+- **Landed:** public PR #154.
+
+### D104. The public API is pinned by a snapshot test and notebooks record the ewald version; no DeprecationWarning yet (2026-11-10)
+
+- **Decision:** `ewald api --signatures` prints the public API (the names of `ewald.__all__` with
+  their members, the functions `llms.txt` documents, modifier constructors, `ewald.plugin_api`,
+  `render()` keywords, view settings). `tests/data/api/current.txt` is its snapshot, so a pull
+  request that changes a signature shows it in its diff, and `released.txt` is the API of the
+  last release: a change that breaks code written for that release fails a test until
+  `CHANGELOG.md` names the function and the parameter. Saved `.py` notebooks record the ewald
+  version in their header as `.ipynb` and `.ewd` files did. Old names that still work keep
+  working without a `DeprecationWarning`.
+- **Why:** question B4 of the design review (D102): the public surface was only `__all__`,
+  nothing noticed a changed signature, and a `.py` notebook did not say which version wrote it.
+  The owner chose "snapshot test + version 기록" from the options, as recommended; the
+  recommendation's reason was that this catches unintended API changes without anything a user
+  sees, and that warnings can still be switched on when names are cleaned up for 1.0.
+- **Alternatives:** the same plus a `DeprecationWarning` for old names and old arguments from
+  the next release (old notebooks would show warnings under their cells); only recording the
+  version; leaving it.
+- **Landed:** public PR #154.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

@@ -10,20 +10,20 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
-- `data.with_structure(atoms)` (D103, #PRNUM): a step that changes the structure with ASE or
+- `data.with_structure(atoms)` (D103, #154): a step that changes the structure with ASE or
   pymatgen returns it instead of `DataCollection.from_ase(atoms)`, which lost the attributes and
   tables of the steps above. Attributes, tables, grids and surfaces are kept; per-atom
   properties and bonds too while the number of atoms is the same; when it changes, what the new
   structure does not carry is dropped with a warning that names it. The cell keeps its origin
   and types that are no element symbols keep their names. Takes an ASE `Atoms`, a pymatgen
   `Structure` or `Molecule`, or another `DataCollection`.
-- The public API is pinned (D104, #PRNUM): `ewald api --signatures` prints every public name with
+- The public API is pinned (D104, #154): `ewald api --signatures` prints every public name with
   its signature (`ewald.__all__`, modifier constructors, `ewald.plugin_api`, `render()`
   keywords, view settings), `tests/data/api/current.txt` is its snapshot, and a test compares
   the code with the API of the last release (`released.txt`): a removed name or parameter, a
   changed default or a moved positional parameter fails until the changelog names it
   (docs/developer/api-stability.md).
-- Notebooks say which ewald saved them (D104, #PRNUM): the header of a `.py` notebook now starts
+- Notebooks say which ewald saved them (D104, #154): the header of a `.py` notebook now starts
   with `version: "X.Y.Z"` as `.ipynb` and `.ewd` files already did, `Notebook.ewald_version` reads
   it, and a notebook saved by a newer ewald than the one running says so when it opens.
 
@@ -100,10 +100,10 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 - A `.py` notebook saved by ewald always has the comment header now (it holds the version), also
   a notebook without viewer state or data links, which used to be saved as the bare cells
-  (#PRNUM). The file still runs as a plain script.
+  (#154). The file still runs as a plain script.
 - Plugin API: `Workflow(...)` takes the fields of a step added in #145 (`uuid`, `inputs`, `shape`,
   `files`, `extras`) before `label`, so positional arguments after `scalars` moved; pass the
-  fields of a `Workflow` by keyword (found by the API snapshot, #PRNUM).
+  fields of a `Workflow` by keyword (found by the API snapshot, #154).
 - Frame indices mean one thing everywhere (D102, #153): `pipe.source_frame(i)` and
   `ctx.source_frame(i)` take the indices `pipe.compute(i)` takes and raise IndexError out of range
   (`source_frame(999)` on 10 frames gave frame 9); `pipe.frames(start, stop, step)` counts as a slice
