@@ -795,6 +795,8 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- Remote files reconnecting (#147): open a trajectory on an SSH host, sleep the laptop (or switch
+  Wi-Fi), wake it and play on; the next frames should load without opening the file again.
 - `ewald://` links (Links from web pages, `ewald/deeplink.py`): a click in Chrome and Edge on the
   owner's Windows PC with the installer's registration and with `ewald register-links` from a pip
   install, on macOS with EWALD.app, and on a Linux desktop; with EWALD closed (starts and opens)
@@ -1040,6 +1042,13 @@ mixins and helper modules):
 - The renderer-neutral type color/radius tables in `render.py` belong in their own module.
 - `Viewport._mic` and the bond-angle code in `gui/viewport.py` can use `Cell.minimum_image`
   and share the angle helper with `llm/selection.py`.
+- Implicit state machines left from the 2026-11-10 audit (the bugs found were fixed in #147):
+  run phase (queued/running) lives only in the cell widgets' Qt property, so the AI's
+  `cell_summary` cannot see it, and `Cell.state` is a string; overlay actors (caption, labels,
+  measurements, `atoms_lod`) are still removed by a hard-coded name list in `Viewport.redraw`,
+  unlike the scene's own actors; the Legacy GL viewport keeps its own copy of the level-of-detail
+  state; depth peeling stays on for the session once a transparent surface was drawn. Candidates
+  for explicit enums with transition tests: notebook run, chat turn, pip job.
 - Names left from the Ask AI rename: `MainWindow.ask_claude` (and the tests calling it) and the
   `"Ask Claude"` dock object name, kept so saved layouts still restore; rename them with the
   internal renames (step 3 of the layout review), keeping the old dock name readable.

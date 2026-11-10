@@ -157,7 +157,10 @@ every question), in Python and on the command line with `allow_code=True` / `--a
 While it is not offered, a call to it is refused with "the user has not allowed it". The same
 permission makes `insert_cell` and `edit_cell` run what they wrote, tells the model in its
 system prompt that it may run cells, and runs the ```python blocks of an answer that go into
-the notebook.
+the notebook. One run goes at a time: while your own cells run, `run_cell` returns an error
+("cells of this notebook are running already") instead of running, so the model never mistakes a
+cell's earlier result for its own. **Stop** in the chat interrupts the cell `run_cell` is waiting
+for, and no further cell runs for that answer.
 
 **Database search.** `optimade_search` (built in, from the OPTIMADE group; it was the ewald-optimade
 plugin's) only lists structures: it sends the query to one of the databases you set up (the
