@@ -161,6 +161,19 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
 Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; numbers from
 `benchmarks/analysis.py`, `benchmarks/large_files.py` and the GUI under `xvfb-run`)
 
+- Three hot spots measured 2026-11-10 (D100; the owner picked all three, in this order):
+  (1) playback with a notebook's plots open, done: hidden plot tabs wait for their tab and
+  frames that change nothing do not repaint (tutorial notebook, 108 atoms, four plots: 177 ms
+  per frame until idle, now about 100 ms, of which the one plot on screen is about 55 ms of
+  matplotlib; blitting its bars or marker instead of drawing the whole figure is what is left);
+  (2) all-frames analyses, open: the XDATCAR and OUTCAR readers parse each atom line in Python
+  (0.135 ms per 200-atom frame against 0.031 ms with one block read and `io._textparse`), a
+  sweep over the frames pays more for the pipeline's cache bookkeeping than for reading once a
+  step is above (0.47 against 0.17 ms per frame), and MeanSquaredDisplacement runs the per-atom
+  FFT three times (total, by type, per particle: 2.7 s against 0.3 s for one threaded pass at
+  20000 frames of 200 atoms), so `msd` of such an XDATCAR takes 7.8 s and `vacf` after it 18 s;
+  (3) the notebook rebuilds every cell widget when one cell is added, removed, moved or undone
+  (0.75-1.0 s with four plot cells in the container), open.
 - Pipeline output cache: plugin modifiers are never reused (`Modifier.cacheable` is None for
   them); first-party plugins (ewald-phonopy, ewald-plumed) could set `cacheable = True` where
   their output depends only on their settings.

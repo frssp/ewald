@@ -727,6 +727,59 @@ def test_playback_leaves_frame_independent_cells_alone(app, monkeypatch):
     w.close()
 
 
+def test_plots_hidden_tab_waits_and_idle_frames_do_not_repaint(app, cu_fcc):
+    """Playback gave every plot of the notebook each frame: a tab behind another one is drawn
+    when it is shown, and a frame that changes nothing on a plot does not repaint its canvas."""
+    from ewald.gui.plots import PlotsPanel
+    from qtpy import QtWidgets
+
+    def frame(shift):
+        d = cu_fcc.copy()
+        d.particles["E"] = np.linspace(0, 1, d.count) ** 2 + shift
+        d.tables["msd"] = {"Time": np.arange(5.0), "MSD": np.arange(5.0) ** 2}   # the same on every frame
+        return d
+
+    tabs = QtWidgets.QTabWidget()
+    front, back = PlotsPanel(), PlotsPanel()
+    tabs.addTab(front, "front")
+    tabs.addTab(back, "back")
+    tabs.resize(700, 400)
+    tabs.show()
+    app.processEvents()
+    for p in (front, back):
+        p.set_data(frame(0.0))
+    front.table.setCurrentText("msd")
+    back.hist.setCurrentText("E")          # chosen while hidden: drawn when the tab shows
+    assert back._redraw_stale and back._ax is None
+    tabs.setCurrentWidget(back)
+    app.processEvents()
+    assert not back._redraw_stale
+    edges = back._edges.copy()
+    tabs.setCurrentWidget(front)
+    app.processEvents()
+
+    idle = []
+    for p in (front, back):
+        p.canvas.draw_idle = lambda p=p: idle.append(p)
+    for k in (1, 2, 3):                     # frames of playback, nothing picked in the 3D view
+        for p in (front, back):
+            p.set_data(frame(float(k)))
+            p.set_highlight([])
+    assert idle == []                       # front: the same table; back: hidden
+    assert back._redraw_stale and np.array_equal(back._edges, edges)
+    front.set_highlight([0, 1])             # a pick is drawn
+    assert idle == [front]
+    tabs.setCurrentWidget(back)
+    app.processEvents()
+    assert not back._redraw_stale and back._edges[0] == pytest.approx(edges[0] + 3.0)   # the frame on screen
+    back._range = (3.2, 3.5)                # a dragged range selects atoms: it follows the frames, shown or not
+    tabs.setCurrentWidget(front)
+    app.processEvents()
+    back.set_data(frame(5.0))
+    assert not back._redraw_stale and back._edges[0] == pytest.approx(edges[0] + 5.0)
+    _dispose(tabs)
+
+
 LEVELS = {"energy_axis": "E - E_F",
           "levels": [{"name": "E_F", "energy": 0.0, "z": None, "style": "dashed"},
                      {"name": "VBM", "energy": -1.0, "z": [12.0, 18.0], "style": "solid"}],
