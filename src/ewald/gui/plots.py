@@ -206,6 +206,7 @@ class PlotsPanel(QtWidgets.QWidget):
         canvas.mpl_connect("button_release_event", self._on_release)
         canvas.mpl_connect("scroll_event", self._on_scroll)
         canvas.mpl_connect("figure_leave_event", lambda *_: self._hover_axis(None))
+        canvas.mpl_connect("draw_event", self._on_drawn)
 
     def compact(self):
         """Narrow layout for a notebook view cell: shorter labels, Save in the cell's menu."""
@@ -302,6 +303,9 @@ class PlotsPanel(QtWidgets.QWidget):
                 before = self._marker_state()
                 self._place_marker()
                 moved = self._marker_state() != before
+            if moved and self._overlay_state() == getattr(self, "_overlay_drawn", None) and self._blit_marker():
+                self._update_controls()   # only the marker moved: drawn over the saved figure
+                return
             self._draw_overlays(changed=moved)
             self._update_controls()
             return
@@ -416,6 +420,10 @@ class PlotsPanel(QtWidgets.QWidget):
                 self._edges = np.concatenate([[x[0] - (mid[0] - x[0])], mid, [x[-1] + (x[-1] - mid[-1])]])
         if self._exporting and self._marker is not None:   # current frame / image / mode: UI state
             self._marker.set_visible(False)
+        elif self._marker is not None:
+            # left out of the figure's drawing and drawn over it (_on_drawn), so a frame that
+            # only moves it repaints the marker alone (_blit_marker)
+            self._marker.set_animated(True)
         energy = self._energy_axis()
         for axis, lim in self._view.items():
             if axis != energy:
@@ -457,7 +465,7 @@ class PlotsPanel(QtWidgets.QWidget):
                 for rect, c in zip(live[1], counts):
                     rect.set_height(c)
             ax.set_autoscale_on(True)  # set_xlim/set_ylim of the last draw turned it off
-            ax.relim()
+            _bars_limits(ax, live[1])
             ax.autoscale_view()
             if kind == "bars":
                 ax.set_xlim(vals.min() - 1, vals.max() + 1)
@@ -1311,6 +1319,29 @@ class PlotsPanel(QtWidgets.QWidget):
         return f"Fat bands: {what}weight of {n} selected atom{'s' if n != 1 else ''}" if n else \
             "Select atoms in the view to see their weight in each band"
 
+    def _on_drawn(self, event):
+        """After every drawing of the figure: keep the picture without the marker and draw the
+        marker over it, so :meth:`_blit_marker` can move it without drawing the figure again."""
+        m = self._marker
+        if m is None or not m.get_animated() or m.figure is not self.figure or self._exporting:
+            self._background = None
+            return
+        self._background = (self.canvas.copy_from_bbox(self.figure.bbox), tuple(self.figure.bbox.bounds))
+        m.axes.draw_artist(m)
+
+    def _blit_marker(self) -> bool:
+        """Draw the moved marker over the figure saved by :meth:`_on_drawn` and repaint the
+        canvas: a few milliseconds instead of drawing the whole figure (a time series of a few
+        thousand points took 15 ms, more with several lines). False when no saved picture fits."""
+        saved, m = getattr(self, "_background", None), self._marker
+        if saved is None or m is None or not m.get_animated() or m.figure is not self.figure \
+                or saved[1] != tuple(self.figure.bbox.bounds) or getattr(self.canvas, "_draw_pending", False):
+            return False
+        self.canvas.restore_region(saved[0])
+        m.axes.draw_artist(m)
+        self.canvas.blit(self.figure.bbox)
+        return True
+
     def _marker_state(self) -> tuple:
         m = self._marker
         return (m.get_visible(), *(tuple(np.ravel(np.asarray(v, dtype=float))) for v in m.get_data()))
@@ -1433,3 +1464,16 @@ def _is_series(table) -> bool:
 
 def _grid(table):
     return grid_map(table)
+
+
+def _bars_limits(ax, rects):
+    """``ax.relim()`` for axes that hold nothing but the bars ``rects``: their box straight from
+    the bars' corners. relim measures every patch through its transforms, about 1 ms per bar
+    and as much as the whole drawing of the plot for a 50-bin histogram on every frame."""
+    if len(ax.patches) != len(rects) or ax.lines or ax.collections or ax.images or not rects:
+        ax.relim()
+        return
+    x = np.array([(r.get_x(), r.get_x() + r.get_width()) for r in rects])
+    y = np.array([(r.get_y(), r.get_y() + r.get_height()) for r in rects])
+    ax.dataLim.set_points(np.array([[x.min(), y.min()], [x.max(), y.max()]]))
+    ax.ignore_existing_data_limits = False

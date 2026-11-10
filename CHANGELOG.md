@@ -81,6 +81,10 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- Playback with a time series in front no longer draws the plot on every frame: the
+  current-frame marker is drawn over the picture kept from the last drawing (with the tutorial
+  notebook's energy plot in front: 138 ms per frame until idle, now 98 ms), and a per-frame
+  histogram finds its axis limits from its bars (#PRNUM).
 - MSD, VACF and the other all-frames analyses read an XDATCAR's positions straight from the file
   when no step above them changes the particles: the atom lines of 32 MB of file at a time go to
   the compiled parser in one call instead of one frame at a time through the pipeline. `msd` over
