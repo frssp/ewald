@@ -615,15 +615,24 @@ class Pipeline:
             if pipe.refresh():
                 data = pipe.compute(-1)            # the newest frame
         """
+        with self._compute_lock:
+            before = self.num_frames
+            self.refresh_source()
+            return self.num_frames - before
+
+    def refresh_source(self) -> int | None:
+        """:meth:`refresh`, returning the first frame that may have changed (None: nothing did).
+        The source is refreshed under the compute lock, so a worker thread computing a frame
+        never reads a reader whose frame index is being extended (live reload runs this on a
+        pool thread while the GUI computes on its own worker)."""
         refresh = getattr(self.source, "refresh", None)
         if refresh is None:
-            return 0
+            return None
         with self._compute_lock:  # not while a worker thread reads the source
-            before = self.num_frames
             first = refresh()
             if first is not None:
                 self.invalidate(first)
-            return self.num_frames - before
+            return first
 
     def invalidate(self, first: int = 0):
         """Forget cached source frames from ``first`` on (their file changed), and every

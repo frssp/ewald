@@ -159,3 +159,27 @@ def test_remote_dump_grows_over_ssh(server, lammps_dir):
     np.testing.assert_allclose(pipe.compute(-1).positions, local.compute(-1).positions)
     if shutil.which("grep"):
         assert any(c.startswith("tail -c +") for c in server.commands)  # only the new bytes were searched
+
+
+def test_refresh_holds_the_compute_lock(tmp_path, lammps_dir):
+    """Live reload refreshes the source on a pool thread while the GUI computes frames on its own
+    worker: the refresh must hold the pipeline's compute lock, or a frame is read from a reader
+    whose index is being extended (it used to call ``source.refresh()`` directly)."""
+    import threading
+
+    path = tmp_path / "dump.lammpstrj"
+    shutil.copy(lammps_dir / "dump.custom.lammpstrj", path)
+    pipe = import_file(path)
+    pipe.compute(0)
+    held = []
+    real = pipe.source.refresh
+
+    def refresh():
+        t = threading.Thread(target=lambda: held.append(not pipe._compute_lock.acquire(blocking=False)))
+        t.start()
+        t.join()
+        return real()
+
+    pipe.source.refresh = refresh
+    assert pipe.refresh_source() is None   # nothing appended
+    assert held == [True]

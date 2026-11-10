@@ -532,6 +532,7 @@ class _Conversation:
         self.agent = None
         self.agent_pipeline = None
         self.agent_connection = None    # the factory's connection() when the agent was made
+        self.access = None              # the notebook access the agent's tools use (NotebookBridge)
         self.sent_notebook: str | None = None
         self.sent_errors: str | None = None
         self.sent_view: str | None = None
@@ -1115,6 +1116,7 @@ class AskPanel(QtWidgets.QWidget):
             access = self._access(conv.key)
             if access is not None and hasattr(toolset, "attach_notebook"):
                 toolset.attach_notebook(access)
+            conv.access = access
         system = getattr(self.agent_factory, "system", None)
         if system is not None and hasattr(conv.agent, "system"):
             conv.agent.system = system()   # Preferences › AI may have changed since the chat started
@@ -1135,6 +1137,8 @@ class AskPanel(QtWidgets.QWidget):
             agent.toolset.selection = None
             job = lambda: _call(agent.ask, prompt, cancel=worker.cancel)  # noqa: E731
         conv.tools_used = []
+        if hasattr(conv.access, "begin"):
+            conv.access.begin()   # a Stop of the last answer no longer applies
         conv.pending = self._add(Message("assistant", insert=self._insert, author=self.assistant()), save=False)
         worker = conv.worker = workers.detach(_Worker(job))  # may outlive the panel
         worker.event.connect(lambda kind, payload, c=conv: self._on_event(c, kind, payload))
@@ -1193,6 +1197,8 @@ class AskPanel(QtWidgets.QWidget):
         if worker is None or not worker.isRunning():
             return
         worker.cancel.set()
+        if hasattr(conv.access, "stop"):
+            conv.access.stop()    # a cell the AI's run_cell waits for is interrupted
         for signal in (worker.event, worker.answered, worker.failed):
             signal.disconnect()
         # it may outlive the panel (closing the window): keep it alive, unparented, until it ends

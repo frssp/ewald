@@ -3291,6 +3291,63 @@ def test_in_process_cells_run_off_the_gui_thread_and_interrupt(app, cu_path, tmp
         w.close()
 
 
+def test_one_run_at_a_time_and_its_stops(app, cu_path, tmp_path, monkeypatch):
+    """While cells run, another run does not start and says so: Shift+Enter returns False, the
+    AI's run_cell gets an error (it used to get the cell's old state as this run's result); the
+    chat's Stop interrupts the cell its run_cell waits for; closing the tab interrupts its cells."""
+    import time
+
+    import ewald.gui.notebook_panel as npn
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\npipe = load({str(cu_path)!r})\n\n"
+                          "# %%\nimport time\nwhile True:\n    time.sleep(0.01)\n\n"
+                          "# %%\nafter = 1\n")
+    nb.save(tmp_path / "long.ipynb")
+    s = settings.Settings()
+    s["python.run_notebooks"] = "never"
+    s["llm.run_cells"] = True
+    w = MainWindow(settings=s)
+    monkeypatch.setattr(npn, "CONFIRM_UNSAVED", False)
+
+    def settle(view, seconds=30):
+        end = time.monotonic() + seconds
+        while view._worker is not None and time.monotonic() < end:
+            app.processEvents()
+            time.sleep(0.01)
+        app.processEvents()
+
+    try:
+        view = w.open_notebook(str(tmp_path / "long.ipynb"))
+        view.trust(ask=False)
+        monkeypatch.setattr(npn, "CELL_BUDGET", 0.1)
+        loop, after = view.notebook.cells[1], view.notebook.cells[2]
+        assert view.run_all() and view.running
+        assert view.run(after) is False and "running" in view.status.text()
+        bridge = w.ask_panel.notebook_access(view.notebook)
+        with pytest.raises(RuntimeError, match="running already"):
+            bridge.run(view.notebook, after)
+        bridge._waiting = view                    # as while its run_cell waits for the loop
+        bridge.stop()                             # the chat's Stop
+        assert view.wait(30)
+        assert loop.state == "error" and "after" not in view.notebook.namespace
+        with pytest.raises(RuntimeError, match="stopped"):
+            bridge.run(view.notebook, after)      # no more cells for the stopped answer
+        bridge.begin()                            # the next question may run cells again
+        assert bridge.run(view.notebook, after) and view.notebook.namespace["after"] == 1
+
+        assert view.run(loop) and view.running
+        w.panel.close_tab(w.panel.tabs.indexOf(view))   # Ctrl+W while the loop runs
+        settle(view)
+        assert view._worker is None and loop.state == "error"   # interrupted, not left running
+        with pytest.raises(RuntimeError, match="closed"):
+            bridge.run(view.notebook, after)
+    finally:
+        w.close()
+
+
 def test_the_running_cell_is_marked_while_the_rest_wait(app, tmp_path, monkeypatch):
     """Run all marks one cell as running (tinted card, stop button with a ring, its time in the
     counter) and the later ones as waiting; the toolbar chip names it and the tab shows a play
@@ -4230,7 +4287,7 @@ class Slow:
         return 0
 class Pipe:
     source, num_frames = Slow(), 1
-    def invalidate(self, first): pass
+    def refresh_source(self): return self.source.refresh()
 gate2 = threading.Event()
 got = []
 gone, kept = live_reload.LiveReload(), live_reload.LiveReload()
@@ -5726,9 +5783,11 @@ def test_ai_chat_stop_button_and_failed_cells_in_the_question(app, pipe):
     app.sendEvent(panel.input, esc)                    # Esc stops, like the Stop button
     assert not panel.busy() and panel.ask_button.toolTip() == "Send (Enter)"
     assert panel.messages[-1].text == "*Stopped.*"
+    assert panel._conv().access._stopped               # a cell its run_cell waited for is interrupted
     panel.ask("again")                                 # the chat is free at once
     _wait(app, panel)
     assert panel.messages[-1].text == "fast"
+    assert not panel._conv().access._stopped           # and the next answer may run cells
     assert "ZeroDivisionError" in prompts[1]           # the stopped question's context is sent again
     view.notebook.cells.remove(cell)
     panel.ask("and now")

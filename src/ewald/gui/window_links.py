@@ -60,6 +60,8 @@ class NotebookBridge(NotebookAccess):
                          can_run=lambda: bool(window.settings["llm.run_cells"]))
         self.window = window
         self.call = _GuiCall()
+        self._waiting = None    # the notebook view whose cell run() waits for (worker thread)
+        self._stopped = False   # the chat answer this bridge serves was stopped
 
     def _view(self, nb):
         return next((v for v in self.window.panel.views() if v.notebook is nb), None)
@@ -93,14 +95,37 @@ class NotebookBridge(NotebookAccess):
         return bool(self.call(ask))
 
     def run(self, nb, cell) -> bool:
+        """Run ``cell`` like Shift+Enter and wait for it. Raises (the AI reads the error) when it
+        cannot: the notebook's tab was closed, its cells are running already (the user's Run all,
+        say: the cell's old state would read as this run's result), or the chat was stopped."""
+        if self._stopped:
+            raise RuntimeError("not run: the user stopped this answer")
         view = self.call(lambda: self._view(nb))
         if view is None:
-            return nb.run_cell(cell)
-        self.call(lambda: view.run(cell))
-        while self.call(lambda: view.running):   # the cell runs on the notebook's own worker thread
-            time.sleep(0.05)
+            raise RuntimeError("not run: the notebook's tab was closed")
+        if not self.call(lambda: view.run(cell)):
+            raise RuntimeError("not run: cells of this notebook are running already (the user started them); "
+                               "wait for them to finish, then run it again")
+        self._waiting = view
+        try:
+            while self.call(lambda: view.running):   # the cell runs on the notebook's own worker thread
+                time.sleep(0.05)
+        finally:
+            self._waiting = None
         self.call(lambda: view.ai_follow.touched(cell))   # its outputs may have moved it off screen
         return cell.state == "ok"
+
+    def begin(self):
+        """A new answer starts (GUI thread): cells may run again."""
+        self._stopped = False
+
+    def stop(self):
+        """The chat's Stop (GUI thread): interrupt the cell this bridge is waiting for, so the
+        answer ends now instead of when the cell does; no further cell runs for this answer."""
+        self._stopped = True
+        view = self._waiting
+        if view is not None and workers.alive(view) and view.running:
+            view.interrupt()
 
 
 class LinksMixin:
