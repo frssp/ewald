@@ -1240,9 +1240,11 @@ class PreferencesDialog(QtWidgets.QDialog):
     # ---------------------------------------------------------------- values
     def _load(self):
         self._loading = True
-        for key, (w, _l, _r) in self.editors.items():
-            self._set_editor(w, option(key), self.work[key])
-        self._loading = False
+        try:
+            for key, (w, _l, _r) in self.editors.items():
+                self._set_editor(w, option(key), self.work[key])
+        finally:   # an editor that raised must not leave every later edit ignored
+            self._loading = False
         self._device_note()
         self._provider_changed(reset_model=False)
         self._mark_all()
@@ -1302,8 +1304,10 @@ class PreferencesDialog(QtWidgets.QDialog):
     def _refresh_table(self):
         table = self.editors["elements.overrides"][0]
         self._loading = True
-        table.set_overrides(table.overrides, self.work)
-        self._loading = False
+        try:
+            table.set_overrides(table.overrides, self.work)
+        finally:
+            self._loading = False
 
     def _mark(self, key):
         changed = not self.work.is_default(key)
@@ -1327,8 +1331,10 @@ class PreferencesDialog(QtWidgets.QDialog):
     def reset_key(self, key):
         self.work.reset([key])
         self._loading = True
-        self._set_editor(self.editors[key][0], option(key), self.work[key])
-        self._loading = False
+        try:
+            self._set_editor(self.editors[key][0], option(key), self.work[key])
+        finally:
+            self._loading = False
         if key.startswith("elements."):
             self._refresh_table()
         if key == "compute.device":

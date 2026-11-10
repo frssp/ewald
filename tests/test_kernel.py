@@ -193,3 +193,62 @@ def test_view_tabs_come_back_from_the_kernel(kernel, lammps_dir):
     nb.cells[1].source = "pipe.views.remove('Top')"
     assert nb.run_cell(1)
     assert "Top" not in nb.pipeline.views
+
+
+def test_a_kernel_without_the_bridge_is_not_left_half_started():
+    """A Python without ewald fails the bridge import: the kernel must not stay "alive", or the
+    next run skipped start() and failed with a NameError instead of the install hint."""
+    from ewald.kernel import KernelError
+
+    class NoBridge(Kernel):
+        def _call(self, code, timeout=None, hint=None):
+            if code.startswith("import ewald.kernel_bridge"):
+                raise KernelError(hint or "no bridge")
+            return super()._call(code, timeout, hint)
+
+    k = NoBridge(python=sys.executable)
+    try:
+        for _ in range(2):   # the same hint every time
+            with pytest.raises(KernelError, match="pip install"):
+                k.start()
+            assert not k.alive and k._km is None and k._dir is None
+    finally:
+        k.shutdown()
+
+
+def test_a_dead_kernel_is_started_again_without_leaking_its_folder(kernel):
+    import os
+
+    kernel.start()
+    old = kernel._dir
+    kernel._km.shutdown_kernel(now=True)    # the kernel process died (crash, killed)
+    assert not kernel.alive and kernel._km is not None
+    kernel.start()
+    assert kernel.alive and kernel._dir != old and not os.path.exists(old)
+
+
+def test_shutdown_while_the_kernel_starts_or_runs_returns_at_once(kernel):
+    """Closing a kernel notebook's tab right after its first run started: shutdown() must not wait
+    for the cell, and must not leave the kernel process behind (it started meanwhile)."""
+    import threading
+    import time
+
+    from ewald.kernel import KernelError
+
+    cells = [{"id": 1, "kind": "code", "source": "import time\ntime.sleep(20)", "frames": None}]
+    errors = []
+
+    def run():
+        try:
+            kernel.run(cells, 0)
+        except KernelError as exc:
+            errors.append(exc)
+
+    t = threading.Thread(target=run)
+    t.start()
+    time.sleep(0.15)                       # still starting
+    t0 = time.monotonic()
+    kernel.shutdown()
+    t.join(30)
+    assert time.monotonic() - t0 < 10 and not t.is_alive()
+    assert errors and not kernel.alive and kernel._km is None

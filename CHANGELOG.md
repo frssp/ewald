@@ -116,6 +116,18 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Fixed
 
+- State that was tracked by scattered flags lost transitions (#147). A run asked for while cells
+  run no longer vanishes: Shift+Enter says the notebook is busy, and the AI's `run_cell` gets an
+  error instead of the cell's old result. Closing a notebook tab interrupts its running cells,
+  and the chat's Stop interrupts the cell its `run_cell` waits for. Live reload reads the growing
+  file under the pipeline's compute lock (it raced the frame being computed). Open files on an
+  SSH host reconnect after the connection dropped (sleep, network change), and a host out of
+  reach no longer holds up the others. Smaller ones: the "Computing" note after a cancelled
+  frame, refines during playback or behind another tab, a structure tab made while playing, the
+  AI chat taking a question before the last answer was shown, a kernel without ewald giving its
+  install hint only once and leaking its temp folder after a crash, OpenCode requests waiting
+  forever after an agent restart, the prompt after a stopped OpenCode answer, and a cancelled
+  pip row that kept spinning.
 - Trajectory tubes no longer leave dots behind: a redraw of the 3D view removes every actor the last
   scene added (the tubes' round caps stayed). View › Redraw from scratch (F5) forgets cached frames,
   step results and bonds and draws the view anew; wrapped trajectory paths break where they cross the

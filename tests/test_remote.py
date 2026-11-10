@@ -309,3 +309,89 @@ def test_broken_sftp_session_is_reopened(server, lammps_dir):
         assert conn.generation == 2
     finally:
         f.close()
+
+
+def test_open_file_reconnects_after_the_ssh_connection_dropped(server, lammps_dir):
+    """A dropped SSH transport (laptop sleep, Wi-Fi change, a profile edited) used to leave every
+    open file failing on each read until it was opened again; now the next read connects again."""
+    raw = (lammps_dir / "dump.custom.lammpstrj").read_bytes()
+    buffered = remote.open_remote("hpc:/data/dump.custom.lammpstrj")
+    f = buffered.raw                                # the block reader, not its buffer
+    try:
+        assert f.read(10) == raw[:10]
+        old = f._conn
+        old.transport.close()                       # the connection is gone, not just the SFTP session
+        assert not old.is_active()
+        f._cache.clear()
+        f.seek(len(raw) - 300)
+        assert f.read() == raw[-300:]
+        new = remote.connect("hpc")
+        assert new is not old and new.is_active() and f._conn is new
+        remote.disconnect("hpc")                    # a profile changed: the next read connects again too
+        f._cache.clear()
+        f.seek(0)
+        assert f.read(10) == raw[:10] and f._conn is not new
+    finally:
+        buffered.close()
+
+
+def test_a_host_out_of_reach_does_not_hold_up_other_hosts(server, monkeypatch):
+    """The handshake runs under that host's own lock: connecting to a host that does not answer
+    (up to ConnectTimeout, or a password prompt) used to block every other host meanwhile."""
+    import threading
+
+    gate, entered = threading.Event(), threading.Event()
+    real = remote.Connection
+
+    class Stuck:
+        def is_active(self):
+            return True
+
+        def close(self):
+            pass
+
+    def make(host, user=None, port=None):
+        if host == "stuck":
+            entered.set()
+            gate.wait(20)
+            return Stuck()
+        return real(host, user, port)
+
+    monkeypatch.setattr(remote, "Connection", make)
+    t = threading.Thread(target=lambda: remote.connect("stuck"))
+    t.start()
+    try:
+        assert entered.wait(10)
+        assert remote.connect("hpc").is_active()    # while "stuck" is still connecting
+    finally:
+        gate.set()
+        t.join(20)
+    assert isinstance(remote.connect("stuck"), Stuck)   # connected once, cached
+
+
+def test_a_connection_opened_across_a_disconnect_is_not_kept(server, monkeypatch):
+    """disconnect() (a profile edited) while a handshake runs: the connection made with the old
+    settings is closed and made again, not cached past the disconnect."""
+    import threading
+
+    real = remote.Connection
+    made, gate, entered = [], threading.Event(), threading.Event()
+
+    def make(host, user=None, port=None):
+        conn = real(host, user, port)
+        made.append(conn)
+        if len(made) == 1:
+            entered.set()
+            gate.wait(20)
+        return conn
+
+    monkeypatch.setattr(remote, "Connection", make)
+    got = []
+    t = threading.Thread(target=lambda: got.append(remote.connect("hpc")))
+    t.start()
+    assert entered.wait(20)
+    remote.disconnect("hpc")
+    gate.set()
+    t.join(30)
+    assert len(made) == 2 and got == [made[1]] and not made[0].is_active()
+    assert remote.connect("hpc") is made[1]

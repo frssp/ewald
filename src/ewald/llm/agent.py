@@ -188,6 +188,9 @@ class Agent:
                 return self._ask(prompt, images, cancel)
             except Cancelled:
                 del self.chat.messages[start:]
+                forget = getattr(self.chat, "forget_stopped_turn", None)
+                if forget is not None:   # a chat whose server keeps its own history (ACP)
+                    forget()
                 raise
 
     def _ask(self, prompt, images, cancel) -> str:

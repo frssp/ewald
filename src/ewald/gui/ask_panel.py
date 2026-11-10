@@ -532,6 +532,7 @@ class _Conversation:
         self.agent = None
         self.agent_pipeline = None
         self.agent_connection = None    # the factory's connection() when the agent was made
+        self.access = None              # the notebook access the agent's tools use (NotebookBridge)
         self.sent_notebook: str | None = None
         self.sent_errors: str | None = None
         self.sent_view: str | None = None
@@ -541,9 +542,13 @@ class _Conversation:
         self.pending: Message | None = None
         self.tools_used: list[str] = []
         self.modifiers_before: list = []
+        self.dropped = False            # its notebook closed: late signals of its worker are ignored
 
     def busy(self) -> bool:
-        return self.worker is not None and self.worker.isRunning()
+        """An answer is on its way: from the question until its answer, error or Stop has been
+        shown (not only while the worker thread runs: its answer reaches the GUI thread after the
+        thread ended, and a question sent in between had that answer written into its bubble)."""
+        return self.pending is not None
 
     @property
     def chats(self) -> list:
@@ -881,6 +886,10 @@ class AskPanel(QtWidgets.QWidget):
         """Forget a closed notebook's chat; an answer on its way is stopped."""
         if conv.busy():
             self._stop(conv)
+        was_pending = conv.pending is not None
+        conv.dropped, conv.pending = True, None   # an answer already on its way to the GUI thread finds no page
+        if was_pending:
+            self.answerFinished.emit(conv.key)
         self._conversations.pop(id(conv.key), None)
         if conv is self.conversation:
             self.conversation = None
@@ -1115,6 +1124,7 @@ class AskPanel(QtWidgets.QWidget):
             access = self._access(conv.key)
             if access is not None and hasattr(toolset, "attach_notebook"):
                 toolset.attach_notebook(access)
+            conv.access = access
         system = getattr(self.agent_factory, "system", None)
         if system is not None and hasattr(conv.agent, "system"):
             conv.agent.system = system()   # Preferences › AI may have changed since the chat started
@@ -1135,6 +1145,8 @@ class AskPanel(QtWidgets.QWidget):
             agent.toolset.selection = None
             job = lambda: _call(agent.ask, prompt, cancel=worker.cancel)  # noqa: E731
         conv.tools_used = []
+        if hasattr(conv.access, "begin"):
+            conv.access.begin()   # a Stop of the last answer no longer applies
         conv.pending = self._add(Message("assistant", insert=self._insert, author=self.assistant()), save=False)
         worker = conv.worker = workers.detach(_Worker(job))  # may outlive the panel
         worker.event.connect(lambda kind, payload, c=conv: self._on_event(c, kind, payload))
@@ -1155,7 +1167,7 @@ class AskPanel(QtWidgets.QWidget):
             conv.worker.event.emit(kind, payload)
 
     def _on_event(self, conv, kind, payload):
-        if conv.pending is None:
+        if conv.pending is None or conv.dropped:
             return
         if kind == "tool_call":
             conv.tools_used.append(payload["name"])
@@ -1191,8 +1203,20 @@ class AskPanel(QtWidgets.QWidget):
     def _stop(self, conv: _Conversation):
         worker = conv.worker
         if worker is None or not worker.isRunning():
+            if conv.pending is not None:   # its thread ended but the answer never arrived: free the chat
+                if worker is not None:     # and an answer still queued must not reach the next question
+                    for signal in (worker.event, worker.answered, worker.failed):
+                        try:
+                            signal.disconnect()
+                        except (RuntimeError, TypeError):
+                            pass
+                conv.worker = None
+                conv.pending.set_answer("*Stopped.*")
+                self._finish(conv)
             return
         worker.cancel.set()
+        if hasattr(conv.access, "stop"):
+            conv.access.stop()    # a cell the AI's run_cell waits for is interrupted
         for signal in (worker.event, worker.answered, worker.failed):
             signal.disconnect()
         # it may outlive the panel (closing the window): keep it alive, unparented, until it ends
@@ -1227,6 +1251,14 @@ class AskPanel(QtWidgets.QWidget):
             self.pipelineChanged.emit()
 
     def _on_answer(self, conv, text):
+        if conv.dropped or conv.pending is None:   # closed, or stopped after its thread ended
+            return
+        try:
+            self._show_answer(conv, text)
+        finally:   # whatever showing it raised, the chat is free again (busy() reads pending)
+            self._finish(conv)
+
+    def _show_answer(self, conv, text):
         conv.history = ""   # the agent has it now
         if conv.pending is not None:
             conv.pending.set_answer(text)
@@ -1238,13 +1270,16 @@ class AskPanel(QtWidgets.QWidget):
                 for b in blocks:   # into the cell doing the same job, else a new cell
                     self.answerCodeRequested.emit(b.code, bool(run))
                     b.mark_inserted()
-        self._finish(conv)
 
     def _on_failed(self, conv, message):
+        if conv.dropped or conv.pending is None:
+            return
         conv.sent_notebook = conv.sent_errors = None  # they may not have reached the model: send again
         low = message.lower()
         hint = f" {_SETUP_HINT}" if any(w in low for w in ("anthropic", "openai", "api_key", "api key",
                                                             "authentication", "no ai provider")) else ""
-        if conv.pending is not None:
-            conv.pending.set_answer(f"**Error.** `{message}`{hint}", error=True)
-        self._finish(conv)
+        try:
+            if conv.pending is not None:
+                conv.pending.set_answer(f"**Error.** `{message}`{hint}", error=True)
+        finally:
+            self._finish(conv)

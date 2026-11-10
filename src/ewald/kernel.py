@@ -56,6 +56,7 @@ class Kernel:
         self.display_name = display_name or (name if name else _short(python))
         self._km = self._kc = None
         self._lock = threading.RLock()  # the GUI computes frames on a worker thread too
+        self._closing = False           # shutdown() is waiting: a start in progress gives up
         self._dir = None
         self.steps: dict = {}  # id -> results of each step at the last frame computed (status, time, output)
 
@@ -82,6 +83,8 @@ class Kernel:
         with self._lock:
             if self.alive:
                 return
+            if self._km is not None:   # it died (crashed, or killed): forget it and its folder first
+                self._forget()
             if self.name:
                 km = KernelManager(kernel_name=self.name)
             else:
@@ -91,6 +94,8 @@ class Kernel:
                 kc = km.blocking_client()
                 kc.start_channels()
                 kc.wait_for_ready(timeout=STARTUP_TIMEOUT)
+                if self._closing:   # the tab closed while it started: never leave the process behind
+                    raise KernelError(f"{self.display_name} was stopped while it started")
             except Exception as exc:
                 try:
                     km.shutdown_kernel(now=True)
@@ -99,9 +104,15 @@ class Kernel:
                 raise KernelError(f"could not start {self.display_name}: {exc}") from exc
             self._km, self._kc = km, kc
             self._dir = tempfile.mkdtemp(prefix="ewald-kernel-")
-            self._call("import ewald.kernel_bridge as _ewald_bridge",
-                       hint=f"{self.display_name} has no ewald: run `{self.python or 'python'} -m pip install ewald` "
-                            "in that environment (the GUI extras are not needed)")
+            try:
+                self._call("import ewald.kernel_bridge as _ewald_bridge",
+                           hint=f"{self.display_name} has no ewald: run `{self.python or 'python'} -m pip install "
+                                "ewald` in that environment (the GUI extras are not needed)")
+            except BaseException:
+                # a kernel without the bridge is not started: the next run starts it again and
+                # gives the same hint, instead of "name '_ewald_bridge' is not defined"
+                self.shutdown()
+                raise
 
     def restart(self):
         with self._lock:
@@ -121,6 +132,7 @@ class Kernel:
 
     def shutdown(self):
         """Stop the kernel, also while a cell runs (that request then fails with KernelError)."""
+        self._closing = True
         km = self._km
         if km is not None:  # without the lock: a running request holds it until the kernel is gone
             try:
@@ -128,12 +140,25 @@ class Kernel:
             except Exception:  # noqa: BLE001 - already gone
                 pass
         with self._lock:
-            if self._kc is not None:
+            if self._km is not None and self._km is not km:   # started meanwhile
+                try:
+                    self._km.shutdown_kernel(now=True)
+                except Exception:  # noqa: BLE001
+                    pass
+            self._forget()
+            self._closing = False
+
+    def _forget(self):
+        """Drop the client, the manager and the kernel's folder (under the lock)."""
+        if self._kc is not None:
+            try:
                 self._kc.stop_channels()
-            self._km = self._kc = None
-            if self._dir:
-                shutil.rmtree(self._dir, ignore_errors=True)
-                self._dir = None
+            except Exception:  # noqa: BLE001 - its kernel is gone already
+                pass
+        self._km = self._kc = None
+        if self._dir:
+            shutil.rmtree(self._dir, ignore_errors=True)
+            self._dir = None
 
     # ------------------------------------------------------------ requests
     def _call(self, code: str, timeout: float | None = None, hint: str | None = None) -> str:
@@ -174,9 +199,13 @@ class Kernel:
         """Run cell ``index`` of ``cells`` (``[{id, kind, source}]``) in the kernel; the bridge's result.
         ``plot_style`` is the notebook's ``(style, tokens, user rcParams)`` for the cells' own matplotlib plots."""
         self.start()
-        out = os.path.join(self._dir, "result.json")
+        folder = self._dir
+        if folder is None:   # shut down from the GUI thread right after it started
+            raise KernelError(f"{self.display_name} is not running")
+        out = os.path.join(folder, "result.json")
         args = [cells, index, bool(run_below), int(counter), out, pipeline_name, path, list(data_dirs),
                 list(plot_style)]
+        # not under the lock for the whole cell: shutdown() (closing the tab) must get it at once
         self._call(f"_ewald_bridge.run(*__import__('json').loads({json.dumps(json.dumps(args))}))")
         with open(out, encoding="utf-8") as f:
             return json.load(f)

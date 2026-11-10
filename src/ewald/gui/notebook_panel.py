@@ -11,6 +11,7 @@ One cell's widget is :class:`ewald.gui.cell_widget.CellWidget` and the code edit
 """
 from __future__ import annotations
 
+import contextlib
 import os
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -160,7 +161,6 @@ class NotebookView(QtWidgets.QWidget):
         bar = QtWidgets.QHBoxLayout()
         bar.setContentsMargins(8, 6, 8, 6)
         self._worker = None
-        self._marked = []
         run_all = self.run_all_button = QtWidgets.QPushButton("Run all", objectName="primary",
                                                               toolTip=native_text("Restart and run every cell (Ctrl+Shift+Enter)"))
         run_all.setProperty("ewald_icon", "play")
@@ -899,21 +899,18 @@ class NotebookView(QtWidgets.QWidget):
         nb = self.notebook
         cells = [c for c in nb.cells if c in cells]
         if len(cells) <= 1:
-            if cells:
-                self.run(cells[0], advance=advance)
-            return
+            return self.run(cells[0], advance=advance) if cells else False
         if not self._trusted():
-            return
+            return False
         before = nb.pipeline
         code = [c for c in cells if c.kind != "markdown"]
-        self._marked = code
 
         def go():
             for c in code:
                 if c in nb.cells and not nb.run_cell(c):
                     break
         last = cells[-1]
-        self._execute(go, before, (lambda: self._advance(last)) if advance else None)
+        return self._execute(go, before, (lambda: self._advance(last)) if advance else None, marked=code)
 
     def set_kind(self, cell, kind: str):
         """Turn ``cell`` into a code or text cell (Notebook › Change cell to code/text, Esc then Y / M)."""
@@ -1046,12 +1043,14 @@ class NotebookView(QtWidgets.QWidget):
         """Cells are running (on a worker thread or in the kernel; the GUI stays usable meanwhile)."""
         return self._worker is not None
 
-    def _execute(self, fn, before, then=None):
-        """Run ``fn`` (cells) on a worker thread, so the window keeps responding and Interrupt
-        can stop them; a run that ends within :data:`CELL_BUDGET` finishes before this returns."""
+    def _execute(self, fn, before, then=None, marked=()) -> bool:
+        """Run ``fn`` (cells; ``marked`` are the ones it runs) on a worker thread, so the window
+        keeps responding and Interrupt can stop them; a run that ends within :data:`CELL_BUDGET`
+        finishes before this returns. False when cells are running already: one run at a time,
+        and the caller says so (the AI's run_cell gets an error instead of the cell's old result)."""
         if self.running:
-            return
-        marked, self._marked = self._marked, []
+            self.status.setText("Cells are running: wait for them, or Interrupt")
+            return False
         if self.awaiting_run:
             self.awaiting_run = False
             self._update_banner()
@@ -1094,6 +1093,7 @@ class NotebookView(QtWidgets.QWidget):
             finished()
         else:
             self._set_running(True)
+        return True
 
     def _mark_running(self):
         """Mark the cells of this run: waiting (``*``, like Jupyter) or running now."""
@@ -1241,15 +1241,17 @@ class NotebookView(QtWidgets.QWidget):
         self.titleChanged.emit()
         return label
 
-    def run(self, cell, advance=False, below=False):
+    def run(self, cell, advance=False, below=False) -> bool:
+        """Run ``cell`` (Shift+Enter); False when it did not start (cells of this notebook are
+        running already, or a restricted notebook was not trusted)."""
         if not self._trusted():
-            return
+            return False
         nb = self.notebook
         before = nb.pipeline
-        go = None
+        go, marked = None, []
         if cell in nb.cells and not nb.cells[nb.cells.index(cell)].kind == "markdown":
             start = nb.cells.index(cell)
-            self._marked = nb.cells[start:] if below else [cell]
+            marked = nb.cells[start:] if below else [cell]
             if below:
                 def go():
                     for k in range(start, len(nb.cells)):
@@ -1258,7 +1260,8 @@ class NotebookView(QtWidgets.QWidget):
             else:
                 def go():
                     nb.run_cell(cell)
-        self._execute(go or (lambda: None), before, (lambda: self._advance(cell)) if advance else None)
+        return self._execute(go or (lambda: None), before, (lambda: self._advance(cell)) if advance else None,
+                             marked=marked)
 
     def _advance(self, cell):
         nb = self.notebook
@@ -1272,12 +1275,11 @@ class NotebookView(QtWidgets.QWidget):
             else:
                 self.add_cell("code")
 
-    def run_all(self):
+    def run_all(self) -> bool:
         if not self._trusted():
-            return
+            return False
         before = self.notebook.pipeline
-        self._marked = list(self.notebook.cells)
-        self._execute(self.notebook.run_all, before)
+        return self._execute(self.notebook.run_all, before, marked=list(self.notebook.cells))
 
     def _trusted(self) -> bool:
         """A restricted notebook (a file someone sent) runs only after you agree."""
@@ -1509,10 +1511,9 @@ class NotebookPanel(QtWidgets.QWidget):
                 self.plotCreated.emit(p)
         view.titleChanged.connect(lambda v=view: self._retitle(v))
         view.pipRequested.connect(self.pipRequested.emit)
-        self._switching = True
-        i = self.tabs.addTab(view, nb.name)
-        self.tabs.setCurrentIndex(i)
-        self._switching = False
+        with self._quiet_switch():
+            i = self.tabs.addTab(view, nb.name)
+            self.tabs.setCurrentIndex(i)
         self._retitle(view)
         return view
 
@@ -1590,8 +1591,20 @@ class NotebookPanel(QtWidgets.QWidget):
             return
         if view.notebook.kernel is not None:
             view.notebook.kernel.shutdown()
+        elif view.running:   # its cells would go on running with no Interrupt button left
+            view.notebook.interrupt()
         self.tabs.removeTab(index)
         view.deleteLater()      # the last one closed: the welcome page (no notebook is made up)
+
+    @contextlib.contextmanager
+    def _quiet_switch(self):
+        """Tabs change here without the 3D view following each step (``_switching``); the flag
+        is cleared even when Qt raises, or no later tab switch would reach the 3D view."""
+        self._switching = True
+        try:
+            yield
+        finally:
+            self._switching = False
 
     def _tab_changed(self, index):
         old, self._shown = getattr(self, "_shown", None), self.view
@@ -1652,9 +1665,8 @@ class NotebookPanel(QtWidgets.QWidget):
         for view in self.views():
             if view.notebook.pipeline is pipeline:
                 if view is not self.view:
-                    self._switching = True
-                    self.tabs.setCurrentWidget(view)
-                    self._switching = False
+                    with self._quiet_switch():
+                        self.tabs.setCurrentWidget(view)
                 view.update_results()
                 return
         if name is None:
@@ -1664,10 +1676,9 @@ class NotebookPanel(QtWidgets.QWidget):
         blank = self.view if self.view is not None and self._is_blank(self.view) else None
         view = self.add_notebook(nb)
         if blank is not None:
-            self._switching = True
-            self.tabs.removeTab(self.tabs.indexOf(blank))
-            blank.deleteLater()
-            self._switching = False
+            with self._quiet_switch():
+                self.tabs.removeTab(self.tabs.indexOf(blank))
+                blank.deleteLater()
         view.update_results()
 
     def set_data(self, data):

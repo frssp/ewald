@@ -93,6 +93,30 @@ def test_session_swaps_rcparams_and_keeps_what_cells_set():
         plotstyle.Session("seaborn")
 
 
+def test_gui_plot_style_and_a_cell_on_another_thread_leave_the_process_rcparams():
+    """The GUI draws a plot in the style (``context``) while a cell runs on its thread
+    (``Session.active``), and their ends interleave: the process must get its own rcParams back,
+    not the style a plain rc_context snapshot held when the cell began (it once leaked font size
+    14 and 600 dpi into everything drawn later)."""
+    import matplotlib as mpl
+
+    before = {k: mpl.rcParams[k] for k in ("font.size", "savefig.dpi", "svg.fonttype")}
+    s = plotstyle.Session()
+    for first in ("gui", "cell"):
+        gui, cell = plotstyle.context(), s.active()
+        (gui if first == "gui" else cell).__enter__()
+        (cell if first == "gui" else gui).__enter__()
+        gui.__exit__(None, None, None) if first == "gui" else cell.__exit__(None, None, None)
+        cell.__exit__(None, None, None) if first == "gui" else gui.__exit__(None, None, None)
+        assert {k: mpl.rcParams[k] for k in before} == before and plotstyle._ACTIVE[0] == 0
+    with plotstyle.context():                     # nested in a cell: puts back the cell's style
+        with s.active():
+            with plotstyle.context(font_size=20):
+                assert mpl.rcParams["font.size"] == 20
+            assert mpl.rcParams["font.size"] == 8
+    assert {k: mpl.rcParams[k] for k in before} == before
+
+
 def test_notebook_cells_draw_plain_pyplot_in_the_style():
     import matplotlib as mpl
 

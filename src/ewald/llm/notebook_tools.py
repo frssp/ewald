@@ -36,6 +36,11 @@ _MAX_OUTPUT = 4000    # characters of one text output
 _MAX_IMAGES = 3
 
 
+class NotRun(RuntimeError):
+    """:meth:`NotebookAccess.run` did not run the cell (its cells are running already, its tab was
+    closed, the answer was stopped): nothing ran, so the cell's state is not this run's result."""
+
+
 class NotebookAccess:
     """What the notebook tools act on. ``notebook`` is a :class:`Notebook` or a function
     returning the current one (or None); ``can_run`` says whether ``run_cell`` is offered.
@@ -520,8 +525,16 @@ def register(ts, access: NotebookAccess):
             c.source = new_source
             access.changed(nb, label, c)
 
+        def restore(note=" (failed)"):
+            c.source = old_source
+            access.changed(nb, f"{label}{note}", c)
+
         access.call(write)
-        ok = access.run(nb, c)
+        try:
+            ok = access.run(nb, c)
+        except NotRun as exc:   # nothing ran: the cell keeps its old values
+            access.call(lambda: restore(" (not run)"))
+            raise RuntimeError(f"parameters not changed, {exc}") from None
         error = "\n".join(str(o.data) for o in c.outputs if o.kind == "error").strip()
         if ok and nb.pipeline is not None and nb.kernel is None:
             try:   # the new values must also compute
@@ -529,13 +542,11 @@ def register(ts, access: NotebookAccess):
             except Exception as exc:  # noqa: BLE001 - reported to the model below
                 ok, error = False, f"{type(exc).__name__}: {exc}"
         if not ok:
-
-            def restore():
-                c.source = old_source
-                access.changed(nb, f"{label} (failed)", c)
-
             access.call(restore)
-            access.run(nb, c)   # the step as it was (literal arguments only), back in the pipeline
+            try:
+                access.run(nb, c)   # the step as it was (literal arguments only), back in the pipeline
+            except NotRun:
+                pass
             raise RuntimeError(f"the step failed with the new parameters and was put back:\n{error[-3000:]}")
         return access.call(lambda: {"edited": cell_summary(nb, nb.cells.index(c)), "before": _jsonable(before),
                                     "source": c.source})
@@ -616,7 +627,11 @@ def _runner(access: NotebookAccess):
         if nb.restricted:
             out["note"] = "not run: the notebook is not trusted yet (an .ewd file)"
             return out
-        content, images, ok = execute(nb, cell)
+        try:
+            content, images, ok = execute(nb, cell)
+        except NotRun as exc:   # written, but not run: say so, or the model writes the cell again
+            out["note"] = (out.get("note", "") + "; " if "note" in out else "") + f"written but {exc}"
+            return out
         content.pop("index", None)
         content.pop("id", None)
         out["run"] = content

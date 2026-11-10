@@ -20,13 +20,14 @@ class _Probe(QtCore.QRunnable):
     :func:`~ewald.gui.workers.relay`, not the LiveReload, which may be deleted (window closed)
     before a slow look returns."""
 
-    def __init__(self, source, token):
+    def __init__(self, pipeline, token):
         super().__init__()
-        self.source, self.token = source, token
+        self.pipeline, self.source, self.token = pipeline, pipeline.source, token
 
     def run(self):
         try:
-            first, error = self.source.refresh(), None
+            # under the pipeline's compute lock: the compute worker may be reading this source
+            first, error = self.pipeline.refresh_source(self.source), None
         except Exception as exc:  # network down, file replaced by a directory, ...
             first, error = None, f"{type(exc).__name__}: {exc}"
         workers.relay().done.emit(self.token, (self.source, first, error))
@@ -99,7 +100,7 @@ class LiveReload(QtCore.QObject):
         if self._busy or self.pipeline is None or not hasattr(self.pipeline.source, "refresh"):
             return
         self._busy = True
-        probe = _Probe(self.pipeline.source, self._token)
+        probe = _Probe(self.pipeline, self._token)
         if wait:
             probe.run()
             QtCore.QCoreApplication.processEvents()
@@ -118,8 +119,7 @@ class LiveReload(QtCore.QObject):
             self._error = error
             if error:
                 self.failed.emit(error)
-        if first is not None:
-            self.pipeline.invalidate(first)
+        if first is not None:   # the probe dropped the stale cached frames already
             self.grew.emit(first, self.pipeline.num_frames)
         self.report_incomplete()
 

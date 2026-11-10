@@ -161,9 +161,41 @@ def rc(tokens: dict | None = None, font_size: float = FONT_SIZE, user: dict | No
 
 def context(tokens: dict | None = None, font_size: float = FONT_SIZE, user: dict | None = None):
     """``with plotstyle.context(): ...``: the style for figures made (and saved) inside."""
+    return _rc_region(rc(tokens, font_size, user))
+
+
+@contextlib.contextmanager
+def _rc_region(values: dict):
+    """``mpl.rc_context(values)`` that also counts in :data:`_ACTIVE`. rcParams are one dict for
+    the whole process, and the GUI draws plots in the style on its thread while notebook cells run
+    in theirs (:meth:`Session.active`): a plain rc_context that ends after a cell began would put
+    its snapshot back once that cell's session restored the process rcParams, leaving the style
+    in the process. Here an inner region puts back what it found, and the last region to end
+    puts back the process's own rcParams."""
     import matplotlib as mpl
 
-    return mpl.rc_context(rc(tokens, font_size, user))
+    with _ACTIVE_LOCK:
+        if not _ACTIVE[0]:
+            _ACTIVE[1] = {k: v for k, v in mpl.rcParams.items() if k not in _SKIP}
+        _ACTIVE[0] += 1
+        found = {k: v for k, v in mpl.rcParams.items() if k not in _SKIP}
+        try:
+            mpl.rcParams.update(values)
+        except BaseException:
+            _end_region(found)
+            raise
+    try:
+        yield
+    finally:
+        with _ACTIVE_LOCK:
+            _end_region(found)
+
+
+def _end_region(found: dict):
+    import matplotlib as mpl
+
+    _ACTIVE[0] -= 1
+    dict.update(mpl.rcParams, found if _ACTIVE[0] else _ACTIVE[1])
 
 
 STYLES = ("publication", "default")   # the user-plot styles of :class:`Session` and :func:`use`
@@ -225,7 +257,7 @@ def use(style: str | dict | None = "publication", tokens: dict | None = None, fo
 
 
 _ACTIVE_LOCK = threading.RLock()
-_ACTIVE = [0, None]   # sessions active now (cells of several notebooks on threads), process rcParams
+_ACTIVE = [0, None]   # styled regions active now (cells on threads, GUI plots), process rcParams
 
 
 class Session:
@@ -286,7 +318,7 @@ class Session:
                 self._state = self._base()
                 _ACTIVE[0] -= 1
                 if not _ACTIVE[0]:   # while another notebook's cell runs on another thread, its rcParams stay
-                    dict.update(mpl.rcParams, saved)
+                    dict.update(mpl.rcParams, _ACTIVE[1])
 
 
 # ---------------------------------------------------------------- style files

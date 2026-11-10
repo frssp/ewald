@@ -3344,6 +3344,63 @@ def test_in_process_cells_run_off_the_gui_thread_and_interrupt(app, cu_path, tmp
         w.close()
 
 
+def test_one_run_at_a_time_and_its_stops(app, cu_path, tmp_path, monkeypatch):
+    """While cells run, another run does not start and says so: Shift+Enter returns False, the
+    AI's run_cell gets an error (it used to get the cell's old state as this run's result); the
+    chat's Stop interrupts the cell its run_cell waits for; closing the tab interrupts its cells."""
+    import time
+
+    import ewald.gui.notebook_panel as npn
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\npipe = load({str(cu_path)!r})\n\n"
+                          "# %%\nimport time\nwhile True:\n    time.sleep(0.01)\n\n"
+                          "# %%\nafter = 1\n")
+    nb.save(tmp_path / "long.ipynb")
+    s = settings.Settings()
+    s["python.run_notebooks"] = "never"
+    s["llm.run_cells"] = True
+    w = MainWindow(settings=s)
+    monkeypatch.setattr(npn, "CONFIRM_UNSAVED", False)
+
+    def settle(view, seconds=30):
+        end = time.monotonic() + seconds
+        while view._worker is not None and time.monotonic() < end:
+            app.processEvents()
+            time.sleep(0.01)
+        app.processEvents()
+
+    try:
+        view = w.open_notebook(str(tmp_path / "long.ipynb"))
+        view.trust(ask=False)
+        monkeypatch.setattr(npn, "CELL_BUDGET", 0.1)
+        loop, after = view.notebook.cells[1], view.notebook.cells[2]
+        assert view.run_all() and view.running
+        assert view.run(after) is False and "running" in view.status.text()
+        bridge = w.ask_panel.notebook_access(view.notebook)
+        with pytest.raises(RuntimeError, match="running already"):
+            bridge.run(view.notebook, after)
+        bridge._waiting = (view, view._worker)                  # as while its run_cell waits for the loop
+        bridge.stop()                             # the chat's Stop
+        assert view.wait(30)
+        assert loop.state == "error" and "after" not in view.notebook.namespace
+        with pytest.raises(RuntimeError, match="stopped"):
+            bridge.run(view.notebook, after)      # no more cells for the stopped answer
+        bridge.begin()                            # the next question may run cells again
+        assert bridge.run(view.notebook, after) and view.notebook.namespace["after"] == 1
+
+        assert view.run(loop) and view.running
+        w.panel.close_tab(w.panel.tabs.indexOf(view))   # Ctrl+W while the loop runs
+        settle(view)
+        assert view._worker is None and loop.state == "error"   # interrupted, not left running
+        with pytest.raises(RuntimeError, match="closed"):
+            bridge.run(view.notebook, after)
+    finally:
+        w.close()
+
+
 def test_the_running_cell_is_marked_while_the_rest_wait(app, tmp_path, monkeypatch):
     """Run all marks one cell as running (tinted card, stop button with a ring, its time in the
     counter) and the later ones as waiting; the toolbar chip names it and the tab shows a play
@@ -3816,6 +3873,16 @@ def test_compute_runner_prepares_on_the_worker_and_reads_ahead(app):
     assert ahead is not None and ahead.cancel.is_set()
     gate.set()
     assert runner.wait(5)
+    # cancelling a job that runs past the budget ends the busy state (it used to stay on, so the
+    # next slow frame showed no "Computing" note: clear_pipeline and phonon modes cancel)
+    gate.clear()
+    states = []
+    runner.busyChanged.connect(states.append)
+    assert runner.request(slow, 2, budget=0) is None and runner.busy
+    runner.cancel()
+    assert not runner.busy and states == [True, False]
+    gate.set()
+    assert runner.wait(5)
     runner.shutdown()
 
 
@@ -4099,13 +4166,15 @@ def test_plugins_side_bar_deleted_while_pip_runs(app, monkeypatch):
     # stop_pip (Quit, Restart now): the process is killed and gone before the panel is
     panel = plugins_panel.PluginsPanel(settings=settings.Settings())
     panel.wait()
-    panel._run_pip("install", ["ewald-a", "ewald-b"])
+    panel._run_pip("install", ["ewald-a", "ewald-b"], key="ewald-a", busy="Installing…")
     assert panel.pip_running and panel.pip_description() == "install ewald-a ewald-b"
+    assert panel.busy == {"ewald-a": "Installing…"}
     assert _until(app, lambda: panel._process.state() == QtCore.QProcess.Running)
     process = panel._process
     panel.stop_pip()
     assert process.state() == QtCore.QProcess.NotRunning
     assert not panel.pip_running and panel.pip_description() == "" and panel._pip_job is None
+    assert panel.busy == {}                                        # its row no longer spins
     panel.stop_pip()                                               # nothing running: no-op
     app.processEvents()
     assert errors == [] and "failed" not in panel.log.toPlainText()  # its finished never arrived
@@ -4283,7 +4352,7 @@ class Slow:
         return 0
 class Pipe:
     source, num_frames = Slow(), 1
-    def invalidate(self, first): pass
+    def refresh_source(self, source=None): return self.source.refresh()
 gate2 = threading.Event()
 got = []
 gone, kept = live_reload.LiveReload(), live_reload.LiveReload()
@@ -4312,6 +4381,31 @@ def test_worker_threads_outlive_the_widgets_that_started_them(tmp_path):
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", EWALD_CONFIG_DIR=str(tmp_path), EWALD_PLUGIN_INDEX="")
     r = subprocess.run([sys.executable, "-c", _OUTLIVE_SCRIPT], env=env, capture_output=True, text=True, timeout=120)
     assert r.returncode == 0 and r.stdout.strip().endswith("ok"), r.stdout + r.stderr
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="viewport needs an X display with OpenGL (xvfb-run)")
+def test_coarse_scene_refines_only_when_idle_shown_and_not_playing(app):
+    """A coarse scene is refined after refine_delay of idle, but not during playback (a wheel zoom
+    while playing used to schedule one, so bonds flickered) and not while parked (a full scene was
+    built for a hidden tab); it is scheduled again when playback stops or the view is shown."""
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    vp = Viewport(ViewStyle())
+    vp.coarse = True
+    vp.set_playing(True)
+    vp._on_wheel(None, None)
+    assert not vp._refine_timer.isActive()
+    vp.set_playing(False)
+    assert vp._refine_timer.isActive()
+    vp.set_parked(True)
+    assert not vp._refine_timer.isActive()
+    vp._schedule_refine()
+    assert not vp._refine_timer.isActive()
+    vp.set_parked(False)
+    assert vp._refine_timer.isActive()
+    vp._refine_timer.stop()
+    vp.deleteLater()
 
 
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="viewport needs an X display with OpenGL (xvfb-run)")
@@ -5779,9 +5873,11 @@ def test_ai_chat_stop_button_and_failed_cells_in_the_question(app, pipe):
     app.sendEvent(panel.input, esc)                    # Esc stops, like the Stop button
     assert not panel.busy() and panel.ask_button.toolTip() == "Send (Enter)"
     assert panel.messages[-1].text == "*Stopped.*"
+    assert panel._conv().access._stopped               # a cell its run_cell waited for is interrupted
     panel.ask("again")                                 # the chat is free at once
     _wait(app, panel)
     assert panel.messages[-1].text == "fast"
+    assert not panel._conv().access._stopped           # and the next answer may run cells
     assert "ZeroDivisionError" in prompts[1]           # the stopped question's context is sent again
     view.notebook.cells.remove(cell)
     panel.ask("and now")
@@ -5789,6 +5885,38 @@ def test_ai_chat_stop_button_and_failed_cells_in_the_question(app, pipe):
     assert "no longer show errors" in prompts[2]
     for worker in panel._stopped:
         worker.wait(5000)
+    w.close()
+
+
+def test_ai_chat_is_busy_until_its_answer_is_shown(app, pipe):
+    """The worker thread ends before its answer reaches the GUI thread: the chat stays busy until
+    the answer is shown, so a question sent in between does not get that answer in its bubble;
+    a closed notebook's chat ignores an answer still on its way."""
+    from ewald.gui.app import MainWindow
+
+    w = MainWindow(pipe)
+    panel = w.ask_panel
+    panel.agent_factory = lambda p, ev: _FakeAgent(p, ev)
+    panel.ask("first")
+    conv = panel._conv()
+    conv.worker.wait(5000)                     # the thread is done, its answer not delivered yet
+    assert panel.busy()
+    n = len(panel.messages)
+    panel.ask("second")                        # refused, as while the answer is on its way
+    assert len(panel.messages) == n
+    _wait(app, panel)
+    assert not panel.busy() and panel.messages[-1].text == "the whole frame"
+    panel.ask("third")
+    conv.worker.wait(5000)
+    panel.stop()                               # Stop after the thread ended: the chat is free again
+    assert not panel.busy() and panel.messages[-1].text == "*Stopped.*"
+    app.processEvents()                        # the third answer, still queued, is dropped
+    assert panel.messages[-1].text == "*Stopped.*"
+    panel.ask("fourth")
+    conv.worker.wait(5000)
+    panel._drop(conv)                          # its notebook closed before the answer arrived
+    app.processEvents()
+    assert conv.pending is None and conv.dropped
     w.close()
 
 
@@ -7714,9 +7842,15 @@ def test_view_tabs_are_more_structure_tabs(app, tmp_path):
     assert list(w.view_tabs) == ["Top"]
     nb = nbv.notebook
     assert nb.view_cell("Top") is not None and nb.view_cell() is not None
-    # Window › New structure tab
+    # Window › New structure tab, made while the timeline plays: it plays too (no refines in between)
+    w.timeline.play.blockSignals(True)
+    w.timeline.play.setChecked(True)
+    w.timeline.play.blockSignals(False)
     name = w.new_view_tab()
     app.processEvents()
+    assert w.view_tabs[name].viewport.playing
+    w.timeline.play.setChecked(False)
+    assert not w.view_tabs[name].viewport.playing
     assert name == "View 2" and "View 2" in w.pipeline.views and "View 2" in w.view_tabs
     assert nb.view_cell("View 2").source.endswith("view(pipe, tab='View 2')")
     # a style picked in that tab's viewport goes into its cell, not into the main view's

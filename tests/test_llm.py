@@ -1148,6 +1148,30 @@ def test_touched_cells_names_the_cells_the_tools_wrote(cu_file):
     assert refs("list_cells", {}) == [] and touched_cells("x", "an error") == []
 
 
+def test_a_cell_written_but_not_run_says_so(cu_file):
+    """When the notebook cannot run a cell now (the user's cells run, the tab closed, Stop),
+    insert_cell/edit_cell report the cell as written but not run instead of a bare error, so the
+    model does not write it again; edit_cell's params keep the old values."""
+    from ewald.llm.notebook_tools import NotebookAccess, NotRun
+    from ewald.notebook import Notebook
+
+    nb = Notebook.from_py(f"# %%\nfrom ewald import load\npipe = load({str(cu_file)!r})\n\n"
+                          "# %%\nfrom ewald.modifiers import CoordinationAnalysis\npipe.add(CoordinationAnalysis(cutoff=3.0))\n")
+    assert nb.run_all()
+
+    class Busy(NotebookAccess):
+        def run(self, nb, cell):
+            raise NotRun("not run: cells of this notebook are running already")
+
+    ts = Toolset(None, notebook=Busy(nb, can_run=True))
+    n = len(nb.cells)
+    r = ts.call("insert_cell", {"source": "x = 1"})
+    assert not r.is_error and "written but not run" in r.content["note"] and len(nb.cells) == n + 1
+    r = ts.call("edit_cell", {"index": 1, "params": {"cutoff": 3.2}})
+    assert r.is_error and "parameters not changed" in r.content
+    assert "cutoff=3.0" in nb.cells[1].source
+
+
 def test_export_file_makes_folders_only_in_its_cell(cu_file, tmp_path):
     """export_file's missing folders are made by the cell it runs (io.export_file), so a call
     refused before that leaves nothing on disk."""

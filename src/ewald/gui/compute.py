@@ -109,6 +109,7 @@ class ComputeRunner(QtCore.QObject):
         if self._current is not None:
             self._current.cancel.set()
             self._current = None
+        self._set_busy(False)   # the cancelled job is dropped on arrival: nothing is computing for us now
 
     def wait(self, timeout: float | None = None) -> bool:
         """Block until the worker is idle (tests, closing the window); True if it is."""
