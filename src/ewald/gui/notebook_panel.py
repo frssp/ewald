@@ -482,29 +482,47 @@ class NotebookView(QtWidgets.QWidget):
     def current(self, cell):
         self._current = self.anchor = cell   # a new current cell drops a multi-cell selection
 
-    def rebuild(self):
-        """Recreate every cell widget (after cells were added, removed or moved)."""
+    def rebuild(self, fresh: bool = False):
+        """Make the cell widgets match the notebook's cells (after cells were added, removed,
+        moved or replaced). A widget that still shows its cell (:meth:`CellWidget.fits`) is
+        kept, with its plots: building every widget again took most of a second for a notebook
+        with a few plots, on every new cell, undo and cell the AI wrote. ``fresh`` builds all
+        of them anew."""
         keep, anchor = self.current, self.anchor
         focused = self._park_focus()
-        for w in self.widgets:
-            w.setParent(None)
-            w.deleteLater()
-        self.widgets = []
-        while self.cells_layout.count():
-            item = self.cells_layout.takeAt(0)
-            if item.widget() is not None and item.widget() is not self.add_bar:
-                item.widget().deleteLater()
+        old = {} if fresh else {id(w.cell): w for w in self.widgets}
+        kept = set()
+        widgets = []
         for cell in self.notebook.cells:
-            w = CellWidget(self.notebook, cell)
-            w.runRequested.connect(self.run)
-            w.selected.connect(self.select)
-            w.edited.connect(self._step_edited)
-            w.actionRequested.connect(self._cell_action)
-            w.plotCreated.connect(self.plotCreated.emit)
+            w = old.get(id(cell))
+            if w is not None and id(w) not in kept and w.fits(cell):
+                kept.add(id(w))
+                if w.content.isHidden() != bool(cell.collapsed):
+                    w.set_collapsed(cell.collapsed)
+            else:
+                w = None
+            widgets.append(w)
+        for w in self.widgets:
+            if id(w) not in kept:
+                w.setParent(None)
+                w.deleteLater()
+        while self.cells_layout.count():   # the stretch and every widget, kept ones to go back in order
+            self.cells_layout.takeAt(0)
+        self.widgets = []
+        for cell, w in zip(self.notebook.cells, widgets):
+            new = w is None
+            if new:
+                w = CellWidget(self.notebook, cell)
+                w.runRequested.connect(self.run)
+                w.selected.connect(self.select)
+                w.edited.connect(self._step_edited)
+                w.actionRequested.connect(self._cell_action)
+                w.plotCreated.connect(self.plotCreated.emit)
             self.widgets.append(w)
             self.cells_layout.addWidget(w)
-            for p in w.panels():
-                self.plotCreated.emit(p)
+            if new:
+                for p in w.panels():
+                    self.plotCreated.emit(p)
         self.cells_layout.addWidget(self.add_bar)
         # the spare height goes below the cells, not into them: a cell's gutter stretch makes it
         # count as vertically expanding, so a plain addStretch() would share the space with it

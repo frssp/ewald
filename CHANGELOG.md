@@ -81,6 +81,9 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- Notebook edits are immediate: adding, deleting, moving a cell, undo and cells the AI writes
+  keep the widgets and plots of the cells that did not change instead of building all of them
+  again (a new cell in the tutorial notebook with four plots: 0.75 s, now 0.01 s) (#150).
 - Analyses over a whole trajectory are faster: XDATCAR and OUTCAR atom tables go through the
   compiled parser, `MeanSquaredDisplacement` computes its total, per-type, per-axis and
   per-particle values in one pass on every core, and steps added one after the other (`msd`,
