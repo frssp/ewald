@@ -50,6 +50,9 @@ def test_the_queries_of_the_review():
     # 평균 is "average", not the "mean" of MeanSquaredDisplacement
     ("프레임 평균", "TimeAveraging"), ("평균 구조", "TimeAveraging"), ("평균제곱변위", "MeanSquaredDisplacement"),
     ("평균 배위수", "CoordinationAnalysis"),
+    # a movie is not a picture, and a picture is not a movie
+    ("render a movie", "render_animation"), ("make a movie of the trajectory", "render_animation"),
+    ("궤적 동영상 만들기", "render_animation"), ("render the structure", "snapshot"), ("save a picture", "snapshot"),
 ])
 def test_a_synonym_does_not_claim_the_neighbouring_question(query, first):
     assert found(query)[0] == first

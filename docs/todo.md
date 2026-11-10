@@ -100,8 +100,23 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   Jupyter stores it as the cell's `scrolled` metadata in `.ipynb` (read and write it once cells
   keep metadata), and so is a hidden output (Jupyter's `collapsed`).
 - Library API, rest of the audit: frame selection when loading (`load(path, frames=...)` like ASE's
-  `index=":"`) and reader keyword errors that name `load()` instead of the reader class; internal
-  state (`Color.rule`) out of `data.attributes`; `data.tables` values as `verbs.Table`.
+  `index=":"`); internal state (`Color.rule`) out of `data.attributes`; `data.tables` values as
+  `verbs.Table` (a column missing from a table a step wrote as a plain dict is still a bare
+  KeyError).
+- Library design review (D102), the four design questions the owner decides one at a time:
+  output names of steps (two `CoordinationAnalysis` overwrite each other, CNA and PTM share
+  "Structure Type", `pipe.add` lets the later step win and verbs the earlier, attribute prefixes
+  differ); units (`msd(pipe)` without `time_per_frame` reports D per frame under a `Time` column,
+  LAMMPS readers convert no units); a step that returns `DataCollection.from_ase(...)` loses
+  attributes and tables (a `data.with_structure(...)`); API stability (no DeprecationWarning
+  anywhere, the `.py` notebook header has no ewald version, the public surface is only `__all__`).
+- Left from the nine defects of D102: `bonds=True` means a cutoff to `render()` and automatic bonds
+  to `view()`; expressions do not take OVITO's `!` for not, and `a | 1.5` still gives Python's
+  message; a value a Python step reads through its own module's attribute (`mymodule.SCALE`) or
+  `globals()[...]` is not part of the step's fingerprint, and a large writeable array is read at
+  every `compute` (it warns; keeping the fingerprint for the length of a movie export would
+  help); the Korean glossary of `search_api` covers the terms of the eval tasks, not the field;
+  `load(path, index=0)` gives ASE's raw "multiple values for keyword argument".
 - Activity bar: buttons cannot be reordered by dragging yet (hiding and the … overflow menu work).
 - Menus after the 2026-10-23 review: right-click menus still mix entries with and without icons;
   context menus have no mnemonics; Edit has no Find in notebook; the Keyboard shortcuts window lists
@@ -822,6 +837,11 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- Memory guard (D102): `python -c "import ewald.backend as b; print(b.format_bytes(b.free_memory()))"`
+  on the owner's Windows PC and on a Mac should print about what Task Manager / Activity Monitor
+  show as available (Windows reads `GlobalMemoryStatusEx` through ctypes, macOS `os.sysconf`; only
+  the Linux `/proc` and cgroup path ran in the container). Then `rdf(pipe, cutoff=200)` on a
+  100k-atom file should raise MemoryError at once instead of filling the memory.
 - Remote files reconnecting (#147): open a trajectory on an SSH host, sleep the laptop (or switch
   Wi-Fi), wake it and play on; the next frames should load without opening the file again.
 - `ewald://` links (Links from web pages, `ewald/deeplink.py`): a click in Chrome and Edge on the
@@ -1047,6 +1067,9 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Code health
 
+- Tests that depend on their order: `tests/test_notebook.py::test_matplotlib_figures_and_images_become_image_outputs`
+  fails after `tests/test_results.py`, which leaves a matplotlib figure open (the default
+  alphabetical order runs them the other way round, so the suite passes).
 Portability ([Windows, macOS and Linux](developer/portability.md), audit of 2026-10-21):
 
 - Frozen apps have no Python at `sys.executable` (it is `ewald.exe` / the app binary): the Forge

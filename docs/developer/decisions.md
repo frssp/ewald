@@ -1332,6 +1332,26 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
 - **Alternatives:** all three; the batch reader alone; none.
 - **Landed:** public PR #151 (batch reader), public PR #152 (plot blitting).
 
+### D102. Library design review: the nine small defects first, the design questions one by one (2026-11-10)
+
+- **Decision:** a design review of the library looked at three things: whether an AI can use it
+  well, how much freedom it gives, and the angles nobody had asked about (whether cached results
+  can be wrong, units, the state a failure leaves behind, API stability). It found nine small
+  defects (A1-A9: a stale all-frames result below a Python step, `render()` ignoring unknown
+  keywords, a misleading `load()` hint, a failed verb leaving its step in the pipeline, frame
+  indices that wrap, mistakes with steps that surface late, bare KeyErrors and expression errors,
+  an API search that misses plain words, a 24 GiB allocation for a cutoff beyond the cell) and
+  four design questions (B1-B4: output names of steps, units, `data.with_structure`, API
+  stability). The nine defects are fixed first, in one pull request; the four design questions
+  are put to the owner one at a time afterwards.
+- **Why:** the owner asked for the review ("ewald lib 설계 [...] 재검토. AI가 쓰기 좋은지,
+  자유도가 높은지, 그리고 내가 모르지만 검토해야되는 관점에서") and chose "작은 수정 A1-A9 먼저"
+  from the options, as recommended: the A items are defects that need no decision, the B items
+  need names and policies picked.
+- **Alternatives:** all of A together with design drafts for B; only A1-A3 (the wrong results);
+  the report alone, with the items recorded in docs/todo.md.
+- **Landed:** public PR #NNN.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

@@ -54,7 +54,8 @@ pipe = load("run.npz", format="npz-trajectory")                 # format= also n
 ## Data model
 
 - `pipe.num_frames`, `pipe.compute(i)` (also `pipe[i]`, `pipe[a:b]`, `for data in pipe`; negative from the end, out of
-  range raises IndexError), `pipe.frames(start, stop, step)`, `pipe.source_frame(i)` (unmodified input).
+  range raises IndexError), `pipe.frames(start, stop, step)` (counted as a slice: `pipe.frames(-2)` is the last two,
+  a `stop` past the end ends at the last frame), `pipe.source_frame(i)` (unmodified input, same indices as `compute`).
 - `pipe.refresh()` picks up frames a running job appended since the file was opened (dump, XDATCAR, OUTCAR,
   extxyz; local or SSH) and returns how many were added; then `pipe.compute(-1)` is the newest frame.
 - `data = pipe.compute(i)` is a `DataCollection`: `data.count`, `data.positions` (N x 3, Angstrom),
@@ -84,7 +85,8 @@ pipe = load("run.npz", format="npz-trajectory")                 # format= also n
 
 OVITO syntax evaluated with numpy: `Position.Z`, `ParticleType`, `ParticleIdentifier`, `Coordination`, `Velocity.X`,
 globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, not `and`/`or`/`not`:
-`(Position.Z > 10) & (ParticleType == "Cu")`. Powers: `**` or OVITO's `^` (`Force.X^2`). OVITO's conditional
+`(Position.Z > 10) & (ParticleType == "Cu")`; OVITO's `&&` and `||` work too and need no parentheses
+(`Position.Z > 10 && ParticleType == "Cu"`). Equality is `==`. Powers: `**` or OVITO's `^` (`Force.X^2`). OVITO's conditional
 `Coordination < 12 ? Position.Z : 0` works (np.where). Functions: `abs sqrt exp log sin cos min max`, numpy ufuncs and array functions such as `np.where`, `np.isin`,
 `np.linalg.norm` (no attribute access beyond those, no file or module access). A property's name drops the spaces and
 other characters a name cannot hold: "Particle Type" is `ParticleType`, "SqDisp (Average)" is `SqDispAverage`; the full
@@ -132,7 +134,8 @@ also inside one LAMMPS dump a restarted run appended to (`pipe.source.restarts`)
 back as a restart, `join="files"` joins only between files, `join="concat"` keeps every frame);
 `pipe.add(m)` appends a modifier (and works as `@pipe.add` on `def f(frame, data)`); `@all_frames` on
 `def f(frames, data)` makes a step that reads every frame once (`frames[k]`, `len(frames)`, slices) and whose
-result (tables, attributes, properties) is reused at every frame; `@each_frame` marks the per-frame default. In a
+result (tables, attributes, properties) is reused at every frame, until the step, a step above or a variable one of
+them reads changes; `@each_frame` marks the per-frame default. A step function returns nothing or a DataCollection. In a
 notebook a cell headed `# %% [each frame]` (or `# %% name [all frames]`) is such a step itself: its code is the body,
 with `frame`/`frames` and `data` given. A verb (`rdf`, `msd`, `cna`, ...)
 adds its analysis step and returns its table (which one: "Functions" below). The `Table` is a dict of columns (`pandas.DataFrame(table)` works) with `.x`, `.plot()` and, for
@@ -207,7 +210,8 @@ compare side by side (steps matched by name, `align="position"` by order; `label
 Every display setting of the structure view belongs to the pipeline: `view(pipe, **settings)` (`from ewald import view`)
 sets some and returns `pipe.view`; `pipe.render()`, `snapshot(pipe)`, the Jupyter picture and the GUI viewport draw with
 it, and the GUI writes viewport edits back into the notebook's `view(pipe, ...)` cell. Settings not named keep their value;
-`None` resets one. `View.help()` lists them all. Every color here and in steps (`AssignColor`, `Vectors`, `paint`, ...)
+`None` resets one. `View.help()` lists them all. `render()`, `pipe.render()` and `snapshot()` take the view's names for
+one picture as well (`cell=False`, `colors=`, `radii=`, ...); a keyword they do not know raises TypeError on every renderer. Every color here and in steps (`AssignColor`, `Vectors`, `paint`, ...)
 takes any form of `ewald.colors`: `'red'`, `'tab:blue'`, `'#ff8800'`, `'#f80'`, `'rgb(255, 128, 0)'`, `(1, 0.5, 0)` or
 `(255, 128, 0)`; a bad one fails at once:
 
@@ -398,6 +402,7 @@ FUNCTIONS = [
                "xrd", "bond_angles", "cna", "ptm", "voronoi", "clusters", "run_info", "check_run", "load_runs",
                "arrhenius", "sensitivity", "workflow_table")),
     ("ewald.views", ("show", "snapshot", "figure")),
+    ("ewald.movie", ("render_animation",)),
     ("ewald.paint", ("paint", "hide", "isolate", "fade", "resize")),
 ]
 
@@ -476,12 +481,17 @@ def recipes_reference() -> str:
     return "\n".join(lines)
 
 
+def _function_modules() -> dict:
+    """The modules of :data:`FUNCTIONS` by name (no import by name)."""
+    import ewald
+    from .. import movie, paint, views
+
+    return {"ewald": ewald, "ewald.views": views, "ewald.movie": movie, "ewald.paint": paint}
+
+
 def function_reference() -> str:
     """Exact signatures of the notebook functions, read from the code."""
-    import ewald
-    from .. import paint, views
-
-    modules = {"ewald": ewald, "ewald.views": views, "ewald.paint": paint}   # no import by name
+    modules = _function_modules()
     lines = ["## Functions", ""]
     for module, names in FUNCTIONS:
         mod = modules[module]
@@ -720,8 +730,9 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
     "workflow_table": ("workflow steps", "summary table", "compare workflows", "compare calculations"),
     "show": ("plot", "graph", "chart", "curve", "plot table", "draw", "save plot", "save figure", "save pdf",
              "save png", "side by side", "compare frames"),
-    "snapshot": ("render", "screenshot", "render image", "save image", "save picture", "save png", "ray tracing",
-                 "publication image"),
+    "snapshot": ("render", "screenshot", "render image", "render structure", "render frame", "save image",
+                 "save picture", "save png", "ray tracing", "publication image"),
+    "render_animation": ("movie", "make movie", "video", "animation", "animate", "gif", "mp4"),
     "figure": ("matplotlib", "savefig", "save figure", "save pdf", "customize plot", "annotate plot",
                "publication plot", "figure size"),
     "paint": ("color atoms", "highlight", "mark atoms", "color by condition", "color selected atoms", "recolor"),
@@ -788,7 +799,7 @@ GLOSSARY: dict[str, str] = {
     "속도자기상관": "velocity autocorrelation", "자기상관": "autocorrelation", "속도": "velocity",
     "이온전도도": "ionic conductivity", "전도도": "conductivity", "호핑": "hopping hop", "도약": "jump", "점프": "jump",
     "체류시간": "residence time", "점유": "occupancy", "자리": "site", "시계열": "time series", "시간평균": "time average",
-    "평균": "average", "활성화에너지": "activation energy", "에너지장벽": "energy barrier", "장벽": "barrier",
+    "평균": "average", "동영상": "movie", "애니메이션": "animation", "활성화에너지": "activation energy", "에너지장벽": "energy barrier", "장벽": "barrier",
     "아레니우스": "arrhenius", "포논": "phonon", "진동": "vibration", "반호브": "van hove", "비가우시안": "non-gaussian",
     "중간산란함수": "intermediate scattering function", "수렴": "convergence", "평형": "equilibration",
     "온도": "temperature", "에너지": "energy",
@@ -932,12 +943,11 @@ def search_reference(query: str, limit: int = 6, with_plugins: bool = False) -> 
 
 def _documented(name: str):
     """The modifier (core or plugin) or notebook function called ``name``, or None."""
-    from .. import modifiers, paint, plugins, views
-    import ewald
+    from .. import modifiers, plugins
 
     for module, names in FUNCTIONS:
         if name in names:
-            return getattr({"ewald": ewald, "ewald.views": views, "ewald.paint": paint}[module], name)
+            return getattr(_function_modules()[module], name)
     if name in modifiers.__all__:
         return getattr(modifiers, name)
     plugin = plugins.modifiers().get(name)

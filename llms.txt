@@ -41,7 +41,8 @@ pipe = load("run.npz", format="npz-trajectory")                 # format= also n
 ## Data model
 
 - `pipe.num_frames`, `pipe.compute(i)` (also `pipe[i]`, `pipe[a:b]`, `for data in pipe`; negative from the end, out of
-  range raises IndexError), `pipe.frames(start, stop, step)`, `pipe.source_frame(i)` (unmodified input).
+  range raises IndexError), `pipe.frames(start, stop, step)` (counted as a slice: `pipe.frames(-2)` is the last two,
+  a `stop` past the end ends at the last frame), `pipe.source_frame(i)` (unmodified input, same indices as `compute`).
 - `pipe.refresh()` picks up frames a running job appended since the file was opened (dump, XDATCAR, OUTCAR,
   extxyz; local or SSH) and returns how many were added; then `pipe.compute(-1)` is the newest frame.
 - `data = pipe.compute(i)` is a `DataCollection`: `data.count`, `data.positions` (N x 3, Angstrom),
@@ -71,7 +72,8 @@ pipe = load("run.npz", format="npz-trajectory")                 # format= also n
 
 OVITO syntax evaluated with numpy: `Position.Z`, `ParticleType`, `ParticleIdentifier`, `Coordination`, `Velocity.X`,
 globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, not `and`/`or`/`not`:
-`(Position.Z > 10) & (ParticleType == "Cu")`. Powers: `**` or OVITO's `^` (`Force.X^2`). OVITO's conditional
+`(Position.Z > 10) & (ParticleType == "Cu")`; OVITO's `&&` and `||` work too and need no parentheses
+(`Position.Z > 10 && ParticleType == "Cu"`). Equality is `==`. Powers: `**` or OVITO's `^` (`Force.X^2`). OVITO's conditional
 `Coordination < 12 ? Position.Z : 0` works (np.where). Functions: `abs sqrt exp log sin cos min max`, numpy ufuncs and array functions such as `np.where`, `np.isin`,
 `np.linalg.norm` (no attribute access beyond those, no file or module access). A property's name drops the spaces and
 other characters a name cannot hold: "Particle Type" is `ParticleType`, "SqDisp (Average)" is `SqDispAverage`; the full
@@ -119,7 +121,8 @@ also inside one LAMMPS dump a restarted run appended to (`pipe.source.restarts`)
 back as a restart, `join="files"` joins only between files, `join="concat"` keeps every frame);
 `pipe.add(m)` appends a modifier (and works as `@pipe.add` on `def f(frame, data)`); `@all_frames` on
 `def f(frames, data)` makes a step that reads every frame once (`frames[k]`, `len(frames)`, slices) and whose
-result (tables, attributes, properties) is reused at every frame; `@each_frame` marks the per-frame default. In a
+result (tables, attributes, properties) is reused at every frame, until the step, a step above or a variable one of
+them reads changes; `@each_frame` marks the per-frame default. A step function returns nothing or a DataCollection. In a
 notebook a cell headed `# %% [each frame]` (or `# %% name [all frames]`) is such a step itself: its code is the body,
 with `frame`/`frames` and `data` given. A verb (`rdf`, `msd`, `cna`, ...)
 adds its analysis step and returns its table (which one: "Functions" below). The `Table` is a dict of columns (`pandas.DataFrame(table)` works) with `.x`, `.plot()` and, for
@@ -194,7 +197,8 @@ compare side by side (steps matched by name, `align="position"` by order; `label
 Every display setting of the structure view belongs to the pipeline: `view(pipe, **settings)` (`from ewald import view`)
 sets some and returns `pipe.view`; `pipe.render()`, `snapshot(pipe)`, the Jupyter picture and the GUI viewport draw with
 it, and the GUI writes viewport edits back into the notebook's `view(pipe, ...)` cell. Settings not named keep their value;
-`None` resets one. `View.help()` lists them all. Every color here and in steps (`AssignColor`, `Vectors`, `paint`, ...)
+`None` resets one. `View.help()` lists them all. `render()`, `pipe.render()` and `snapshot()` take the view's names for
+one picture as well (`cell=False`, `colors=`, `radii=`, ...); a keyword they do not know raises TypeError on every renderer. Every color here and in steps (`AssignColor`, `Vectors`, `paint`, ...)
 takes any form of `ewald.colors`: `'red'`, `'tab:blue'`, `'#ff8800'`, `'#f80'`, `'rgb(255, 128, 0)'`, `(1, 0.5, 0)` or
 `(255, 128, 0)`; a bad one fails at once:
 
@@ -413,6 +417,10 @@ print(int((data["Moved"] >= 0.3).sum()), "atoms moved more than 0.3 A by the las
 - `show(source, table: str | None = None, y: str | list | None = None, histogram: str | None = None, frame: int | list = 0, bins: int = 50, xlim: tuple | None = None, ylim: tuple | None = None, layout: str | None = None, panel: bool | None = None, save=None)`: Show `source` (a Pipeline or a DataCollection) at `frame`.
 - `snapshot(source, frame: int | None = None, tab: str | None = None, **kwargs) -> Snapshot`: A picture of `source` (a Pipeline or DataCollection) at `frame` (default: the view's) drawn with the pipeline's `view` settings (or those of its view tab `tab`); `camera=`, `size=` and the other keywords of `render` override them.
 - `figure(source, table: str | None = None, y: str | list | None = None, histogram: str | None = None, frame: int | list = 0, bins: int = 50, size: str | tuple | None = None, title: bool = False, xlim: tuple | None = None, ylim: tuple | None = None, layout: str | None = None)`: The matplotlib Figure of a view (what `show` draws), without pyplot, in the publication style of `plotstyle` (`size`: a column width name or inches; `xlim`/`ylim`: the range shown, e.g.
+
+`from ewald.movie import render_animation`:
+
+- `render_animation(pipeline, filename, *, frames=None, fps: float = 10, device=None, text=None, time_per_frame: float | None = None, progress=None, **kwargs)`: Render frames of a pipeline into `filename` and return the number of frames written.
 
 `from ewald.paint import paint, hide, isolate, fade, resize`:
 

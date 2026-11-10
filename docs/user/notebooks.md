@@ -170,7 +170,8 @@ pipe.add(height_series)
 `frames` holds the data of every frame as it enters the step (all the steps above applied),
 read one at a time: `len(frames)`, `frames[k]`, `frames[::10]`, `for d in frames`. What the
 function sets on `data` (tables, attributes, per-particle properties) is kept and given to
-every frame, until a step above it or the file changes. `@each_frame` is what a plain function
+every frame, until a step above it, a variable one of them reads or the file changes
+([how that is told](scripting.md#function-modifiers)). `@each_frame` is what a plain function
 step does anyway; it says so in the notebook. Plots whose data did not change between frames
 (an `all_frames` table, MSD) are not redrawn during playback; time series move their frame
 marker.
