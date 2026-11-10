@@ -281,6 +281,13 @@ on other drivers. Keep scenes at 200x150 so the references stay small.
   finished items, add what is left open, keep "In progress" current. features.md is generated,
   never hand-edited; `tests/test_docs.py` and `tests/test_gui.py` fail when it is stale. todo.md
   is the only TODO list; docs/ROADMAP.md keeps milestones and decisions.
+- The public API (names in `ewald.__all__`, modifier constructors, `ewald.plugin_api`, `render()`
+  keywords, view settings) is pinned by `tests/data/api/current.txt`: after changing a signature or
+  adding a public name run `python -m ewald api --signatures > tests/data/api/current.txt`. What
+  breaks code written for the last release (`released.txt`: a removed name or parameter, a changed
+  default, a moved positional parameter) must be named in CHANGELOG.md `[Unreleased]`, function
+  and parameter, or `tests/test_api_stability.py` fails; prefer keeping the old spelling working
+  (new parameters last). docs/developer/api-stability.md has the rules (D104).
 - `llms.txt` is a snapshot of `ewald api` (`llm/reference.py`: the `GUIDE` text plus every modifier
   signature and docstring from `ewald.modifiers.__all__`). After adding, renaming or changing the
   signature/docstring of a modifier, or editing `GUIDE`, run `python -m ewald api > llms.txt` and

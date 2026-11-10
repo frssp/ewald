@@ -1,6 +1,9 @@
+import json
+
 import numpy as np
 import pytest
 
+import ewald
 from ewald import import_file
 from ewald import modifiers as mods
 from ewald.notebook import Cell, Notebook, new_notebook, step_call, step_source
@@ -437,7 +440,8 @@ def test_py_header_keeps_kernel_view_state_and_data_links(cu_file, tmp_path):
     nb.metadata["ewald"] = {"kernel": {"name": None, "python": "/env/bin/python", "display_name": "Python (env)"}}
     nb.save(tmp_path / "a.py")
     text = (tmp_path / "a.py").read_text()
-    assert text.startswith("# ---\n# jupyter:\n#   ewald:\n#     kernel: {") and '"path": "cu.xyz"' in text
+    assert text.startswith(f'# ---\n# jupyter:\n#   ewald:\n#     version: "{ewald.__version__}"\n#     kernel: {{')
+    assert '"path": "cu.xyz"' in text
     back = Notebook.load(tmp_path / "a.py")
     assert back.state == nb.state and back.metadata["ewald"]["kernel"]["python"] == "/env/bin/python"
     assert back.links[0]["path"] == "cu.xyz" and back.warnings == [] and len(back.cells) == 1
@@ -455,11 +459,54 @@ def test_py_header_keeps_jupytext_lines():
     text = ("# ---\n# jupyter:\n#   jupytext:\n#     formats: ipynb,py:percent\n#   kernelspec:\n"
             "#     name: python3\n# ---\n\n# %%\nx = 1\n")
     nb = Notebook.from_py(text)
-    assert [c.source for c in nb.cells] == ["x = 1"] and nb.to_py(header=True) == text
+    version = f'#   ewald:\n#     version: "{ewald.__version__}"\n'
+    assert [c.source for c in nb.cells] == ["x = 1"]
+    assert nb.to_py(header=True) == text.replace("# jupyter:\n", "# jupyter:\n" + version)   # jupytext's lines stay
     nb.state = {"frame": 2}
     again = Notebook.from_py(nb.to_py(header=True))
     assert again.state == {"frame": 2} and again.to_py(header=True) == nb.to_py(header=True)
-    assert Notebook.from_py("# %%\nx = 1\n").to_py(header=True) == "# %%\nx = 1\n"
+    plain = Notebook.from_py("# %%\nx = 1\n")
+    assert plain.to_py() == "# %%\nx = 1\n"                       # the code itself has no header
+    assert plain.to_py(header=True) == "# ---\n# jupyter:\n" + version + "# ---\n\n# %%\nx = 1\n"
+
+
+def test_saved_notebooks_say_which_ewald_wrote_them(tmp_path):
+    """.py, .ipynb and .ewd all record the version; a notebook from a newer ewald says so when it opens."""
+    nb = Notebook.from_py("# %%\nx = 1\n")
+    assert nb.ewald_version is None and nb.warnings == []
+    for ext in (".py", ".ipynb", ".ewd"):
+        nb.save(tmp_path / f"a{ext}")
+        back = Notebook.load(tmp_path / f"a{ext}")
+        assert back.ewald_version == ewald.__version__ and back.warnings == [], ext
+        assert [c.source for c in back.cells] == ["x = 1"]
+    newer = (tmp_path / "a.py").read_text(encoding="utf-8").replace(f'version: "{ewald.__version__}"', 'version: "99.1.0"')
+    (tmp_path / "new.py").write_text(newer, encoding="utf-8", newline="\n")
+    back = Notebook.load(tmp_path / "new.py")
+    assert back.ewald_version == "99.1.0"
+    assert back.warnings == [f"saved with ewald 99.1.0, which is newer than this ewald {ewald.__version__}: update ewald if a cell fails"]
+    back.save(tmp_path / "again.py")                                 # saving here writes this version
+    assert Notebook.load(tmp_path / "again.py").ewald_version == ewald.__version__
+    doc = json.loads((tmp_path / "a.ipynb").read_text(encoding="utf-8"))
+    doc["metadata"]["ewald"]["version"] = "99.1.0"
+    (tmp_path / "new.ipynb").write_text(json.dumps(doc), encoding="utf-8", newline="\n")
+    assert len(Notebook.load(tmp_path / "new.ipynb").warnings) == 1
+    older = newer.replace("99.1.0", "0.0.1")
+    (tmp_path / "old.py").write_text(older, encoding="utf-8", newline="\n")
+    assert Notebook.load(tmp_path / "old.py").warnings == [] and Notebook.load(tmp_path / "old.py").ewald_version == "0.0.1"
+
+
+def test_a_version_from_a_file_is_only_taken_when_it_reads_as_one(tmp_path):
+    """The header is text from somewhere else: what is not a version is neither kept nor shown."""
+    from ewald import notebook_io
+
+    for bad in ('"<b>1.0</b>"', '"99.0.0 update now: pip install evil"', "[9, 9]", '"' + "9" * 40 + '"', '""'):
+        (tmp_path / "x.py").write_text(f"# ---\n# jupyter:\n#   ewald:\n#     version: {bad}\n# ---\n\n# %%\nx = 1\n",
+                                       encoding="utf-8", newline="\n")
+        nb = Notebook.load(tmp_path / "x.py")
+        assert nb.ewald_version is None and nb.warnings == [], bad
+    assert notebook_io.is_version("0.3.0") and notebook_io.is_version("1.0.0rc1") and not notebook_io.is_version(None)
+    assert notebook_io.version_warnings("0.2") == notebook_io.version_warnings(ewald.__version__) == []
+    assert notebook_io.version_warnings("99") and notebook_io.version_warnings("99.0.0rc1")
 
 
 def test_new_notebook_has_imports():

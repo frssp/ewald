@@ -103,13 +103,23 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   `index=":"`); internal state (`Color.rule`) out of `data.attributes`; `data.tables` values as
   `verbs.Table` (a column missing from a table a step wrote as a plain dict is still a bare
   KeyError).
-- Library design review (D102), the four design questions the owner decides one at a time:
-  output names of steps (two `CoordinationAnalysis` overwrite each other, CNA and PTM share
-  "Structure Type", `pipe.add` lets the later step win and verbs the earlier, attribute prefixes
-  differ); units (`msd(pipe)` without `time_per_frame` reports D per frame under a `Time` column,
-  LAMMPS readers convert no units); a step that returns `DataCollection.from_ase(...)` loses
-  attributes and tables (a `data.with_structure(...)`); API stability (no DeprecationWarning
-  anywhere, the `.py` notebook header has no ewald version, the public surface is only `__all__`).
+- Library design review (D102), the two design questions still to build (the owner picked on
+  2026-11-10): output names of steps, as an `output=` argument plus a warning when a step
+  replaces what an earlier one wrote (two `CoordinationAnalysis` overwrite each other, CNA and
+  PTM share "Structure Type", `pipe.add` lets the later step win and verbs the earlier,
+  attribute prefixes differ); units as labels only, numbers unchanged (`msd(pipe)` without
+  `time_per_frame` reports D per frame under a `Time` column, LAMMPS readers know no unit
+  system).
+- API stability, left after D104: old names that still work (`XxxModifier`, `Modifier.ALIASES`)
+  give no DeprecationWarning (decide at the 1.0 cleanup); the snapshot does not hold the names a
+  step writes into a frame, `settings.json` option names or the public attributes of classes
+  outside `ewald.__all__` and `ewald.plugin_api`; `ewald.load` shows as `(path, *args, **kwargs)`
+  because it is a wrapper; whether the snapshot text is identical on Windows, macOS and Python
+  3.10-3.13 is checked only when CI runs there.
+- `data.with_structure`, left after D103: a `to_ase()` round trip does not carry text
+  properties or types that are no element symbols when the atom count changes (ASE has no place
+  for them), so they are dropped with the warning; surfaces (polyhedra) are kept as they were
+  even when the atoms moved.
 - Left from the nine defects of D102: `bonds=True` means a cutoff to `render()` and automatic bonds
   to `view()`; expressions do not take OVITO's `!` for not, and `a | 1.5` still gives Python's
   message; a value a Python step reads through its own module's attribute (`mymodule.SCALE`) or

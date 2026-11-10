@@ -41,6 +41,12 @@ user would notice add a line there (what changed, in user terms, with the PR num
 
 1. On a branch, move the `[Unreleased]` lines into a new `## [X.Y.Z] - YYYY-MM-DD` section, add the
    `[X.Y.Z]:` link at the bottom, and set `__version__ = "X.Y.Z"`.
+   Then write the API of the release into both snapshots ([API stability](api-stability.md)):
+
+   ```bash
+   python -m ewald api --signatures > tests/data/api/current.txt
+   python -m ewald api --signatures > tests/data/api/released.txt
+   ```
 2. Run the release check, which needs `pip install build twine` and a C++ compiler:
 
    ```bash

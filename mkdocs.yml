@@ -100,6 +100,7 @@ nav:
       - AI eval results: developer/ai-eval.md
       - Windows, macOS and Linux: developer/portability.md
       - Writing docs: developer/docs.md
+      - API stability: developer/api-stability.md
       - Releases: developer/release.md
       - Windows release: developer/windows-release.md
       - macOS release: developer/macos-release.md

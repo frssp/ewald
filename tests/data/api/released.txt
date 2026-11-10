@@ -1,0 +1,444 @@
+# The public API of ewald 0.2.0, one name per line (python -m ewald api --signatures).
+# Made from the v0.2.0 tag. That release had no list of render() keywords, so none are pinned here.
+ewald.AllFramesModifier(function, **params)
+ewald.AllFramesModifier.ALIASES
+ewald.AllFramesModifier.cacheable = None
+ewald.AllFramesModifier.enabled = True
+ewald.AllFramesModifier.last_output = None
+ewald.AllFramesModifier.last_time = None
+ewald.AllFramesModifier.modify(data, ctx)
+ewald.AllFramesModifier.name
+ewald.AllFramesModifier.parameters()
+ewald.AllFramesModifier.status = None
+ewald.Cell(matrix=<factory>, origin=<factory>, pbc=<factory>)
+ewald.Cell.copy()
+ewald.Cell.is_valid
+ewald.Cell.matrix
+ewald.Cell.minimum_image(vectors)
+ewald.Cell.origin
+ewald.Cell.pbc
+ewald.Cell.perpendicular_widths()
+ewald.Cell.to_cartesian(fractional)
+ewald.Cell.to_fractional(positions)
+ewald.Cell.volume
+ewald.Cell.wrap(positions)
+ewald.ComputeCancelled()
+ewald.ComputeContext(frame, pipeline, backend, cache=<factory>, modifier_index=None, cancel=None)
+ewald.ComputeContext.check_cancel()
+ewald.ComputeContext.input_frame(frame)
+ewald.ComputeContext.source_frame(frame)
+ewald.ComputeContext.upstream_key()
+ewald.ComputeContext.xp
+ewald.DataCollection(positions=None, types=None, cell=None)
+ewald.DataCollection.apply(modifier)
+ewald.DataCollection.attributes
+ewald.DataCollection.bonds
+ewald.DataCollection.cell
+ewald.DataCollection.copy()
+ewald.DataCollection.count
+ewald.DataCollection.delete(mask)
+ewald.DataCollection.freeze()
+ewald.DataCollection.from_ase(atoms)
+ewald.DataCollection.from_pymatgen(structure)
+ewald.DataCollection.grids
+ewald.DataCollection.nbytes
+ewald.DataCollection.particles
+ewald.DataCollection.positions
+ewald.DataCollection.selection
+ewald.DataCollection.summary(max_values=6)
+ewald.DataCollection.surfaces
+ewald.DataCollection.tables
+ewald.DataCollection.take(index)
+ewald.DataCollection.to_ase()
+ewald.DataCollection.to_pymatgen()
+ewald.DataCollection.types
+ewald.DataCollection.vectors
+ewald.Frames(ctx, indices=None)
+ewald.Modifier()
+ewald.Modifier.ALIASES
+ewald.Modifier.cacheable = None
+ewald.Modifier.enabled = True
+ewald.Modifier.last_output = None
+ewald.Modifier.last_time = None
+ewald.Modifier.modify(data, ctx)
+ewald.Modifier.name
+ewald.Modifier.parameters()
+ewald.Modifier.status = None
+ewald.Pipeline(source, modifiers=(), device=None, cache_size=8, cache_memory=2147483648)
+ewald.Pipeline.add(*modifiers)
+ewald.Pipeline.cache_memory
+ewald.Pipeline.cache_outputs
+ewald.Pipeline.checkpoint_seconds = 0.02
+ewald.Pipeline.compute(frame=0, device=None, errors='raise', upto=None, cancel=None)
+ewald.Pipeline.device
+ewald.Pipeline.frames(start=0, stop=None, step=1, device=None)
+ewald.Pipeline.invalidate(first=0)
+ewald.Pipeline.modifiers
+ewald.Pipeline.num_frames
+ewald.Pipeline.refresh()
+ewald.Pipeline.render(filename=None, frame=None, tab=None, **kwargs)
+ewald.Pipeline.source
+ewald.Pipeline.source_frame(frame)
+ewald.Pipeline.to_ase(frames=None)
+ewald.Pipeline.view
+ewald.Pipeline.views
+ewald.PythonModifier(function, **params)
+ewald.PythonModifier.ALIASES
+ewald.PythonModifier.cacheable = None
+ewald.PythonModifier.enabled = True
+ewald.PythonModifier.last_output = None
+ewald.PythonModifier.last_time = None
+ewald.PythonModifier.modify(data, ctx)
+ewald.PythonModifier.name
+ewald.PythonModifier.parameters()
+ewald.PythonModifier.status = None
+ewald.StaticSource(frames)
+ewald.StaticSource.compute(frame)
+ewald.StaticSource.num_frames
+ewald.View(pipeline=None, **settings)
+ewald.View.changed()
+ewald.View.color(types, color)
+ewald.View.copy(pipeline=None)
+ewald.View.elements
+ewald.View.for_tab(base, tab, **settings)
+ewald.View.help()
+ewald.View.look(direction='iso', zoom=None)
+ewald.View.measure(*atoms, frame=None)
+ewald.View.measured(frame=None)
+ewald.View.radius(types, radius)
+ewald.View.render(filename=None, frame=None, **overrides)
+ewald.View.render_kwargs(data=None, frame=None)
+ewald.View.reset(*names)
+ewald.View.resolved()
+ewald.View.rotate(azimuth=0.0, elevation=0.0)
+ewald.View.settings()
+ewald.View.snapshot(frame=None, **overrides)
+ewald.View.source(pipeline_name='pipe')
+ewald.View.surface(name, **style)
+ewald.View.update(**settings)
+ewald.View.zoom_by(factor)
+ewald.all_frames(function)
+ewald.arrhenius(data, values=None, attribute='MeanSquaredDisplacement.diffusion_coefficient')
+ewald.bond_angles(pipe, bins=180, frame=0, **kwargs)
+ewald.check_run(pipe, close_contact=0.5)
+ewald.clusters(pipe, cutoff=3.2, frame=0, **kwargs)
+ewald.cna(pipe, mode='adaptive', frame=0, **kwargs)
+ewald.each_frame(function)
+ewald.export_file(source, path, format=None, frames=None, **kwargs)
+ewald.get_backend(device=None)
+ewald.gpu_available()
+ewald.import_file(path, format=None, **kwargs)
+ewald.load(path, *args, **kwargs)
+ewald.load_runs(paths, label=None, sort=True, **kwargs)
+ewald.msd(pipe, frame=0, time_per_frame=None, **kwargs)
+ewald.paint.fade(data, where, transparency=0.7)
+ewald.paint.hide(data, where)
+ewald.paint.isolate(data, where)
+ewald.paint.paint(data, where, color)
+ewald.paint.resize(data, where, factor)
+ewald.ptm(pipe, frame=0, **kwargs)
+ewald.rdf(pipe, cutoff=6.0, bins=200, partial=False, frame=0)
+ewald.run_info(source, refresh=False)
+ewald.show(source, table=None, y=None, histogram=None, frame=0, bins=50, xlim=None, ylim=None, panel=None, save=None)
+ewald.sq(pipe, q_max=10.0, bins=200, frame=0, **kwargs)
+ewald.vacf(pipe, frame=0, time_per_frame=None, **kwargs)
+ewald.verbs.Table(name, columns, pipe=None, frame=0, labels=None, attributes=None)
+ewald.verbs.Table.attributes
+ewald.verbs.Table.columns
+ewald.verbs.Table.counts
+ewald.verbs.Table.frame
+ewald.verbs.Table.labels
+ewald.verbs.Table.name
+ewald.verbs.Table.pipe
+ewald.verbs.Table.plot(y=None)
+ewald.verbs.Table.x
+ewald.view(pipe, tab=None, **settings)
+ewald.views.figure(source, table=None, y=None, histogram=None, frame=0, bins=50, size=None, title=False, xlim=None, ylim=None)
+ewald.views.show(source, table=None, y=None, histogram=None, frame=0, bins=50, xlim=None, ylim=None, panel=None, save=None)
+ewald.views.snapshot(source, frame=None, tab=None, **kwargs)
+ewald.voronoi(pipe, frame=0, **kwargs)
+ewald.workflow_table(*workflows, labels=None, columns=None, align='name')
+ewald.xrd(pipe, frame=0, **kwargs)
+ewald.modifiers.AcklandJones(types=None, color_by_type=True, only_selected=False)
+ewald.modifiers.AffineTransformation(matrix, transform_cell=True)
+ewald.modifiers.AssignColor(color=(0.3, 0.3, 1.0), keep_selection=False)
+ewald.modifiers.AtomicStrain(cutoff=3.0, reference_frame=0, frame_offset=None, output_deformation_gradients=False, output_strain_tensors=False, output_nonaffine_squared_displacements=False, output_rotations=False, output_stretch_tensors=False, select_invalid_particles=True, affine_mapping=None, minimum_image_convention=True)
+ewald.modifiers.BondAngleDistribution(bins=180, cosine_mode=False, partition='off')
+ewald.modifiers.BondLengthDistribution(bins=100, length_cutoff=4.0, partition='off')
+ewald.modifiers.CalculateDisplacements(reference_frame=0, minimum_image=True)
+ewald.modifiers.CentroSymmetry(num_neighbors=12, mode='conventional', only_selected=False)
+ewald.modifiers.ChillPlus(cutoff=3.5, color_by_type=True, only_selected=False)
+ewald.modifiers.ClearSelection()
+ewald.modifiers.ClusterAnalysis(cutoff=3.2, sort_by_size=False, compute_com=False, compute_gyration=False, unwrapped=False, only_selected=False, cluster_coloring=False)
+ewald.modifiers.ColorCoding(property, cmap='viridis', range=None, only_selected=False)
+ewald.modifiers.CombineDatasets(file='', format=None, type_map=None)
+ewald.modifiers.CommonNeighborAnalysis(mode='adaptive', cutoff=3.2, types=None, color_by_type=True, only_selected=False, chunk_size=32768)
+ewald.modifiers.ComputeProperty(output, expressions, only_selected=False)
+ewald.modifiers.CoordinationAnalysis(cutoff=3.2, bins=200, partial=False)
+ewald.modifiers.CoordinationPolyhedra(center_types=None, transparency=0.25, edges=True)
+ewald.modifiers.CreateBonds(cutoff=3.2, mode='uniform', pairs=None, lower_cutoff=0.0, factor=1.15)
+ewald.modifiers.CreateIsosurface(isolevel=None, property='Charge Density', grid=None, signed=False, color=(1.0, 0.86, 0.0), negative_color=(0.0, 0.75, 1.0), transparency=0.0, identifier='isosurface')
+ewald.modifiers.DeleteSelected()
+ewald.modifiers.DislocationAnalysis(input_crystal_structure='FCC', only_perfect_dislocations=False, circuit_stretchability=9, trial_circuit_length=14, line_smoothing_level=1, line_point_separation=2.5, **kwargs)
+ewald.modifiers.EditBonds(add=(), remove=())
+ewald.modifiers.ElasticStrain(input_crystal_structure='FCC', lattice_constant=1.0, axial_ratio=1.632993161855452, calculate_strain_tensors=True, calculate_deformation_gradients=False, push_strain_tensors_forward=True, color_by_type=True, only_selected=False, num_threads=0)
+ewald.modifiers.ExpandSelection(mode='cutoff', cutoff=3.2, num_neighbors=1, iterations=1)
+ewald.modifiers.ExpressionSelection(expression)
+ewald.modifiers.FindRings(minimum_ring_size=4, maximum_ring_size=8)
+ewald.modifiers.FreezeProperty(source_property='Selection', destination_property=None, freeze_at=0)
+ewald.modifiers.GenerateTrajectoryLines(only_selected=True, start=0, stop=None, step=1, unwrapped=True)
+ewald.modifiers.GrainSegmentation(algorithm='auto', merging_threshold=0.0, min_grain_size=100, handle_stacking_faults=True, orphan_adoption=True, color_particles=True, output_bonds=False)
+ewald.modifiers.GridDifference(subtract=(), property='Charge Density', grid=None, output=None)
+ewald.modifiers.GridSlice(miller=(0, 0, 1), distance=0.5, property='Charge Density', grid=None, cmap='viridis', range=None, scale='linear', resolution=None, transparency=0.0, identifier='slice')
+ewald.modifiers.Histogram(property='Position.Z', bins=200, range=None, only_selected=False, normalization='count', select_elements=False, selection_start=0.0, selection_end=0.0, operate_on='particles')
+ewald.modifiers.IdentifyDiamond(types=None, color_by_type=True, only_selected=False)
+ewald.modifiers.IdentifyFCCPlanarFaults(color_other=(1.0, 0.4, 0.4), color_isf=(0.9, 0.7, 0.2), color_twin=(0.4, 0.4, 1.0), color_multi=(0.0, 1.0, 0.9))
+ewald.modifiers.InvertSelection()
+ewald.modifiers.IonicConductivity(temperature=300.0, time_per_frame=0.0, charges=None, start=0, stop=None, step=1, fit_range=(0.2, 0.8), unwrapped=False, subtract_drift=True, only_selected=False)
+ewald.modifiers.LoadTrajectory(file='', format=None, type_map=None)
+ewald.modifiers.MeanSquaredDisplacement(start=0, stop=None, step=1, time_per_frame=0.0, fit_range=(0.2, 0.8), by_type=True, unwrapped=False, subtract_drift=False, only_selected=False, by_axis=False)
+ewald.modifiers.Modifier = ewald.Modifier
+ewald.modifiers.NebEnergyProfile(energy='Energy', images=None, spline_points=200)
+ewald.modifiers.NonGaussianParameter(time_per_frame=0.0, start=0, stop=None, step=1, max_origins=200, unwrapped=False, only_selected=False)
+ewald.modifiers.OverlayFrames(transparency=0.7, min_displacement=0.1, start=0, stop=None, step=1)
+ewald.modifiers.OvitoModifier(modifier, reference_frame=None)
+ewald.modifiers.PhononMode(qpoint=0, band=None, amplitude=0.3, supercell=None, max_supercell=8, arrows=True, arrow_length=2.5, arrow_width=0.2, arrow_color=(0.85, 0.1, 0.1), arrow_mode='displacement')
+ewald.modifiers.PolyhedralTemplateMatching(types=None, rmsd_cutoff=0.1, output_rmsd=True, output_interatomic_distance=False, output_orientation=False, output_deformation_gradient=False, output_ordering=False, color_by_type=True, only_selected=False, num_threads=0)
+ewald.modifiers.PowderDiffraction(radiation='xray', wavelength='CuKa', two_theta_min=5.0, two_theta_max=90.0, two_theta_step=0.02, fwhm=0.1, eta=0.5, debye_waller=None, elements=None, experimental='')
+ewald.modifiers.PythonModifier = ewald.PythonModifier
+ewald.modifiers.PythonScript(source='import numpy as np\n\ndef modify(frame, data):\n    """Called for every frame. Edit data.particles / data.attributes in place."""\n    # Example: flag atoms in the upper half of the cell\n    z = data.positions[:, 2]\n    data["Upper"] = (z > z.mean()).astype(int)\n', title='Python script', **params)
+ewald.modifiers.ReduceProperty(property='Position.Z', reduction_operation='mean', only_selected=False, operate_on='particles')
+ewald.modifiers.Replicate(n=(2, 2, 2), adjust_box=True, unique_ids=True)
+ewald.modifiers.SelectType(types, property='Particle Type')
+ewald.modifiers.SelfIntermediateScattering(q=None, directions=16, time_per_frame=0.0, start=0, stop=None, step=1, unwrapped=False, only_selected=False)
+ewald.modifiers.SiteHopping(sites=None, site_type='', site_radius=0.0, time_per_frame=0.0, start=0, stop=None, step=1, only_selected=False, bins=50)
+ewald.modifiers.Slice(normal=(0, 0, 1), distance=0.0, width=0.0, inverse=False, select=False, miller=False)
+ewald.modifiers.SpatialBinning(property='', reduction_operation='mean', direction='Z', bins=(50, 50, 20), first_derivative=False, only_selected=False)
+ewald.modifiers.SteinhardtOrderParameters(degrees=(4, 6), num_neighbors=12, cutoff=None, average=False, wl=False, wl_normalize=True)
+ewald.modifiers.StructureFactor(method='auto', q_max=10.0, q_min=0.0, bins=200, weighting='none', cutoff=0.0, lorch=True, elements=None, experimental='')
+ewald.modifiers.SymmetryAnalysis(symprec=0.01, angle_tolerance=-1.0, select_unique=False)
+ewald.modifiers.TimeAveraging(operate_on='table:coordination-rdf', start=0, stop=None, step=1)
+ewald.modifiers.TimeSeries(operate_on=None, start=0, stop=None, step=1)
+ewald.modifiers.UnwrapTrajectories()
+ewald.modifiers.VanHoveCorrelation(times=None, part='self', r_max=6.0, bins=120, time_per_frame=0.0, start=0, stop=None, step=1, max_origins=100, unwrapped=False, only_selected=False)
+ewald.modifiers.VectorVis(property='', scaling=1.0, width=0.3, alignment='base', reverse=False, color=(1.0, 1.0, 0.0), shading='normal', transparency=0.0, offset=(0.0, 0.0, 0.0), color_mapping_property='', cmap='viridis', color_mapping_interval=None, only_selected=False, min_length=1e-06)
+ewald.modifiers.VelocityAutocorrelation(start=0, stop=None, step=1, time_per_frame=0.0, velocities='auto', by_type=True, max_lag_fraction=0.5, only_selected=False)
+ewald.modifiers.VoronoiAnalysis(compute_indices=False, use_radii=False, edge_threshold=0.0, face_threshold=0.0, relative_face_threshold=0.0, compute_bonds=False, only_selected=False, num_threads=0)
+ewald.modifiers.WignerSeitzAnalysis(reference_frame=0, output_current_config=False, per_type_occupancies=False, affine_mapping=None, frame_offset=None)
+ewald.modifiers.WrapAtoms()
+ewald.plugin_api.Analysis(name, title='', cells=<factory>, result='', reason='')
+ewald.plugin_api.Analysis.as_dict()
+ewald.plugin_api.Analysis.available
+ewald.plugin_api.Analysis.view_cell
+ewald.plugin_api.Bonds(topology=None, periodic_image=None, **properties)
+ewald.plugin_api.Bonds.copy()
+ewald.plugin_api.Bonds.count
+ewald.plugin_api.Bonds.extend(other)
+ewald.plugin_api.Bonds.lengths(data)
+ewald.plugin_api.Bonds.neighbor_counts(n)
+ewald.plugin_api.Bonds.pbc_images
+ewald.plugin_api.Bonds.remap_particles(index, n_old)
+ewald.plugin_api.Bonds.take(index)
+ewald.plugin_api.Bonds.topology
+ewald.plugin_api.Bonds.vectors(data)
+ewald.plugin_api.Cell = ewald.Cell
+ewald.plugin_api.ComputeCancelled = ewald.ComputeCancelled
+ewald.plugin_api.ComputeContext = ewald.ComputeContext
+ewald.plugin_api.Cylinders(start, end, radius=0.15, rgb=None, alpha=None, owner=None, cap_end=None, start_cap='flat', end_cap='flat', partner=None)
+ewald.plugin_api.Cylinders.caps(kind)
+ewald.plugin_api.Cylinders.count
+ewald.plugin_api.DataCollection = ewald.DataCollection
+ewald.plugin_api.ElectronicStructure(types, efermi=0.0, dos_energies=None, dos=None, pdos=None, orbitals=<factory>, kpoints=None, weights=None, eigenvalues=None, occupations=None, distances=None, ticks=<factory>, breaks=<factory>, source='', projections_loader=None, _projections=None)
+ewald.plugin_api.ElectronicStructure.attach(data)
+ewald.plugin_api.ElectronicStructure.band_gap(occupied=0.5)
+ewald.plugin_api.ElectronicStructure.band_table()
+ewald.plugin_api.ElectronicStructure.band_weights(atoms=None, orbitals=None)
+ewald.plugin_api.ElectronicStructure.dos_table()
+ewald.plugin_api.ElectronicStructure.has_bands
+ewald.plugin_api.ElectronicStructure.has_dos
+ewald.plugin_api.ElectronicStructure.has_projections
+ewald.plugin_api.ElectronicStructure.num_spins
+ewald.plugin_api.ElectronicStructure.pdos_of(atoms=None, orbitals=None)
+ewald.plugin_api.ElectronicStructure.projections
+ewald.plugin_api.Finding(level, title, detail='')
+ewald.plugin_api.FrameReader()
+ewald.plugin_api.FrameReader.incomplete = None
+ewald.plugin_api.FrameReader.read(index)
+ewald.plugin_api.FrameReader.refresh()
+ewald.plugin_api.FrameReader.run_starts()
+ewald.plugin_api.FrameReader.timestep(index)
+ewald.plugin_api.Image(x, y, rgba, width=None, height=None)
+ewald.plugin_api.Lines(points, strips, rgb=None, width=2.0, radius=None, cast_shadows=False, point_rgb=None)
+ewald.plugin_api.Lines.count
+ewald.plugin_api.Lines.segment_colors(ink=(0.0, 0.0, 0.0))
+ewald.plugin_api.Lines.segments()
+ewald.plugin_api.Lines.vertex_colors(ink=None)
+ewald.plugin_api.Modifier = ewald.Modifier
+ewald.plugin_api.Option(key, default, label, help='', choices=(), minimum=None, maximum=None, kind='')
+ewald.plugin_api.Option.page
+ewald.plugin_api.OverlayContext(size, camera=None, frame=0, font_size=12, small=10, ink=(0.08, 0.08, 0.08), background='white', extras=<factory>)
+ewald.plugin_api.OverlayContext.corner(corner, w, h, margin=0.02)
+ewald.plugin_api.OverlayElement()
+ewald.plugin_api.OverlayElement.applies(data)
+ewald.plugin_api.OverlayElement.enabled = True
+ewald.plugin_api.OverlayElement.layout(data, ctx)
+ewald.plugin_api.OverlayElement.name = ''
+ewald.plugin_api.OverlayElement.parameters()
+ewald.plugin_api.OverlayElement.title
+ewald.plugin_api.PLUGIN_API = 1
+ewald.plugin_api.Pipeline = ewald.Pipeline
+ewald.plugin_api.PlotTarget(table='', values=None, columns=<factory>, xlim=None, ylim=None, data=None)
+ewald.plugin_api.Rect(x0, y0, x1, y1, fill=None, outline=None, width=1.0, radius=0.0)
+ewald.plugin_api.RunInfo(code=None, kind=None, ensemble=None, timestep=None, time_per_frame=None, temperature=None, pressure=None, steps=None, units=None, kpoints=None, parameters=<factory>, files=<factory>, notes=<factory>)
+ewald.plugin_api.RunInfo.summary()
+ewald.plugin_api.RunInfo.to_dict()
+ewald.plugin_api.SUPPORTED = frozenset({1})
+ewald.plugin_api.SettingsField(name, label='', kind='text', help='', choices=(), default=None, placeholder='', advanced=False)
+ewald.plugin_api.SettingsField.empty()
+ewald.plugin_api.SimulationCode(name, title='', description='', files=(), markers=(), formats=(), options=(), thermo=<factory>, plugin='', run_info=None, check=None, frame_steps=None, workflow_step=None, open_options=None, read_thermo=None, detect=None, origin='python')
+ewald.plugin_api.SimulationCode.as_dict()
+ewald.plugin_api.SimulationCode.hook(name)
+ewald.plugin_api.SimulationCode.matches(path)
+ewald.plugin_api.Spheres(centers, radii=None, rgb=None, alpha=None, index=None, palette=None, radius_table=None, palette_index=None)
+ewald.plugin_api.Spheres.colors()
+ewald.plugin_api.Spheres.count
+ewald.plugin_api.Spheres.sizes()
+ewald.plugin_api.StaticSource = ewald.StaticSource
+ewald.plugin_api.SurfaceMesh(vertices=None, faces=None, face_properties=None, edges=None, *, transparency=0.0, edge_color=(0.25, 0.25, 0.25), edge_width=0.04, vertex_properties=None, lit=None)
+ewald.plugin_api.SurfaceMesh.area
+ewald.plugin_api.SurfaceMesh.copy()
+ewald.plugin_api.SurfaceMesh.face_colors(default=(0.6, 0.6, 0.6))
+ewald.plugin_api.SurfaceMesh.face_count
+ewald.plugin_api.SurfaceMesh.is_lit
+ewald.plugin_api.SurfaceMesh.to_pyvista()
+ewald.plugin_api.SurfaceMesh.vertex_count
+ewald.plugin_api.Table = ewald.verbs.Table
+ewald.plugin_api.Text(x, y, text, size=None, color=None, anchor='lt', bold=False, halo=None)
+ewald.plugin_api.Theme(base='Jmol', colors=<factory>, mute=0.0, background=None, cell_color=None, radius_preset=None, description='')
+ewald.plugin_api.Theme.color_of(particle_type)
+ewald.plugin_api.Theme.render_kwargs(types=())
+ewald.plugin_api.Theme.type_colors(types)
+ewald.plugin_api.ToolResult(content, images=<factory>, is_error=False)
+ewald.plugin_api.ToolResult.text()
+ewald.plugin_api.VisualElement()
+ewald.plugin_api.VisualElement.applies(data)
+ewald.plugin_api.VisualElement.build(data, ctx)
+ewald.plugin_api.VisualElement.enabled = True
+ewald.plugin_api.VisualElement.legend(data, ctx)
+ewald.plugin_api.VisualElement.name = ''
+ewald.plugin_api.VisualElement.parameters()
+ewald.plugin_api.VisualElement.title
+ewald.plugin_api.VoxelGrid(domain, properties=None, shape=None)
+ewald.plugin_api.VoxelGrid.copy()
+ewald.plugin_api.VoxelGrid.fractional_points()
+ewald.plugin_api.VoxelGrid.integrate(name)
+ewald.plugin_api.VoxelGrid.interpolate(name, points, order=1)
+ewald.plugin_api.VoxelGrid.names()
+ewald.plugin_api.VoxelGrid.voxel_volume
+ewald.plugin_api.Workflow(name, path='', state='', exit_status=None, runs=1, id='', work_dir='', outputs=<factory>, steps=<factory>, scalars=<factory>, label='', description='', kind='', formula='', ctime='', group='', source='', complete=False, analyses=<factory>)
+ewald.plugin_api.Workflow.analysis(name)
+ewald.plugin_api.Workflow.as_dict()
+ewald.plugin_api.Workflow.failed
+ewald.plugin_api.Workflow.mark()
+ewald.plugin_api.Workflow.title
+ewald.plugin_api.Workflow.walk(depth=0)
+ewald.plugin_api.WorkflowOutput(name, path='', kind='file', note='')
+ewald.plugin_api.WorkflowOutput.as_dict()
+ewald.plugin_api.WorkflowPage(workflows=<factory>, next=None)
+ewald.plugin_api.WorkflowStep(name, path='', state='', exit_status=None, runs=1, id='', work_dir='', outputs=<factory>, steps=<factory>, scalars=<factory>)
+ewald.plugin_api.WorkflowStep.as_dict()
+ewald.plugin_api.WorkflowStep.failed
+ewald.plugin_api.WorkflowStep.mark()
+ewald.plugin_api.WorkflowStep.walk(depth=0)
+ewald.plugin_api.ai_provider(provider=None, *, name=None)
+ewald.plugin_api.ai_tool(name=None, description='', schema=None)
+ewald.plugin_api.claude_tool(name=None, description='', schema=None)
+ewald.plugin_api.colormap(fn=None, *, name=None, kind='sequential', description='')
+ewald.plugin_api.downsample(table, max_rows=60)
+ewald.plugin_api.element_masses(types, default=1.0)
+ewald.plugin_api.find_pairs(positions, cell, cutoff, backend=None, half=False, method='auto')
+ewald.plugin_api.floats(line)
+ewald.plugin_api.head_lines(path, n)
+ewald.plugin_api.load(path, *args, **kwargs)
+ewald.plugin_api.make_arrows(base, tip, width=0.2, rgb=(0.85, 0.2, 0.2), alpha=1.0, shading='normal', name='')
+ewald.plugin_api.menu_item(fn=None, *, name=None, title='', menu='Tools', shortcut='', icon='', when='', description='')
+ewald.plugin_api.modifier(cls=None, *, name=None, category='Plugins', description='')
+ewald.plugin_api.open_binary(path)
+ewald.plugin_api.overlay(cls=None, *, name=None, category='Plugins', description='')
+ewald.plugin_api.panel(fn=None, *, name=None, title='', icon='', tooltip='', shortcut='', width=None, description='', area='')
+ewald.plugin_api.plugin_settings(name)
+ewald.plugin_api.reader(name, patterns=(), sniff=None, description='', priority=50, aliases=(), category='structure', schemes=())
+ewald.plugin_api.settings_page(name=None, title='', fields=None, description='', actions=None)
+ewald.plugin_api.simulation_code(fn=None)
+ewald.plugin_api.strip_compression(path)
+ewald.plugin_api.theme(fn=None, *, name=None, description='')
+ewald.plugin_api.ui_theme(fn=None, *, name=None, base='paper', description='')
+ewald.plugin_api.visual(cls=None, *, name=None, category='Plugins', description='')
+ewald.plugin_api.workflow_panel(source, title='', icon='', tooltip='', shortcut='', width=None)
+ewald.plugin_api.workflow_source(name=None, title='', schemes=(), settings_page='', description='')
+ewald.plugin_api.writer(name, patterns=(), description='', priority=50, aliases=(), multi_frame=True, category='structure')
+View.ambient_occlusion = None
+View.atom_style = 'auto'
+View.atoms = True
+View.background = None
+View.bond_factor = 1.15
+View.bond_pairs = []
+View.bond_radius = 0.15
+View.bonds = True
+View.boundary = None
+View.boundary_bonds = 'half'
+View.camera = None
+View.cell = True
+View.cell_color = None
+View.cell_radius = None
+View.cell_width = 2.0
+View.color_by = None
+View.color_range = None
+View.colorbar_collapsed = False
+View.colormap = 'viridis'
+View.colors = {}
+View.direction = 'iso'
+View.frame = 0
+View.labels = None
+View.legend = True
+View.light = None
+View.measurements = []
+View.orthographic = True
+View.overlays = []
+View.oxidation_states = {}
+View.quality = None
+View.radii = {}
+View.radius_preset = 'covalent'
+View.radius_scale = 0.5
+View.region = None
+View.renderer = None
+View.replicate = None
+View.replicate_cell = 'super'
+View.scale_bar = None
+View.selection = True
+View.shadows = None
+View.size = None
+View.sphere_resolution = None
+View.style = 'Ball & stick'
+View.surfaces = {}
+View.text = None
+View.theme = None
+View.trajectory_color_by = None
+View.trajectory_color_range = None
+View.trajectory_colormap = 'viridis'
+View.trajectory_radius = None
+View.trajectory_style = 'line'
+View.trajectory_time_range = None
+View.trajectory_trail = None
+View.trajectory_width = 2.0
+View.transparency = {}
+View.transparent_background = False
+View.type_legend = False
+View.vectors = None
+View.visuals = []
+View.zoom = 1.0
+ewald.display.options['enabled']
+ewald.display.options['quality']
+ewald.display.options['renderer']
+ewald.display.options['scale']
+ewald.display.options['size']

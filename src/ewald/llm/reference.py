@@ -69,6 +69,8 @@ pipe = load("run.npz", format="npz-trajectory")                 # format= also n
   (expressions: `StructureType == 1`); IdentifyDiamond and ChillPlus number their own types (see their entries), and
   every one of them also writes `<Modifier>.counts.<TYPE>` attributes.
 - `data.take(mask_or_index)`, `data.delete(mask)` return new collections; `data.to_ase()`, `DataCollection.from_ase(atoms)`.
+- A step that edits the structure with ASE or pymatgen returns `data.with_structure(atoms)`: it keeps the attributes,
+  tables and (while the atom count is the same) per-atom properties, which `DataCollection.from_ase(atoms)` would lose.
 - **Never write into an array in place** (`data.positions[0] = ...`, `data["Color"][sel] = ...`): arrays are shared
   with cached frames. Build a new array and assign it: `pos = data.positions.copy(); pos[0] += 1; data.positions = pos`.
 - `data.bonds` (None until `CreateBonds`, `EditBonds` or a LAMMPS data file adds them) stores each bond once:
