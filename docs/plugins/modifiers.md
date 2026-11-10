@@ -63,6 +63,7 @@ changes.
 | `ctx.xp`, `ctx.backend` | the array module (NumPy or CuPy) and its backend; `backend.to_numpy(a)` converts results |
 | `ctx.source_frame(k)` | the unmodified input of frame `k`, e.g. a reference configuration |
 | `ctx.input_frame(k)` | frame `k` as it reaches this modifier, with every modifier above it applied |
+| `ctx.input_frames(frames)` | the same for many frames, one at a time: for a sweep over the trajectory. The frames are not kept in the pipeline's caches, which makes a long sweep of small frames about twice as fast and leaves the frames on screen cached |
 | `ctx.upstream_key()` | a hashable fingerprint of everything above this modifier, for caching |
 | `ctx.pipeline` | the pipeline, e.g. `ctx.pipeline.num_frames` |
 | `ctx.check_cancel()` | raises `ComputeCancelled` when the GUI no longer needs this result; call it in long loops (`source_frame`/`input_frame` call it for you) |
@@ -104,7 +105,8 @@ Use numba or a C extension only for a measured hot spot, and keep a NumPy path n
 ## Modifiers that read the whole trajectory
 
 A modifier that needs other frames (MSD, time averages, paths) reads them with
-`ctx.input_frame(k)` one at a time, so lazy readers stay lazy, and caches its result under
+`ctx.input_frame(k)` (or, for the whole range, `for data in ctx.input_frames(range(start, stop))`)
+one at a time, so lazy readers stay lazy, and caches its result under
 `(ctx.upstream_key(), repr(self))` so that it is computed once and recomputed only when a
 parameter, an upstream modifier or the source changes:
 

@@ -166,12 +166,16 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   frames that change nothing do not repaint (tutorial notebook, 108 atoms, four plots: 177 ms
   per frame until idle, now about 100 ms, of which the one plot on screen is about 55 ms of
   matplotlib; blitting its bars or marker instead of drawing the whole figure is what is left);
-  (2) all-frames analyses, open: the XDATCAR and OUTCAR readers parse each atom line in Python
-  (0.135 ms per 200-atom frame against 0.031 ms with one block read and `io._textparse`), a
-  sweep over the frames pays more for the pipeline's cache bookkeeping than for reading once a
-  step is above (0.47 against 0.17 ms per frame), and MeanSquaredDisplacement runs the per-atom
-  FFT three times (total, by type, per particle: 2.7 s against 0.3 s for one threaded pass at
-  20000 frames of 200 atoms), so `msd` of such an XDATCAR takes 7.8 s and `vacf` after it 18 s;
+  (2) all-frames analyses, done: XDATCAR and OUTCAR atom tables are read in one piece by the
+  compiled parser, a sweep (`ctx.input_frames`) skips the pipeline's caches, the cache's memory
+  count is skipped while it cannot be over budget, MeanSquaredDisplacement takes total, types,
+  axes and per-particle values from one pass of threaded transforms, and trajectory steps that
+  only read share the stacked frames. XDATCAR of 200 atoms x 20000 frames in the container: `msd`
+  7.8 s, now 4.5 s; `vacf` after it 18 s, now 1.2 s; LAMMPS dump 4000 x 1000: 3.1 and 3.1 s, now
+  2.3 and 1.0 s. Left: the first sweep is still about 0.2 ms per small frame of Python around the
+  parser (one `DataCollection`, `Cell` and file open per frame; a reader call that returns many
+  frames' positions at once would remove most of it), and steps that change particles between
+  two analyses (a selection is fine, a transformation is not) make the second one read again;
   (3) the notebook rebuilds every cell widget when one cell is added, removed, moved or undone
   (0.75-1.0 s with four plot cells in the container), open.
 - Pipeline output cache: plugin modifiers are never reused (`Modifier.cacheable` is None for

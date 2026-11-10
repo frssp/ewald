@@ -64,7 +64,11 @@ class Cell:
         return (f - np.round(f) * self.pbc) @ self.matrix
 
     def copy(self) -> "Cell":
-        return Cell(self.matrix.copy(), self.origin.copy(), self.pbc.copy())
+        new = Cell.__new__(Cell)   # every frame copy copies its cell: without __post_init__'s reshaping
+        new.matrix = np.array(self.matrix, dtype=float)
+        new.origin = np.array(self.origin, dtype=float)
+        new.pbc = np.array(self.pbc, dtype=bool)
+        return new
 
 
 _COMPONENTS = {"X": 0, "Y": 1, "Z": 2}

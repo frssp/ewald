@@ -51,6 +51,18 @@ class ComputeContext:
         self.check_cancel()
         return self.pipeline.compute(frame, device=self.backend, upto=self.modifier_index, cancel=self.cancel)
 
+    def input_frames(self, frames):
+        """:meth:`input_frame` of each of ``frames``, one at a time, for a step that reads a
+        whole trajectory. The frames are not kept: no cached frames or step results (reading
+        20000 small frames spent more time on the cache's bookkeeping than on the file, and
+        pushed the frames on screen out of the cache), and the steps above keep the status and
+        summary of the frame being computed."""
+        for frame in frames:
+            self.check_cancel()
+            with self.pipeline._compute_lock:
+                data = self.pipeline._compute(frame, self.backend, "raise", self.modifier_index, self.cancel, sweep=True)
+            yield data
+
     def check_cancel(self):
         """Raise :class:`ComputeCancelled` if the caller gave up on this computation. Long
         modifiers call it in their loops; :meth:`input_frame` calls it for them."""
@@ -274,7 +286,7 @@ class Frames:
         return self._ctx.input_frame(self.indices[k])
 
     def __iter__(self):
-        return (self._ctx.input_frame(k) for k in self.indices)
+        return self._ctx.input_frames(self.indices)
 
     def __repr__(self):
         return f"Frames({len(self)} frames)"
@@ -527,6 +539,7 @@ class Pipeline:
         state.pop("_cache_lock", None)
         state.pop("_compute_lock", None)
         state["_outputs"] = OrderedDict()
+        state.pop("_trajectories", None)
         return state
 
     def __setstate__(self, state):
@@ -601,7 +614,7 @@ class Pipeline:
         with self._cache_lock:
             self._cache[frame] = data
             self._cache.move_to_end(frame)
-            self._trim_cache()
+            self._trim_cache(data)
         return data.copy()
 
     def refresh(self) -> int:
@@ -646,6 +659,7 @@ class Pipeline:
             for frame in [f for f in self._cache if f >= first]:
                 del self._cache[frame]
             self._outputs.clear()
+            self.__dict__.pop("_trajectories", None)   # the stacked frames trajectory steps share
 
     def clear_caches(self):
         """Start over: forget every cached source frame and step result (:meth:`invalidate`) and
@@ -655,12 +669,23 @@ class Pipeline:
         for mod in self.modifiers:
             mod.forget()
 
-    def _trim_cache(self):
+    def _trim_cache(self, added: DataCollection | None = None):
+        """Drop the oldest entries above the count and memory limits; ``added`` is the entry
+        just stored."""
         while len(self._cache) > max(self._cache_size, 1):
             self._cache.popitem(last=False)
         while len(self._outputs) > 4 * max(self._cache_size, 1):  # results of several steps per frame
             self._outputs.popitem(last=False)
         if self.cache_memory is not None:
+            # Adding up every cached array on every stored frame cost more than reading a small
+            # frame (a sweep over 20000 frames of 200 atoms). The largest entry stored so far
+            # times the number of entries bounds the total: under the budget, nothing to count.
+            if added is not None:
+                size = sum(getattr(a, "nbytes", 0) for a in added.particles.values())
+                self._entry_bytes = max(self.__dict__.get("_entry_bytes", 0), size)
+                if (len(self._cache) + len(self._outputs)) * self._entry_bytes <= self.cache_memory:
+                    return
+
             def total():  # an array shared by a frame and the results computed from it counts once
                 seen = {}
                 for d in (*self._cache.values(), *self._outputs.values()):
@@ -689,12 +714,24 @@ class Pipeline:
         with self._compute_lock:
             return self._compute(frame, device, errors, upto, cancel)
 
-    def _compute(self, frame, device, errors, upto, cancel) -> DataCollection:
+    def _sweep_frame(self, frame: int) -> DataCollection:
+        """:meth:`source_frame` for a sweep over the frames: a cached frame when there is one,
+        else read and not kept."""
+        frame %= self.source.num_frames
+        with self._cache_lock:
+            data = self._cache.get(frame)
+        if data is None:
+            return self.source.compute(frame).copy().freeze()   # nobody else holds it
+        return data.copy()
+
+    def _compute(self, frame, device, errors, upto, cancel, sweep: bool = False) -> DataCollection:
+        """``sweep``: one frame of many for a trajectory-wide step (``ComputeContext.input_frames``):
+        nothing is cached or looked up, and the steps keep their status and summary."""
         frame = self._frame_index(frame)
         backend = get_backend(device or self.device)
         mods = list(self.modifiers[:upto])
         keys = []  # settings of the leading modifiers whose output can be reused
-        if self.__dict__.get("cache_outputs", True):
+        if self.__dict__.get("cache_outputs", True) and not sweep:
             for mod in mods:
                 key = _modifier_key(mod)
                 if key is None:
@@ -710,7 +747,7 @@ class Pipeline:
                     start, data = n, hit.copy()
                     break
         if data is None:
-            data = self.source_frame(frame)
+            data = self._sweep_frame(frame) if sweep else self.source_frame(frame)
         failed = False
         for index, mod in enumerate(mods):
             if index < start:
@@ -728,7 +765,7 @@ class Pipeline:
                 mod.status, failed = missing[1], True
                 continue
             ctx = ComputeContext(frame, self, backend, modifier_index=index, cancel=cancel)
-            before = _snapshot(data)
+            before = None if sweep else _snapshot(data)
             upstream = _upstream(data) if getattr(mod, "_verb", None) else None
             t0 = time.perf_counter()
             try:
@@ -749,13 +786,15 @@ class Pipeline:
                         raise exc from exc.__context__
                     raise
                 continue
-            mod.status = None
-            mod.__dict__.pop("_missing_dependency", None)
-            mod.last_time = time.perf_counter() - t0
             if result is not None:
                 data = result
             if upstream is not None:
                 _keep_upstream(mod, upstream, data)
+            if sweep:
+                continue
+            mod.status = None
+            mod.__dict__.pop("_missing_dependency", None)
+            mod.last_time = time.perf_counter() - t0
             mod.last_output = output_summary(before, data, frame)
             if index < len(keys) - 1 and not failed and mod.last_time >= self.checkpoint_seconds:
                 self._store_output(base + (tuple(keys[:index + 1]),), data)
@@ -769,7 +808,7 @@ class Pipeline:
             # into the cached arrays it shares; they change their own copy
             self._outputs[key] = data.freeze().copy()
             self._outputs.move_to_end(key)
-            self._trim_cache()
+            self._trim_cache(data)
 
     def frames(self, start: int = 0, stop: int | None = None, step: int = 1, device=None):
         stop = self.num_frames if stop is None else stop

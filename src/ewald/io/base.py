@@ -223,6 +223,40 @@ def grep_lines(path, pattern: str, literals=(), chunk_size: int = 1 << 24,
 _FLOAT = None
 
 
+def read_lines(fh, n: int) -> bytes:
+    """The next ``n`` lines of binary file ``fh`` in one piece (a little more may come along;
+    fewer when the file ends). Two or three ``read`` calls instead of ``n`` ``readline`` calls."""
+    first = fh.readline()
+    if n <= 1 or not first:
+        return first
+    parts, have = [first], 1
+    size = (n - 1) * len(first) + 64     # fixed-format tables: every line as long as the first
+    while have < n:
+        chunk = fh.read(size)
+        if not chunk:
+            break
+        parts.append(chunk)
+        have += chunk.count(b"\n")
+        size = max(4096, (n - have) * len(first) + 64)
+    return b"".join(parts)
+
+
+def read_table(fh, n: int, ncols: int) -> np.ndarray | None:
+    """The next ``n`` lines of ``fh`` as an ``(n, ncols)`` float array (further columns are
+    dropped) with the compiled atom-table parser, or None, with ``fh`` back where it was, when
+    a line is not ``ncols`` plain numbers (columns run together, ``****``, a cut file): the
+    caller then reads line by line as before."""
+    from ._textparse import parse_table
+
+    start = fh.tell()
+    block = read_lines(fh, n)
+    try:
+        return parse_table(block, n, ncols, range(ncols))
+    except ValueError:
+        fh.seek(start)
+        return None
+
+
 def floats(line: bytes) -> list[float]:
     """Every number in a line of fixed-format Fortran output, also when columns run together
     (``-10.123456789-0.123``); ``*****`` overflow fields are skipped."""

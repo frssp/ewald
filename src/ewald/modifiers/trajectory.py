@@ -11,15 +11,21 @@ from itertools import chain
 
 import numpy as np
 
-from ..kernels import (_add_axes, _per_type, autocorrelation_fft, average_tables, collect_trajectory, diffusion_fit,
-                       finite_difference_velocities, fit_lags, green_kubo, msd_fft, particle_msd, path_statistics, unwrap)
+from ..kernels import (_per_type, autocorrelation_fft, average_tables, collect_trajectory, diffusion_fit,
+                       finite_difference_velocities, fit_lags, green_kubo, msd_curves, path_statistics, unwrap)
 from ..pipeline import Modifier
+
+
+SHARED_TRAJECTORY_BYTES = 512 * 2**20   # a stacked trajectory up to this size is kept for the next step
 
 
 class _TrajectoryModifier(Modifier):
     start: int = 0
     stop: int | None = None
     step: int = 1
+    #: True for a step that leaves the particles it reads as they are (count, order, positions,
+    #: velocities, types, selection, cell) and only adds results: see ``_shared_key``.
+    reads_only: bool = False
 
     def _frames(self, ctx) -> range:
         n = ctx.pipeline.num_frames
@@ -48,8 +54,35 @@ class _TrajectoryModifier(Modifier):
             idx = np.nonzero(np.asarray(first["Selection"]) != 0)[0]
             if "Particle Identifier" in first:
                 ids, idx = np.asarray(first["Particle Identifier"])[idx], None
-        rest = (_real(ctx.input_frame(k)) for k in frames[1:])
-        return collect_trajectory(chain([first], rest), properties, particle_ids=ids, indices=idx)
+        key = self._shared_key(ctx, frames, properties, ids, idx)
+        shared = ctx.pipeline.__dict__.setdefault("_trajectories", {})
+        with ctx.pipeline._cache_lock:
+            hit = shared.get(key)
+        if hit is not None:
+            return dict(hit)   # the step above read the same frames (msd, then vacf): not again
+        rest = (_real(d) for d in ctx.input_frames(frames[1:]))
+        traj = collect_trajectory(chain([first], rest), properties, particle_ids=ids, indices=idx)
+        if sum(getattr(v, "nbytes", 0) for v in traj.values()) <= SHARED_TRAJECTORY_BYTES:
+            for v in traj.values():
+                if isinstance(v, np.ndarray):
+                    v.flags.writeable = False   # shared from here on: steps build new arrays
+            with ctx.pipeline._cache_lock:
+                shared.clear()                  # one trajectory: the next step's, or a new range
+                shared[key] = traj
+        return dict(traj)
+
+    def _shared_key(self, ctx, frames, properties, ids, idx) -> tuple:
+        """What the stacked trajectory depends on. Steps above that only read the frames
+        (``reads_only``: they add tables, attributes and properties of their own) do not count
+        when positions or velocities are stacked, so analyses added one after the other share
+        one pass over the file."""
+        plain = set(properties) <= {"Position", "Velocity"}
+        mods = ctx.pipeline.modifiers[:ctx.modifier_index]
+        above = tuple((type(m).__name__, repr(m)) for m in mods
+                      if m.enabled and not (plain and getattr(m, "reads_only", False)))
+        pick = None if ids is None and idx is None else np.asarray(ids if ids is not None else idx).tobytes()
+        return (id(ctx.pipeline.source), ctx.pipeline.num_frames, above, (frames.start, frames.stop, frames.step),
+                tuple(properties), ids is not None, pick)
 
     def _dt(self):
         """Time between analyzed frames, and whether it is a real time (else frames)."""
@@ -107,6 +140,8 @@ class MeanSquaredDisplacement(_TrajectoryModifier):
     ``ExpressionSelection("ParticleType == 'Li'", top=5, by="MSD")`` (0 for untraced particles).
     """
 
+    reads_only = True
+
     def __init__(self, start: int = 0, stop: int | None = None, step: int = 1, time_per_frame: float = 0.0,
                  fit_range: tuple = (0.2, 0.8), by_type: bool = True, unwrapped: bool = False,
                  subtract_drift: bool = False, only_selected: bool = False, by_axis: bool = False,
@@ -138,14 +173,22 @@ class MeanSquaredDisplacement(_TrajectoryModifier):
         if self.subtract_drift:
             x = x - x.mean(axis=1, keepdims=True)
         dt, _ = self._dt()
-        table = {"Time": np.arange(x.shape[0]) * dt, "MSD": msd_fft(x, be)}
-        if self.by_type:
-            _per_type(msd_fft, x, traj["types"], be, "MSD", table)
+        time = np.arange(x.shape[0]) * dt
+        names = np.unique(traj["types"])
+        groups = {str(t): np.nonzero(traj["types"] == t)[0] for t in names} if self.by_type and len(names) > 1 else {}
+        fit_time = getattr(self, "fit_time", None)
+        window = fit_lags(x.shape[0], self.fit_range, time, fit_time) if x.shape[0] > 2 else None
+        # one pass of transforms gives the total, each type, each axis and every particle's own
+        curves, per_particle = msd_curves(x, groups, window, be)
+        table = {"Time": time, "MSD": curves[None].sum(axis=1)}
+        for t in groups:
+            table[f"MSD {t}"] = curves[t].sum(axis=1)
         if getattr(self, "by_axis", False):
-            _add_axes(table, x, traj["types"], be)
+            for col, key in [("MSD", None)] + [(f"MSD {t}", t) for t in groups]:
+                for k, axis in enumerate("xyz"):
+                    table[f"{col} {axis}"] = curves[key][:, k]
         attrs = {}
         name = "MeanSquaredDisplacement.diffusion_coefficient"
-        fit_time = getattr(self, "fit_time", None)
         for col in [c for c in table if c.startswith("MSD")]:
             dims = 1 if col[-2:] in (" x", " y", " z") else 3
             d, icpt, (t0, t1) = diffusion_fit(table["Time"], table[col], self.fit_range, dims, fit_time)
@@ -153,9 +196,6 @@ class MeanSquaredDisplacement(_TrajectoryModifier):
             if col == "MSD":
                 table["MSD fit"] = 6.0 * d * table["Time"] + icpt
                 attrs["MeanSquaredDisplacement.fit_start"], attrs["MeanSquaredDisplacement.fit_end"] = t0, t1
-        window = fit_lags(x.shape[0], self.fit_range, table["Time"], fit_time) if x.shape[0] > 2 else None
-        per_particle = particle_msd(x, window, be) if x.shape[0] > 2 \
-            else np.zeros(x.shape[1])
         index = {k: traj[k] for k in ("Particle Identifier", "Index")}
         return table, attrs, index, per_particle
 
@@ -170,6 +210,8 @@ class VelocityAutocorrelation(_TrajectoryModifier):
     ``VelocityAutocorrelation.diffusion_coefficient``: ``D(t)`` averaged over the second half of
     ``0 .. max_lag_fraction`` of the lags. Velocities must be in length per unit of ``time_per_frame``.
     """
+
+    reads_only = True
 
     def __init__(self, start: int = 0, stop: int | None = None, step: int = 1, time_per_frame: float = 0.0,
                  velocities: str = "auto", by_type: bool = True, max_lag_fraction: float = 0.5,
@@ -263,8 +305,8 @@ class TimeAveraging(_TrajectoryModifier):
         prop_frames = []
 
         def frames():
-            for k in self._frames(ctx):
-                d = _real(ctx.input_frame(k))
+            for k, d in zip(self._frames(ctx), ctx.input_frames(self._frames(ctx))):
+                d = _real(d)
                 for name in tables:
                     if name not in d.tables:
                         raise KeyError(f"frame {k} has no table {name!r}; tables: {list(d.tables)}")
@@ -296,6 +338,8 @@ class TimeSeries(_TrajectoryModifier):
     ``Timestep`` and one column per attribute.
     """
 
+    reads_only = True
+
     def __init__(self, operate_on=None, start: int = 0, stop: int | None = None, step: int = 1):
         self.operate_on = operate_on
         self.start = start
@@ -309,8 +353,7 @@ class TimeSeries(_TrajectoryModifier):
         frames = self._frames(ctx)
         names = [self.operate_on] if isinstance(self.operate_on, str) else self.operate_on
         cols = {"Frame": [], "Timestep": []}
-        for k in frames:
-            d = ctx.input_frame(k)
+        for k, d in zip(frames, ctx.input_frames(frames)):
             if names is None:
                 names = [a for a, v in d.attributes.items() if a not in ("Timestep", "Frame")
                          and isinstance(v, (int, float, np.number)) and not isinstance(v, bool)]
@@ -435,8 +478,7 @@ class OverlayFrames(_TrajectoryModifier):
 
     def _compute(self, ctx):
         out = {}
-        for k in self._frames(ctx):
-            d = ctx.input_frame(k)
+        for k, d in zip(self._frames(ctx), ctx.input_frames(self._frames(ctx))):
             ids = np.asarray(d["Particle Identifier"]) if "Particle Identifier" in d else None
             out[k] = (ids, np.asarray(d.positions, float))
         return out

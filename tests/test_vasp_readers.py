@@ -119,3 +119,34 @@ def test_crlf_line_endings(vasp_dir, tmp_path):
         (tmp_path / name).write_bytes(lf.replace(b"\n", b"\r\n"))
     assert import_file(tmp_path / "XDATCAR").num_frames == 3
     assert import_file(tmp_path / "POSCAR").compute(0).count == 8
+
+
+def test_xdatcar_and_outcar_tables_read_in_one_piece_or_line_by_line(vasp_dir, tmp_path):
+    """Atom tables go through ``io.base.read_table`` (one read, the compiled parser); a table it
+    cannot take (VASP ran two columns together, the file ends early) is read line by line as
+    before, from the same place."""
+    import io
+
+    from ewald.io.base import read_lines, read_table
+
+    fh = io.BytesIO(b"0.1 0.2 0.3\r\n 0.4\t0.5 0.6 T T F\n0.7 0.8 0.9\nnext block\n")
+    np.testing.assert_allclose(read_table(fh, 3, 3), [[0.1, 0.2, 0.3], [0.4, 0.5, 0.6], [0.7, 0.8, 0.9]])
+    for bad in (b"0.1 0.2 0.3\n0.5 -0.63265286-0.11227753\n", b"0.1 0.2 0.3\n", b"0.1 0.2 0.3\n0.1 0.2\n"):
+        fh = io.BytesIO(b"header\n" + bad)
+        fh.readline()
+        assert read_table(fh, 2, 3) is None and fh.tell() == len(b"header\n")   # back where it was
+    lines = [b"%d %d\n" % (k, k * k) for k in range(500)]   # lines growing longer than the first
+    assert read_lines(io.BytesIO(b"".join(lines)), 400).splitlines()[:400] == [x.strip() for x in lines[:400]]
+    assert read_lines(io.BytesIO(b"1 2\n3 4"), 5) == b"1 2\n3 4" and read_lines(io.BytesIO(b""), 3) == b""
+
+    text = (vasp_dir / "XDATCAR").read_text(encoding="utf-8").splitlines(keepends=True)
+    ref = import_file(vasp_dir / "XDATCAR").compute(1).positions
+    row = [i for i, line in enumerate(text) if "configuration" in line][1] + 1   # first atom of frame 1
+    a, b, c = (float(v) for v in text[row].split()[:3])
+    text[row] = f"  {a:.8f} {b - 1:.8f}{c - 1:.8f}\n"       # '-0.75000000-0.75000000': no space between
+    path = tmp_path / "XDATCAR"
+    path.write_text("".join(text), encoding="utf-8", newline="\n")
+    got = import_file(path).compute(1)
+    frac = np.linalg.solve(got.cell.matrix.T, (got.positions - ref).T).T
+    np.testing.assert_allclose(frac[0], [0, -1, -1], atol=1e-7)
+    np.testing.assert_allclose(frac[1:], 0, atol=1e-7)

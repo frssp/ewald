@@ -85,7 +85,7 @@ pipe.modifiers.append(displacement_from_first)
 ```
 
 `ctx.input_frame(k)` gives another frame as it enters this modifier, with every modifier
-above it applied. Keyword arguments become parameters:
+above it applied (`ctx.input_frames(range(...))` for a loop over many frames). Keyword arguments become parameters:
 `pipe.modifiers.append(PythonModifier(f, threshold=2.5))` calls `f(frame, data, threshold=2.5)`.
 
 A function marked `@all_frames` reads the whole trajectory once instead, `f(frames, data)`:

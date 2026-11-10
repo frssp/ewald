@@ -81,6 +81,12 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- Analyses over a whole trajectory are faster: XDATCAR and OUTCAR atom tables go through the
+  compiled parser, `MeanSquaredDisplacement` computes its total, per-type, per-axis and
+  per-particle values in one pass on every core, and steps added one after the other (`msd`,
+  then `vacf`, van Hove, site hopping) read the file once. For a 200-atom, 20000-frame XDATCAR
+  `msd` went from 7.8 to 4.5 s and `vacf` after it from 18 to 1.2 s. Plugins and scripts get
+  `ctx.input_frames(frames)` for such sweeps (#PRNUM).
 - Playback with a notebook's plots open is lighter: a plot in a tab behind another one is drawn
   when its tab is shown instead of on every frame, and a frame that changes nothing on a plot (no
   pick, the same table) no longer repaints its canvas. The tutorial notebook with four plots
