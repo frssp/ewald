@@ -60,8 +60,10 @@ class _TrajectoryModifier(Modifier):
             hit = shared.get(key)
         if hit is not None:
             return dict(hit)   # the step above read the same frames (msd, then vacf): not again
-        rest = (_real(d) for d in ctx.input_frames(frames[1:]))
-        traj = collect_trajectory(chain([first], rest), properties, particle_ids=ids, indices=idx)
+        traj = self._read_positions(ctx, frames, first, properties, ids, idx)
+        if traj is None:
+            rest = (_real(d) for d in ctx.input_frames(frames[1:]))
+            traj = collect_trajectory(chain([first], rest), properties, particle_ids=ids, indices=idx)
         if sum(getattr(v, "nbytes", 0) for v in traj.values()) <= SHARED_TRAJECTORY_BYTES:
             for v in traj.values():
                 if isinstance(v, np.ndarray):
@@ -70,6 +72,35 @@ class _TrajectoryModifier(Modifier):
                 shared.clear()                  # one trajectory: the next step's, or a new range
                 shared[key] = traj
         return dict(traj)
+
+    def _read_positions(self, ctx, frames, first, properties, ids, idx) -> dict | None:
+        """:func:`collect_trajectory` of the positions straight from the file
+        (``source.read_positions``: a few large reads instead of one frame at a time through the
+        pipeline), when nothing above changes them: every step above is ``reads_only``. None
+        when that does not hold or the reader cannot; the caller then goes frame by frame."""
+        source = ctx.pipeline.source
+        mods = ctx.pipeline.modifiers[:ctx.modifier_index]
+        if tuple(properties) != ("Position",) or not hasattr(source, "read_positions") \
+                or any(m.enabled and not getattr(m, "reads_only", False) for m in mods):
+            return None
+        block = source.read_positions(list(frames), ctx.check_cancel)
+        if block is None or block["Position"].shape[1:] != (first.count, 3) \
+                or not np.allclose(block["Position"][0], first.positions, rtol=0, atol=1e-6):
+            return None   # not the particles the pipeline gives (a step above changed them after all)
+        if "Particle Identifier" in first:
+            have = np.asarray(first["Particle Identifier"])
+            want = np.unique(have if ids is None else ids)
+            order = np.argsort(have, kind="stable")
+            at = np.clip(np.searchsorted(have[order], want), 0, max(len(have) - 1, 0))
+            if len(have) == 0 or np.any(have[order][at] != want):
+                return None
+            take, ident = order[at], want
+        else:
+            take = np.arange(first.count) if idx is None else np.asarray(idx)
+            ident = None
+        return {"Position": block["Position"][:, take], "types": np.asarray(first.types)[take],
+                "Particle Identifier": ident, "Index": take, "cells": block["cells"],
+                "pbc": first.cell.pbc.copy(), "Timestep": block["Timestep"]}
 
     def _shared_key(self, ctx, frames, properties, ids, idx) -> tuple:
         """What the stacked trajectory depends on. Steps above that only read the frames

@@ -81,6 +81,11 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- MSD, VACF and the other all-frames analyses read an XDATCAR's positions straight from the file
+  when no step above them changes the particles: the atom lines of 32 MB of file at a time go to
+  the compiled parser in one call instead of one frame at a time through the pipeline. `msd` over
+  a 200-atom, 20000-frame XDATCAR: 5.8 s, now 2.5 s (container). Readers can offer the same
+  through `read_positions` (#151).
 - Notebook edits are immediate: adding, deleting, moving a cell, undo and cells the AI writes
   keep the widgets and plots of the cells that did not change instead of building all of them
   again (a new cell in the tutorial notebook with four plots: 0.75 s, now 0.01 s) (#150).

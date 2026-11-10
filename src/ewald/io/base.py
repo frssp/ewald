@@ -53,6 +53,15 @@ class FrameReader:
     def read(self, index: int) -> DataCollection:
         raise NotImplementedError
 
+    def read_positions(self, indices, check=None) -> dict | None:
+        """Positions of many frames at once, for a step that reads a whole trajectory: a dict
+        with ``Position`` ``(T, N, 3)``, ``cells`` ``(T, 3, 3)`` and ``Timestep`` ``(T,)`` for
+        frames ``indices`` (ascending), the particles in the order :meth:`read` gives them and
+        the same in every frame. ``check`` is called between pieces (it raises to cancel). None
+        when the reader cannot (the default) or the frames do not allow it; the caller then
+        reads frame by frame with :meth:`read`."""
+        return None
+
     def refresh(self) -> int | None:
         """Pick up frames appended since the file was indexed (a run still writing it).
 

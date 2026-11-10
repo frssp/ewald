@@ -150,3 +150,55 @@ def test_xdatcar_and_outcar_tables_read_in_one_piece_or_line_by_line(vasp_dir, t
     frac = np.linalg.solve(got.cell.matrix.T, (got.positions - ref).T).T
     np.testing.assert_allclose(frac[0], [0, -1, -1], atol=1e-7)
     np.testing.assert_allclose(frac[1:], 0, atol=1e-7)
+
+
+def _xdatcar_walk(path, n=7, frames=40, cartesian_from=None, seed=3):
+    rng = np.random.default_rng(seed)
+    frac = rng.random((n, 3))
+    lines = ["walk\n", "1.0\n", "5.0 0 0\n", "0 6.0 0\n", "0.5 0 7.0\n", "Li S\n", f"{n - 3} 3\n"]
+    for k in range(frames):
+        frac = (frac + 0.02 * rng.standard_normal((n, 3))) % 1
+        if cartesian_from is not None and k >= cartesian_from:
+            lines.append(f"Cartesian configuration= {k + 1}\n")
+            rows = frac @ np.array([[5.0, 0, 0], [0, 6.0, 0], [0.5, 0, 7.0]])
+        else:
+            lines.append(f"Direct configuration= {k + 1}\n")
+            rows = frac
+        lines += [f"  {a:.8f}  {b:.8f}  {c:.8f}\n" for a, b, c in rows]
+    path.write_text("".join(lines), encoding="utf-8", newline="\n")
+    return path
+
+
+@pytest.mark.parametrize("name", ["XDATCAR", "XDATCAR.npt", "walk", "walk-cartesian", "walk-crlf"])
+def test_xdatcar_read_positions_matches_frame_by_frame(vasp_dir, tmp_path, monkeypatch, name):
+    """``read_positions`` (all-frames steps read the file in a few pieces) gives what ``read``
+    gives frame by frame: positions in Angstrom, each frame's cell, Timestep; also across
+    piece boundaries, with a step, and for Cartesian frames and CRLF files."""
+    if name.startswith("walk"):
+        path = _xdatcar_walk(tmp_path / "XDATCAR", cartesian_from=25 if name == "walk-cartesian" else None)
+        if name == "walk-crlf":
+            path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    else:
+        path = vasp_dir / name
+    monkeypatch.setattr(XdatcarReader, "BLOCK_BYTES", 600)   # several pieces
+    reader = XdatcarReader(path)
+    for indices in (range(len(reader)), range(1, len(reader), 3)):
+        got = reader.read_positions(indices)
+        frames = [reader.read(i) for i in indices]
+        np.testing.assert_allclose(got["Position"], [d.positions for d in frames], atol=1e-12)
+        np.testing.assert_allclose(got["cells"], [d.cell.matrix for d in frames])
+        assert got["Timestep"].tolist() == [d.attributes["Timestep"] for d in frames]
+
+
+def test_xdatcar_read_positions_declines_what_it_cannot_read(vasp_dir, tmp_path):
+    """Lines the compiled parser cannot take (columns run together) or atom counts that change
+    give None: the all-frames steps then read frame by frame, which handles them."""
+    text = (vasp_dir / "XDATCAR").read_text(encoding="utf-8").splitlines(keepends=True)
+    row = [i for i, line in enumerate(text) if "configuration" in line][1] + 1
+    a, b, c = (float(v) for v in text[row].split()[:3])
+    text[row] = f"  {a:.8f} {b - 1:.8f}{c - 1:.8f}\n"
+    path = tmp_path / "XDATCAR"
+    path.write_text("".join(text), encoding="utf-8", newline="\n")
+    reader = XdatcarReader(path)
+    assert reader.read_positions(range(len(reader))) is None
+    assert reader.read_positions([0]) is not None and reader.read_positions([2, 1]) is None

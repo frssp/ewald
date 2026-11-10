@@ -243,6 +243,28 @@ class FileSource:
             self.thermo.annotate(data)
         return data
 
+    def read_positions(self, frames, check=None) -> dict | None:
+        """Positions of frames ``frames`` (ascending) in a few reads, from readers that can
+        (:meth:`FrameReader.read_positions`); None when one of the files cannot, or the
+        particle count changes between files."""
+        frames = [f % self.num_frames for f in frames]
+        groups = []   # (reader, its frame indices), consecutive frames of one reader together
+        for f in frames:
+            reader, i = self._index[f]
+            if groups and groups[-1][0] is reader:
+                groups[-1][1].append(i)
+            else:
+                groups.append((reader, [i]))
+        parts = []
+        for reader, indices in groups:
+            part = reader.read_positions(indices, check)
+            if part is None:
+                return None
+            parts.append(part)
+        if len({p["Position"].shape[1] for p in parts}) != 1:
+            return None
+        return {key: np.concatenate([p[key] for p in parts]) for key in parts[0]}
+
 
 class StaticSource:
     """Pipeline source wrapping in-memory frames: a DataCollection, an ASE ``Atoms``, a pymatgen
