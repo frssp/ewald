@@ -886,7 +886,10 @@ class AskPanel(QtWidgets.QWidget):
         """Forget a closed notebook's chat; an answer on its way is stopped."""
         if conv.busy():
             self._stop(conv)
+        was_pending = conv.pending is not None
         conv.dropped, conv.pending = True, None   # an answer already on its way to the GUI thread finds no page
+        if was_pending:
+            self.answerFinished.emit(conv.key)
         self._conversations.pop(id(conv.key), None)
         if conv is self.conversation:
             self.conversation = None
@@ -1200,6 +1203,16 @@ class AskPanel(QtWidgets.QWidget):
     def _stop(self, conv: _Conversation):
         worker = conv.worker
         if worker is None or not worker.isRunning():
+            if conv.pending is not None:   # its thread ended but the answer never arrived: free the chat
+                if worker is not None:     # and an answer still queued must not reach the next question
+                    for signal in (worker.event, worker.answered, worker.failed):
+                        try:
+                            signal.disconnect()
+                        except (RuntimeError, TypeError):
+                            pass
+                conv.worker = None
+                conv.pending.set_answer("*Stopped.*")
+                self._finish(conv)
             return
         worker.cancel.set()
         if hasattr(conv.access, "stop"):
@@ -1238,8 +1251,14 @@ class AskPanel(QtWidgets.QWidget):
             self.pipelineChanged.emit()
 
     def _on_answer(self, conv, text):
-        if conv.dropped:
+        if conv.dropped or conv.pending is None:   # closed, or stopped after its thread ended
             return
+        try:
+            self._show_answer(conv, text)
+        finally:   # whatever showing it raised, the chat is free again (busy() reads pending)
+            self._finish(conv)
+
+    def _show_answer(self, conv, text):
         conv.history = ""   # the agent has it now
         if conv.pending is not None:
             conv.pending.set_answer(text)
@@ -1251,15 +1270,16 @@ class AskPanel(QtWidgets.QWidget):
                 for b in blocks:   # into the cell doing the same job, else a new cell
                     self.answerCodeRequested.emit(b.code, bool(run))
                     b.mark_inserted()
-        self._finish(conv)
 
     def _on_failed(self, conv, message):
-        if conv.dropped:
+        if conv.dropped or conv.pending is None:
             return
         conv.sent_notebook = conv.sent_errors = None  # they may not have reached the model: send again
         low = message.lower()
         hint = f" {_SETUP_HINT}" if any(w in low for w in ("anthropic", "openai", "api_key", "api key",
                                                             "authentication", "no ai provider")) else ""
-        if conv.pending is not None:
-            conv.pending.set_answer(f"**Error.** `{message}`{hint}", error=True)
-        self._finish(conv)
+        try:
+            if conv.pending is not None:
+                conv.pending.set_answer(f"**Error.** `{message}`{hint}", error=True)
+        finally:
+            self._finish(conv)

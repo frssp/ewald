@@ -519,6 +519,7 @@ def _broken(exc: BaseException, sftp) -> bool:
 _connections: dict[tuple, Connection] = {}
 _connections_lock = threading.Lock()   # the dicts only; never held while a host is contacted
 _host_locks: dict[tuple, threading.Lock] = {}   # one connect() at a time per host
+_epoch = 0   # bumped by disconnect(): a handshake that began before it must not be cached
 
 
 class GuiThreadWarning(RuntimeWarning):
@@ -558,15 +559,25 @@ def connect(host: str, user: str | None = None, port: int | None = None) -> Conn
                 conn.close()
             except Exception:  # noqa: BLE001
                 pass
-        new = Connection(host, user, port)
-        with _connections_lock:
-            _connections[k] = new
-        return new
+        for _ in range(3):
+            with _connections_lock:
+                epoch = _epoch
+            new = Connection(host, user, port)
+            with _connections_lock:
+                if _epoch == epoch:
+                    _connections[k] = new
+                    return new
+            # disconnected meanwhile (its profile changed, the app closes): made with the old
+            # settings, so it is closed and made again
+            new.close()
+        raise RemoteError(f"connection to {host} was closed while it was being opened")
 
 
 def disconnect(host: str) -> None:
     """Close the cached connections to ``host`` (e.g. after its profile changed)."""
+    global _epoch
     with _connections_lock:
+        _epoch += 1
         for k in [k for k in _connections if k[0] == host]:
             try:
                 _connections.pop(k).close()
@@ -575,7 +586,9 @@ def disconnect(host: str) -> None:
 
 
 def disconnect_all() -> None:
+    global _epoch
     with _connections_lock:
+        _epoch += 1
         for conn in _connections.values():
             try:
                 conn.close()

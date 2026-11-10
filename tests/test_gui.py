@@ -3329,7 +3329,7 @@ def test_one_run_at_a_time_and_its_stops(app, cu_path, tmp_path, monkeypatch):
         bridge = w.ask_panel.notebook_access(view.notebook)
         with pytest.raises(RuntimeError, match="running already"):
             bridge.run(view.notebook, after)
-        bridge._waiting = view                    # as while its run_cell waits for the loop
+        bridge._waiting = (view, view._worker)                  # as while its run_cell waits for the loop
         bridge.stop()                             # the chat's Stop
         assert view.wait(30)
         assert loop.state == "error" and "after" not in view.notebook.namespace
@@ -4299,7 +4299,7 @@ class Slow:
         return 0
 class Pipe:
     source, num_frames = Slow(), 1
-    def refresh_source(self): return self.source.refresh()
+    def refresh_source(self, source=None): return self.source.refresh()
 gate2 = threading.Event()
 got = []
 gone, kept = live_reload.LiveReload(), live_reload.LiveReload()
@@ -5854,6 +5854,12 @@ def test_ai_chat_is_busy_until_its_answer_is_shown(app, pipe):
     _wait(app, panel)
     assert not panel.busy() and panel.messages[-1].text == "the whole frame"
     panel.ask("third")
+    conv.worker.wait(5000)
+    panel.stop()                               # Stop after the thread ended: the chat is free again
+    assert not panel.busy() and panel.messages[-1].text == "*Stopped.*"
+    app.processEvents()                        # the third answer, still queued, is dropped
+    assert panel.messages[-1].text == "*Stopped.*"
+    panel.ask("fourth")
     conv.worker.wait(5000)
     panel._drop(conv)                          # its notebook closed before the answer arrived
     app.processEvents()

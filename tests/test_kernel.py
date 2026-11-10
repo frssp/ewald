@@ -225,3 +225,30 @@ def test_a_dead_kernel_is_started_again_without_leaking_its_folder(kernel):
     assert not kernel.alive and kernel._km is not None
     kernel.start()
     assert kernel.alive and kernel._dir != old and not os.path.exists(old)
+
+
+def test_shutdown_while_the_kernel_starts_or_runs_returns_at_once(kernel):
+    """Closing a kernel notebook's tab right after its first run started: shutdown() must not wait
+    for the cell, and must not leave the kernel process behind (it started meanwhile)."""
+    import threading
+    import time
+
+    from ewald.kernel import KernelError
+
+    cells = [{"id": 1, "kind": "code", "source": "import time\ntime.sleep(20)", "frames": None}]
+    errors = []
+
+    def run():
+        try:
+            kernel.run(cells, 0)
+        except KernelError as exc:
+            errors.append(exc)
+
+    t = threading.Thread(target=run)
+    t.start()
+    time.sleep(0.15)                       # still starting
+    t0 = time.monotonic()
+    kernel.shutdown()
+    t.join(30)
+    assert time.monotonic() - t0 < 10 and not t.is_alive()
+    assert errors and not kernel.alive and kernel._km is None

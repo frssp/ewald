@@ -620,15 +620,18 @@ class Pipeline:
             self.refresh_source()
             return self.num_frames - before
 
-    def refresh_source(self) -> int | None:
+    def refresh_source(self, source=None) -> int | None:
         """:meth:`refresh`, returning the first frame that may have changed (None: nothing did).
         The source is refreshed under the compute lock, so a worker thread computing a frame
         never reads a reader whose frame index is being extended (live reload runs this on a
-        pool thread while the GUI computes on its own worker)."""
-        refresh = getattr(self.source, "refresh", None)
-        if refresh is None:
-            return None
+        pool thread while the GUI computes on its own worker). ``source``: refresh only if it is
+        still this pipeline's source (a probe started before another file was opened)."""
         with self._compute_lock:  # not while a worker thread reads the source
+            if source is not None and source is not self.source:
+                return None
+            refresh = getattr(self.source, "refresh", None)
+            if refresh is None:
+                return None
             first = refresh()
             if first is not None:
                 self.invalidate(first)

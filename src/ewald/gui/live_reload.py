@@ -27,7 +27,7 @@ class _Probe(QtCore.QRunnable):
     def run(self):
         try:
             # under the pipeline's compute lock: the compute worker may be reading this source
-            first, error = self.pipeline.refresh_source(), None
+            first, error = self.pipeline.refresh_source(self.source), None
         except Exception as exc:  # network down, file replaced by a directory, ...
             first, error = None, f"{type(exc).__name__}: {exc}"
         workers.relay().done.emit(self.token, (self.source, first, error))

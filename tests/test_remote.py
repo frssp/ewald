@@ -367,3 +367,31 @@ def test_a_host_out_of_reach_does_not_hold_up_other_hosts(server, monkeypatch):
         gate.set()
         t.join(20)
     assert isinstance(remote.connect("stuck"), Stuck)   # connected once, cached
+
+
+def test_a_connection_opened_across_a_disconnect_is_not_kept(server, monkeypatch):
+    """disconnect() (a profile edited) while a handshake runs: the connection made with the old
+    settings is closed and made again, not cached past the disconnect."""
+    import threading
+
+    real = remote.Connection
+    made, gate, entered = [], threading.Event(), threading.Event()
+
+    def make(host, user=None, port=None):
+        conn = real(host, user, port)
+        made.append(conn)
+        if len(made) == 1:
+            entered.set()
+            gate.wait(20)
+        return conn
+
+    monkeypatch.setattr(remote, "Connection", make)
+    got = []
+    t = threading.Thread(target=lambda: got.append(remote.connect("hpc")))
+    t.start()
+    assert entered.wait(20)
+    remote.disconnect("hpc")
+    gate.set()
+    t.join(30)
+    assert len(made) == 2 and got == [made[1]] and not made[0].is_active()
+    assert remote.connect("hpc") is made[1]

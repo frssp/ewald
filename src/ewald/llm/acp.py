@@ -138,9 +138,10 @@ class AcpClient:
         except OSError as exc:
             raise AcpError(f"Could not start {program}: {exc}") from exc
         self.generation += 1
-        for q in list(self._pending.values()):   # requests to the old process: they fail now, not never
+        with self._lock:   # a request registering now goes to the new process's table
+            old, self._pending = self._pending, {}
+        for q in old.values():   # requests to the old process: they fail now, not never
             q.put({"error": {"message": "the agent was restarted"}})
-        self._pending.clear()
         self._stderr = []
         errors = threading.Thread(target=self._read_stderr, args=(self.proc,), daemon=True,
                                   name="ewald-acp-stderr")
@@ -381,6 +382,7 @@ class AcpChat(Chat):
             KNOWN_MODELS.update(self.models)
             self._model_set = current
             self._told = None
+            self._stopped_turn = False  # a new session never saw the stopped answer
         if self.model and self.model != self._model_set:
             self._set_model(self.model)
 
