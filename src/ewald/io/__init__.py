@@ -371,10 +371,89 @@ def _is_remote_dir(path: str) -> bool:
 
 
 def open_reader(path, format: str | None = None, **kwargs) -> FrameReader:
-    """Reader for ``path``: chosen from the reader registry (built-in formats and plugins)."""
+    """Reader for ``path``: chosen from the reader registry (built-in formats and plugins).
+    A keyword the chosen reader does not take is a TypeError that names the format and the
+    keywords it does take."""
     from .. import plugins
 
-    return plugins.open_reader(path, format, **kwargs)
+    plugin = plugins.find_reader(path, format)
+    if not kwargs:
+        return plugin.open(path, format=format)
+    checked = _check_reader_keywords(plugin, path, format, kwargs)
+    try:
+        return plugin.open(path, format=format, **kwargs)
+    except TypeError as exc:
+        # A reader that hands its keywords on (to ase.io.read) fails with the name of a function
+        # the caller never wrote: read_vasp() got an unexpected keyword argument 'typemap'.
+        import re
+
+        m = re.search(r"(\S+) got an unexpected keyword argument '(\w+)'\.?(.*)", str(exc), re.S)
+        if checked or m is None or m.group(2) not in kwargs or getattr(exc, "reader_keyword", None):
+            raise   # not about a keyword handed on, or said in these words already (a NEB band's image reader)
+        function, name, did_you_mean = m.groups()   # Python 3.13 adds " Did you mean 'style'?" itself
+        raise TypeError(f"load()/import_file() got an unexpected keyword argument {name!r}: the {plugin.name} "
+                        f"reader ({_how_chosen(path, format)}) passes its keywords on, and {function} does not "
+                        f"take it.{did_you_mean}") from exc
+
+
+def _how_chosen(path, format) -> str:
+    return f"format={format!r}" if format else f"detected for {os.path.basename(str(path)) or path}"
+
+
+def _reader_keywords(factory) -> list[str] | None:
+    """The keywords the reader ``factory`` takes besides the path, or None when that cannot be
+    told: it passes ``**kwargs`` on (the ASE readers to ``ase.io.read``, a NEB band to the reader
+    of its images) or has no signature to inspect."""
+    import inspect
+
+    extra: tuple = ()
+    if factory is _open_lammps_data:      # the wrappers here that only hand their keywords on
+        factory, extra = LammpsDataReader, ("style", "units")
+    elif factory is _open_vaspout:
+        factory = VaspoutReader
+    elif factory is _open_optimade:
+        from ..optimade.reader import OptimadeReader
+
+        factory = OptimadeReader
+    try:
+        params = list(inspect.signature(factory).parameters.values())
+    except (TypeError, ValueError):
+        return None
+    if any(p.kind is p.VAR_KEYWORD for p in params):
+        return None
+    # the first parameter is the path; format= is load()'s own and reaches the reader by itself
+    names = [p.name for p in params[1:] if p.kind in (p.POSITIONAL_OR_KEYWORD, p.KEYWORD_ONLY)]
+    return [n for n in (*names, *extra) if n != "format"]
+
+
+def _check_reader_keywords(plugin, path, format, kwargs) -> bool:
+    """Raise TypeError for the first of ``kwargs`` the reader ``plugin`` does not take, before it
+    opens the file: the reader's own ``ExtxyzReader.__init__() got an unexpected keyword argument``
+    names a class the caller of ``load()`` never wrote, and not what could have been passed
+    instead. Returns False when the reader's keywords cannot be told (nothing was checked)."""
+    type_map = kwargs.get("type_map")
+    if type_map is not None and not hasattr(type_map, "items"):
+        err = TypeError(f"type_map maps the file's type ids to element names, as {{1: 'Cu', 2: 'Zr'}}; "
+                        f"it cannot be {type_map!r}")
+        err.reader_keyword = "type_map"
+        raise err
+    known = _reader_keywords(plugin.factory)
+    if known is None:
+        return False
+    unknown = [k for k in kwargs if k not in known]
+    if not unknown:
+        return True
+    import difflib
+
+    takes = ", ".join(f"{k}=" for k in known) or "no keywords of its own"
+    close = difflib.get_close_matches(unknown[0], [*known, "format", "thermo", "join"], 1)
+    err = TypeError(
+        f"load()/import_file() got an unexpected keyword argument {unknown[0]!r}: the {plugin.name} reader "
+        f"({_how_chosen(path, format)}) takes {takes}." + (f" Did you mean {close[0]!r}?" if close else ""))
+    # ewald.load() reads this: an error about the call, which it must not answer with its
+    # "this file is a table" hint (a plain TypeError may also come from a reader that failed on the file)
+    err.reader_keyword = unknown[0]
+    raise err
 
 
 def _open_lammps_data(path, **kwargs):
@@ -388,11 +467,11 @@ def _open_ase(path, format=None, **kwargs):
     return AseReader(path, format=format, **kwargs)
 
 
-def _open_cube(path, pbc=False, **kwargs):
+def _open_cube(path, pbc=False):
     return VolumetricReader(path, "cube", pbc=pbc)
 
 
-def _open_vasp_volumetric(path, format=None, kind=None, **kwargs):
+def _open_vasp_volumetric(path, format=None, kind=None):
     fmt = (format or "").lower()
     kind = kind or ("potential" if "locpot" in fmt else "elf" if "elfcar" in fmt else
                     "charge" if "chgcar" in fmt else None)
@@ -435,7 +514,7 @@ def _open_vaspout(path, **kwargs):
         raise exc from None
 
 
-def _open_md_trajectory(path, format=None, topology=None, **kwargs):
+def _open_md_trajectory(path, format=None, topology=None):
     fmt = (format or "").upper()
     fmt = {"NETCDF": "NCDF", "MDANALYSIS": None, "": None}.get(fmt, fmt)
     return MDAnalysisReader(path, topology=topology, format=fmt)

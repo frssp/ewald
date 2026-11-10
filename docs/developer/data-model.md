@@ -50,7 +50,12 @@ another frame through the modifiers above the running one, which is how trajecto
 see upstream selections. `ComputeContext.upstream_key()` fingerprints the source, frame count,
 backend and the `repr` of every enabled upstream modifier; trajectory modifiers cache their
 result under it together with their own `repr`. This is one reason every constructor argument
-must be stored as an attribute: `repr` is built from `parameters()`.
+must be stored as an attribute: `repr` is built from `parameters()`. What `repr` does not show
+goes in through `Modifier._input_token()`: a Python step returns a fingerprint of its function
+(`pipeline._token`: the code, and by value the defaults, closure and globals it and its helpers
+read; objects by their attributes; what cannot be read, by identity), so a variable changed in
+another cell gives a new key. `Pipeline._step_token` takes it once per outermost `compute` and
+falls back to identity for a step that changes what it reads.
 
 ## Modifiers and parameters
 

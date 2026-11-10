@@ -40,8 +40,7 @@ class WignerSeitzAnalysis(Modifier):
         self.affine_mapping = affine_mapping
 
     def modify(self, data, ctx):
-        frame = ctx.frame + self.frame_offset if self.frame_offset is not None else self.reference_frame
-        ref = ctx.source_frame(frame)
+        ref = ctx.reference_frame(self.reference_frame, self.frame_offset)
         if ref.count == 0:
             raise ValueError("reference configuration for Wigner-Seitz analysis contains no sites")
         pos = data.positions

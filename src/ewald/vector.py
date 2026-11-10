@@ -388,7 +388,7 @@ def render_vector(data, filename=None, *, camera, size=(1600, 1200), background=
                   trajectory_radius=None, trajectory_style="line", visuals=None, frame=0, overlays=None, boundary=None,
                   boundary_bonds="half", replicate=None, replicate_cell="super", show_atoms=True, surfaces=None,
                   type_transparency=None, selection_color=None, light=None, measurements=None,
-                  large_vector="warn", **_ignored):
+                  large_vector="warn"):
     """Draw ``data`` as a vector figure and save it (format from the extension).
 
     ``shading``: 'gradient' (shaded discs) or 'flat' (one color plus outline, VESTA's

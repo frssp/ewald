@@ -602,6 +602,21 @@ def test_inspector_filter(app, cu_fcc):
     assert insp.model.rowCount() == int((cu_fcc.positions[:, 2] < 1).sum())
 
 
+def test_inspector_filter_error_shows_the_corrected_expression(app, cu_fcc):
+    """The message quotes expressions with '<' and '>': as rich text they lost what lay between."""
+    from PySide6 import QtGui
+
+    from ewald.gui.inspector import DataInspector
+
+    insp = DataInspector()
+    insp.set_data(cu_fcc)
+    insp.filter.setText("Position.Z < 1 | Position.X > 2")
+    insp._apply_filter()
+    shown = QtGui.QTextDocument()
+    shown.setHtml(insp.filter_status.text())
+    assert "(Position.Z < 1) | (Position.X > 2)" in shown.toPlainText()
+
+
 def test_timeline(app):
     from ewald.gui.timeline import Timeline
 

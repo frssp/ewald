@@ -3,7 +3,8 @@
 Property names are used as in OVITO: ``Position.Z``, ``ParticleType``,
 ``ParticleIdentifier``, ``ParticleIndex`` (0-based row), ``Velocity.X``, ``Coordination``; globals ``N``,
 ``Frame``, ``Timestep``, ``CellSize.X``. Combine conditions with numpy
-operators: ``(Position.Z > 10) & (ParticleType == "Cu")``; ``^`` is a power, as in OVITO
+operators: ``(Position.Z > 10) & (ParticleType == "Cu")``, or with OVITO's ``&&`` and ``||``, which
+need no parentheses (``Position.Z > 10 && ParticleType == "Cu"``); ``^`` is a power, as in OVITO
 (``Force.X^2``); ``cond ? a : b`` is OVITO's conditional (``np.where``); a name with spaces may be
 written in backticks (```Displacement Magnitude```); numpy is ``np``.
 """
@@ -185,6 +186,156 @@ def _conditional(s: str) -> str:
     raise SyntaxError("'?' without its ':' (OVITO's conditional is 'cond ? a : b')")
 
 
+_OPERATORS = ("&&", "||", "==", "!=", "<=", ">=", "<<", ">>", "**", "//")   # read as one token
+_COMPARISONS = frozenset({"<", ">", "<=", ">=", "==", "!="})
+_PYTHON_LOGIC = re.compile(r"\b(and|or|if|else|lambda)\b")   # bind looser than && and || would: never regrouped
+
+
+def _plain(text: str, inner) -> str:
+    """A token of :func:`_tokens` as text of its own bracket level: a blank for a group or a string."""
+    return " " if inner is not None or text[0] in "'\"" else text
+
+
+def _tokens(s: str):
+    """``s`` at its own bracket level, as ``(text, inner)``: a bracket group (``text`` is its two
+    brackets, ``inner`` what is between them), else with ``inner`` None a quoted string taken
+    whole, a two-character operator or one character."""
+    k = 0
+    while k < len(s):
+        c = s[k]
+        end = _matching(s, k) if c in "([{" else -1   # unbalanced: one character, Python's parser says so
+        if end >= 0:
+            yield c + s[end], s[k + 1:end]
+            k = end + 1
+            continue
+        end = k + 1
+        if c in "'\"":
+            while end < len(s) and s[end] != c:
+                end += 2 if s[end] == "\\" else 1
+            end = min(end + 1, len(s))
+        elif s[k:k + 2] in _OPERATORS:
+            end = k + 2
+        yield s[k:end], None
+        k = end
+
+
+def _fold(function: str, operands: list) -> str:
+    """``operands`` (source text) folded left to right with ``function(a, b)``; one operand is
+    returned as it is written."""
+    if len(operands) == 1:
+        return operands[0]
+    if not all(o.strip() for o in operands):
+        raise SyntaxError("'&&' and '||' need a condition on both sides")
+    out = f"({operands[0].strip()})"
+    for o in operands[1:]:
+        out = f"{function}({out}, ({o.strip()}))"
+    return out
+
+
+def _logical(s: str) -> str:
+    """OVITO's C-style ``a && b`` and ``a || b`` (both below comparisons, ``||`` lowest, so neither
+    side needs parentheses; also inside brackets) as ``np.logical_and(a, b)`` / ``np.logical_or``:
+    any nonzero value counts as true, as in OVITO, which ``&`` on numbers would not give."""
+    if "&&" not in s and "||" not in s:
+        return s
+    args, ors, ands, piece = [], [], [], []   # arguments between commas; || operands; && operands; their text
+    keyword, plain = [], []                   # a keyword argument's "name="; the argument without groups and strings
+
+    def end(level: int):   # close the && operand being read (0), the || operand (1), the argument (2)
+        ands.append("".join(piece))
+        piece.clear()
+        if level >= 1:
+            ors.append(_fold("np.logical_and", ands))
+            ands.clear()
+        if level == 2:
+            if ("&&" in plain or "||" in plain) and _PYTHON_LOGIC.search("".join(plain)):
+                raise SyntaxError("'&&' or '||' beside 'and', 'or' or 'if': put each part in parentheses")
+            args.append("".join(keyword) + _fold("np.logical_or", ors))
+            ors.clear()
+            keyword.clear()
+            plain.clear()
+
+    for text, inner in _tokens(s):
+        plain.append(_plain(text, inner))
+        if inner is not None:
+            piece.append(text[0] + _logical(inner) + text[1])
+        elif text in ("&&", "||", ","):
+            end(("&&", "||", ",").index(text))
+        elif text == "=" and not (ors or ands or keyword) and "".join(piece).strip().isidentifier():
+            keyword[:] = [*piece, "="]   # np.where(..., where=a && b): the condition starts after the name
+            piece.clear()
+        else:
+            piece.append(text)
+    end(2)
+    return ",".join(args)
+
+
+def _double_equals(s: str) -> str:
+    """``s`` with every single ``=`` written ``==`` (``==``, ``<=``, ``>=``, ``!=`` and quoted
+    strings stay as they are)."""
+    return "".join("==" if text == "=" else text if inner is None else text[0] + _double_equals(inner) + text[1]
+                   for text, inner in _tokens(s))
+
+
+def _parenthesized(s: str) -> str | None:
+    """``s`` with parentheses around every comparison that stands beside ``&`` or ``|`` at its
+    bracket level (``a > 1 | b > 2`` -> ``(a > 1) | (b > 2)``, what was meant: Python reads it as
+    ``a > (1 | b) > 2``); None when there is no such comparison."""
+    out, run, changed = [], [["", False]], False   # run: [text, holds a comparison] per operand of & and |
+    plain = []                                     # the run without its groups and strings
+
+    def end():   # a run of operands ends at a separator of lower precedence, or with ``s``
+        nonlocal changed
+        wrap = len(run) > 1 and any(compares for _, compares in run) and not _PYTHON_LOGIC.search("".join(plain))
+        changed = changed or wrap
+        plain.clear()
+        for k, (text, compares) in enumerate(run):
+            if k:
+                text, op = text[1:], text[0]
+                out.append(op)
+            if wrap and compares:
+                body = text.strip()
+                at = text.index(body)
+                text = f"{text[:at]}({body}){text[at + len(body):]}"
+            out.append(text)
+        run[:] = [["", False]]
+
+    for text, inner in _tokens(s):
+        plain.append(_plain(text, inner))
+        if inner is not None:
+            fixed = _parenthesized(inner)
+            changed = changed or fixed is not None
+            run[-1][0] += text[0] + (inner if fixed is None else fixed) + text[1]
+        elif text in ("&", "|"):
+            run.append([text, False])
+        elif text in (",", "&&", "||", "?", ":"):
+            end()
+            out.append(text)
+        else:
+            run[-1][0] += text
+            run[-1][1] = run[-1][1] or text in _COMPARISONS
+    end()
+    return "".join(out) if changed else None
+
+
+def _suggest(fix, expr: str, data, frame) -> str | None:
+    """``fix(expr)`` when it is another expression that evaluates on ``data``; "" when it only
+    parses (it fails for another reason: say the rule, not this text); None when ``fix`` changes
+    nothing or does not make it parse. A correction goes into an error message only after it ran."""
+    try:
+        fixed = fix(expr)
+        if fixed is None or fixed == expr or fix(fixed) not in (None, fixed):   # stable, so trying it ends
+            return None
+        evaluate(fixed, data, frame)
+    except SyntaxError:
+        return None
+    except Exception:  # noqa: BLE001 - an unknown name, a keyword argument's "=" that was doubled too, ...
+        return ""
+    return fixed
+
+
+_BINDS_TIGHTER = ("'&' and '|' bind tighter than comparisons in Python (a > 1 | b > 2 is read as a > (1 | b) > 2), "
+                  "so put each condition in parentheses")
 _BACKTICKED = re.compile(r"`([^`]+)`")
 _SPACED_NAME = re.compile(r"[A-Za-z][\w.]*( +[\w.]+)+")
 
@@ -215,7 +366,7 @@ def evaluate(expr: str, data, frame=None):
            "sin": np.sin, "cos": np.cos, "min": np.minimum, "max": np.maximum, "pi": np.pi}
     code = expr.replace("^", "**")   # OVITO's power operator ('Force.X^2'); never XOR here
     try:
-        code = _conditional(code)
+        code = _logical(_conditional(code))
     except SyntaxError as exc:
         raise SyntaxError(f"invalid expression {expr!r}: {exc}") from None
     for i, k in enumerate(dotted):
@@ -226,8 +377,27 @@ def evaluate(expr: str, data, frame=None):
         _check(code, expr)
         out = eval(compile(code, "<expression>", "eval"), {"__builtins__": _BUILTINS}, env)
         return out.view(np.ndarray) if isinstance(out, _TypeNames) else out
+    except SyntaxError:
+        fixed = _suggest(_double_equals, expr, data, frame)   # "Coordination = 12"
+        if fixed is None:
+            raise
+        raise ValueError(f"{expr!r}: a single '=' does not compare; use '=='"
+                         + (f": {fixed!r}" if fixed else ", as in Coordination == 12")) from None
+    except TypeError as exc:
+        # "Position.Z > 1 | Position.X > 1" is 1 | Position.X first: numpy's "ufunc 'bitwise_or'
+        # not supported" says nothing about the parentheses that are missing
+        fixed = _suggest(_parenthesized, expr, data, frame)
+        if fixed:
+            raise ValueError(f"{expr!r}: {_BINDS_TIGHTER}: {fixed!r}") from exc
+        if "bitwise_" in str(exc):
+            raise ValueError(f"{expr!r}: a side of '&' or '|' is neither a condition nor a whole number. "
+                             f"{_BINDS_TIGHTER}, e.g. (Position.Z > 5) & (Coordination < 12)") from exc
+        raise
     except ValueError as exc:
         if "truth value" in str(exc):
+            fixed = _suggest(_parenthesized, expr, data, frame)   # whole numbers: a == 1 | b == 2 chains
+            if fixed:
+                raise ValueError(f"{expr!r}: {_BINDS_TIGHTER}: {fixed!r}") from exc
             raise ValueError(f"{expr!r}: use '&', '|', '~' with parentheses instead of "
                              "'and', 'or', 'not' for per-particle conditions") from exc
         raise

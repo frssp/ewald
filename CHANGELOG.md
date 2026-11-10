@@ -81,6 +81,27 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Changed
 
+- Frame indices mean one thing everywhere (D102, #153): `pipe.source_frame(i)` and
+  `ctx.source_frame(i)` take the indices `pipe.compute(i)` takes and raise IndexError out of range
+  (`source_frame(999)` on 10 frames gave frame 9); `pipe.frames(start, stop, step)` counts as a slice
+  (`pipe.frames(-2)` is the last two frames, it yielded 12 of 10); `frame_offset` of `AtomicStrain`
+  and `WignerSeitzAnalysis` raises when it leaves the trajectory (frame 0 with `-1` took the last
+  frame); `kernels.trajectory_msd/vacf/rdf`, the `compute_msd` AI tool and
+  `MeanSquaredDisplacement(start=, stop=)` clip a `stop` past the end and count a negative `start`
+  from the end (they read frames twice).
+- `render()`, `pipe.render()`, `snapshot()` and `render_animation()` raise TypeError for a keyword
+  no renderer knows, on every renderer and before any work; the ray tracer and vector files ignored
+  them. They take the 3D view's names for one picture (`cell=False`, `colors=`, `radii=`, ...).
+  `ewald.display.options` refuses a key that is neither an option nor a render keyword (#153).
+- Reader keywords are checked before the file is opened: `load(path, typemap=...)` names the
+  reader's keywords and the one meant. The cube, CHGCAR/LOCPOT and XTC/TRR/DCD readers no longer
+  drop keywords they do not take, so `type_map` on such a file (also `ewald ... --type-map` and
+  `LoadTrajectory(type_map=...)`) is an error, as it was for ASE formats (#153).
+- Setting a misspelt setting on a modifier (`m.cutof = 3`) raises AttributeError with the setting
+  meant; `pipe.add(CoordinationAnalysis)` (the class), a Python step that returns something other
+  than a DataCollection or None, and `pipe.modifiers = step` raise at once (#153).
+
+
 - Playback with a time series in front no longer draws the plot on every frame: the
   current-frame marker is drawn over the picture kept from the last drawing (with the tutorial
   notebook's energy plot in front: 138 ms per frame until idle, now 98 ms), and a per-frame
@@ -133,6 +154,33 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
   re-exports `ewald.optimade`. (D78, #100)
 
 ### Fixed
+
+- Library defects found by a design review (D102, #153):
+  - MSD, VACF, `@all_frames` and the other all-frames results below a Python step were reused
+    after a variable the step reads had changed (the probe: MSD 0.838 where 18.5 A^2 was right).
+    A Python step now counts with what its function computes from: its code, defaults, closure,
+    the globals it and its helpers read, objects by their attributes and arrays by content (a
+    large read-only array by identity). What cannot be read (a random generator, an open file, a
+    pipeline) counts by identity, and so does a step that changes what it reads (it appends to
+    a list). A fingerprint that takes over 50 ms warns once and says how to avoid it.
+  - `load()` answered a wrong reader keyword or format with "holds no structure, it is a table";
+    the hint is given only when the file fails as a structure by itself.
+  - A verb that fails (`rdf(pipe, cutoff=40)` out of memory, a cancelled run) takes its step out
+    of the pipeline again; every later `compute` failed the same way.
+  - `data["Coord"]`, `data.tables["rdf"]`, `data.attributes[...]`, `table["g"]` and
+    `show(pipe, y="g")` name what exists and the closest match instead of a bare KeyError;
+    `data["Position.Z"]` says how to take a column in Python.
+  - Expressions take OVITO's `&&` and `||`; `=` for `==` and `a < 5 | b > 11` without parentheses
+    say what to write instead. The Data inspector's filter shows such messages unmangled.
+  - `search_api` (the reference search of Ask AI) finds entries by the words a researcher uses
+    (`supercell` finds `Replicate`, `write POSCAR` finds `export_file`, `make a movie` finds
+    `render_animation`, which the reference now lists) and reads Korean terms of the field
+    (`배위수 분포`); it returned nothing for them.
+  - A cutoff beyond the cell (`rdf(pipe, cutoff=40)` on 108 atoms) asked for 24 GiB: the periodic
+    image search lists only pairs that start in the cell, and a pair list or partial g(r) that
+    cannot fit into memory is refused before it is allocated, with the cutoff that would fit
+    (`ewald.backend.MEMORY_BUDGET` sets the limit). An unknown device name lists the valid ones.
+
 
 - State that was tracked by scattered flags lost transitions (#147). A run asked for while cells
   run no longer vanishes: Shift+Enter says the notebook is busy, and the AI's `run_cell` gets an

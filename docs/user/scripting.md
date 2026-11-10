@@ -84,6 +84,9 @@ def displacement_from_first(frame, data, ctx):
 pipe.modifiers.append(displacement_from_first)
 ```
 
+`ctx.source_frame(k)` and `pipe.source_frame(k)` take the frame numbers `pipe.compute(k)` takes:
+negative ones count from the end, and one past the end raises IndexError.
+
 `ctx.input_frame(k)` gives another frame as it enters this modifier, with every modifier
 above it applied (`ctx.input_frames(range(...))` for a loop over many frames). Keyword arguments become parameters:
 `pipe.modifiers.append(PythonModifier(f, threshold=2.5))` calls `f(frame, data, threshold=2.5)`.
@@ -94,6 +97,23 @@ A function marked `@all_frames` reads the whole trajectory once instead, `f(fram
 change (an `AllFramesModifier`). `@each_frame` marks the default, a function run at every frame.
 See [Notebooks › What runs during playback](notebooks.md#cells).
 
+The same holds for the built-in steps that read every frame (`MeanSquaredDisplacement`,
+`VelocityAutocorrelation`, ...). A function step above them counts as changed when what it
+computes from changes: its code, its defaults and keyword parameters, and the variables it and
+the functions it calls read, compared by value (numbers, strings, lists, dicts, arrays, objects
+by their attributes). Setting `scale = 2.0` in another cell therefore gives a new MSD. Two
+things to know:
+
+- What Python cannot read counts by identity: a random generator, an open file, a pipeline, a
+  class. A change inside one of those is not seen; replace the object, or add the step again.
+- Arrays are compared by content, which means reading them at every `compute`. A large array
+  that is read-only (`a.flags.writeable = False`, a frame's own arrays, `np.load(...,
+  mmap_mode="r")`) is taken by identity instead. A step whose check takes more than 50 ms says
+  so once in a warning.
+
+A step that changes what it reads (it appends to a list at every frame) would never look
+unchanged; after two computes it counts by identity as well.
+
 ## Looping over a trajectory
 
 ```python
@@ -101,6 +121,10 @@ import numpy as np
 
 counts = [d.attributes["CommonNeighborAnalysis.counts.FCC"] for d in pipe.frames(0, None, 10)]
 ```
+
+`pipe.frames(start, stop, step)` counts as a slice does: `pipe.frames(-2)` gives the last two
+frames, and a `stop` past the end ends at the last frame. `trajectory_msd` and the other
+`ewald.kernels` functions below read their `start`, `stop` and `step` the same way.
 
 For quantities over the whole trajectory, prefer the trajectory modifiers or `ewald.kernels`:
 
@@ -129,12 +153,27 @@ rdf(pipe, cutoff=6)      # the g(r) curve
 `"opengl"`), `quality` (`None` picks `"standard"`, or `"draft"` above 100 000 atoms) and any
 other `render()` keyword such as `direction="z"` or `theme="VESTA"`.
 `ewald.display.options["enabled"] = False` goes back to the text repr, which consoles and
-`print()` always show. A picture that fails also falls back to the text.
+`print()` always show. A picture that fails also falls back to the text. A key that is neither
+one of these options nor a `render()` keyword raises when it is set (`options["qualty"]`).
 
 ## Errors
 
 `pipe.compute(i)` raises the first error a modifier hits. `compute(i, errors="skip")` keeps
 going and stores the message in `modifier.status`; the GUI works this way.
+
+Mistakes are reported where they are made, with what was meant:
+
+- A name the frame does not have (`data["Coord"]`, `data.tables["rdf"]`, `data.attributes[...]`,
+  `table["g"]`) lists the names it has and the closest one.
+- `pipe.add(CoordinationAnalysis)` (the class instead of `CoordinationAnalysis(3.0)`), a function
+  step that returns something other than a `DataCollection` or nothing, and a misspelt setting
+  (`m.cutof = 3.5`) raise at once.
+- `render()`, `snapshot()` and `load()` name a keyword they do not know and the one meant.
+- A verb that fails (`rdf(pipe, cutoff=...)` out of memory, a cancelled run) leaves the pipeline
+  as it was.
+- A neighbor list that cannot fit into memory raises MemoryError before it is allocated and names
+  the cutoff that would fit. `ewald.backend.MEMORY_BUDGET` (bytes) sets the limit by hand, for a
+  job with less memory than the machine reports.
 
 ## Coming from OVITO
 

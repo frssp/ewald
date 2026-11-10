@@ -20,7 +20,10 @@ pipe.render("fig.svg", frame=10, renderer="vector", type_legend=True, scale_bar=
 `pipe.view` holds how the pipeline's structure is drawn, and `pipe.render()`, `snapshot(pipe)`,
 the picture Jupyter shows and the GUI viewport all use it. Set it with `view(pipe, ...)` (the
 notebook's view cell) or one attribute at a time; keywords given to `pipe.render(...)` override it
-for that call only (`bonds=2.8` replaces the bond table, `direction=` the saved camera).
+for that call only (`bonds=2.8` replaces the bond table, `direction=` the saved camera). `render()`
+also takes the view's names (`cell=False` for `show_cell=False`, `colors=`, `radii=`), and a
+keyword no renderer knows raises TypeError with the one meant, whichever renderer draws
+(`sorted(ewald.render.render_keywords())` lists them).
 
 ```python
 from ewald import load, view

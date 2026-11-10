@@ -1040,7 +1040,8 @@ class Toolset:
            "here) for what does a job, e.g. 'Li site hops residence time' or 'ring statistics'. Returns the best "
            "matching entries with their signatures and outputs. Call it before you write a Python step or "
            "hand-written numpy/matplotlib for an analysis, and use the step it finds instead.",
-           _obj({"query": {"type": "string", "description": "what you want to compute or draw, in English words"},
+           _obj({"query": {"type": "string", "description": "what you want to compute or draw, in plain words "
+                                                            "(English; Korean terms of the field are read too)"},
                  "limit": {"type": "integer", "description": "entries to return (default 6)"}}, ["query"]))
         def search_api(query, limit=6):
             from .reference import search_reference

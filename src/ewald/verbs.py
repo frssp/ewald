@@ -9,8 +9,11 @@
 
 Calling a verb again replaces the step it added before (in a notebook, re-running the cell
 does the same), so changing ``cutoff=`` and running again never stacks duplicate steps.
+A verb that fails leaves the pipeline's steps as they were before the call.
 """
 from __future__ import annotations
+
+import contextlib
 
 import numpy as np
 
@@ -88,6 +91,11 @@ class Table(dict):
     def __copy__(self):   # DataCollection.copy(): new containers, shared arrays, as for a plain table
         return Table(self.name, self, self.pipe, self.frame, self.labels, self.attributes)
 
+    def __missing__(self, key):   # table["g"]: say which columns there are ("in" and .get never come here)
+        from .data import _no_column
+
+        raise _no_column(self.name, key, self)
+
     @property
     def counts(self) -> dict:
         """``{row: Count}`` for a counting table (structure types, coordination numbers, clusters);
@@ -134,6 +142,21 @@ class Table(dict):
         return f"<Table {self.name!r}: {n} rows; {', '.join(self.columns)}>"
 
 
+@contextlib.contextmanager
+def _atomic(pipes):
+    """A verb adds its step and computes with it. When that fails (out of memory, a cancelled
+    run, Ctrl-C), the step must not stay behind: every later ``compute``, verb and export of the
+    pipeline would fail the same way. The steps of ``pipes`` are put back as they were, the same
+    objects in the same places, and the error goes on unchanged."""
+    before = [(p, list(p.modifiers)) for p in pipes]
+    try:
+        yield
+    except BaseException:   # KeyboardInterrupt too: an interrupted analysis is as failed as any
+        for p, steps in before:
+            p.modifiers[:] = steps
+        raise
+
+
 #: the verb that adds each step class (names a table the verb puts beside an earlier step's)
 VERB_OF = {"CoordinationAnalysis": "rdf", "MeanSquaredDisplacement": "msd", "VelocityAutocorrelation": "vacf",
            "StructureFactor": "sq", "PowderDiffraction": "xrd", "BondAngleDistribution": "bond_angles",
@@ -146,11 +169,13 @@ def _verb(pipe, cls, table: str, frame: int, labels=None, **params) -> Table:
     ``table`` at ``frame``. The step never changes what earlier steps wrote: a property, attribute
     or table they made keeps its value, and a table of the same name from this step is
     ``"<table> (<verb>)"`` (see :func:`ewald.pipeline._keep_upstream`). For :class:`~ewald.runs.Runs` the same on every run: a
-    :class:`~ewald.runs.RunTables` of one table per run."""
+    :class:`~ewald.runs.RunTables` of one table per run. All or nothing: when the result cannot
+    be computed, the steps of the pipeline (of every run) are put back (:func:`_atomic`)."""
     from .runs import Runs, RunTables
 
     if isinstance(pipe, Runs):
-        return RunTables(table, {r.label: _verb(r.pipe, cls, table, frame, labels, **params) for r in pipe}, pipe)
+        with _atomic(pipe.pipes):    # a run that fails takes the step back from the runs before it too
+            return RunTables(table, {r.label: _verb(r.pipe, cls, table, frame, labels, **params) for r in pipe}, pipe)
     if "time_per_frame" in params and params["time_per_frame"] is None:
         from .runinfo import run_info
 
@@ -158,19 +183,21 @@ def _verb(pipe, cls, table: str, frame: int, labels=None, **params) -> Table:
     mod = cls(**params)
     mod._verb = cls.__name__
     mod._verb_name = VERB_OF.get(cls.__name__, cls.__name__)
-    for i, m in enumerate(pipe.modifiers):
-        if getattr(m, "_verb", None) == cls.__name__:
-            pipe.modifiers[i] = mod
-            break
-    else:
-        pipe.add(mod)
-    data = pipe.compute(frame)
-    table_name = getattr(mod, "_verb_tables", {}).get(table, table)
-    if table_name not in data.tables:
-        raise RuntimeError(f"{cls.__name__} wrote no {table_name!r} table: {mod.status or 'see the step for details'}")
-    columns = data.tables[table_name]
-    if callable(labels):
-        labels = labels(mod, columns)
+    with _atomic([pipe]):
+        for i, m in enumerate(pipe.modifiers):
+            if getattr(m, "_verb", None) == cls.__name__:
+                pipe.modifiers[i] = mod
+                break
+        else:
+            pipe.add(mod)
+        data = pipe.compute(frame)
+        table_name = getattr(mod, "_verb_tables", {}).get(table, table)
+        if table_name not in data.tables:
+            raise RuntimeError(f"{cls.__name__} wrote no {table_name!r} table: "
+                               f"{mod.status or 'see the step for details'}")
+        columns = data.tables[table_name]
+        if callable(labels):
+            labels = labels(mod, columns)
     prefix = cls.__name__ + "."
     attrs = {k: v for k, v in {**data.attributes, **getattr(mod, "_verb_attributes", {})}.items()
              if k.startswith(prefix)}
@@ -207,7 +234,8 @@ def vacf(pipe, frame: int = 0, time_per_frame: float | None = None, **kwargs) ->
     from .runs import Runs, RunTables
 
     if isinstance(pipe, Runs):
-        return RunTables("vacf", {r.label: vacf(r.pipe, frame, time_per_frame, **kwargs) for r in pipe}, pipe)
+        with _atomic(pipe.pipes):
+            return RunTables("vacf", {r.label: vacf(r.pipe, frame, time_per_frame, **kwargs) for r in pipe}, pipe)
     if time_per_frame is None:
         info = run_info(pipe)
         time_per_frame = (info.time_per_frame or 0.0) if info.code == "vasp" or info.units == "metal" else 0.0

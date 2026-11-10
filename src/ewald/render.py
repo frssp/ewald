@@ -1008,10 +1008,88 @@ def quality_settings(quality: str | None = "publication", **explicit) -> dict:
     return out
 
 
+# Keyword arguments of the ray tracer's scene builder that are not render() keywords: render() works
+# out the view direction, pixel size and flat outlines itself (from the camera and atom_style).
+_BUILDER_ONLY = frozenset({"view_direction", "pixel", "flat"})
+_COLOR_RULE_KEYS = ("color_by", "colormap", "color_range")   # color_rule.take takes them before any builder
+
+
+def _keyword_names(func) -> frozenset:
+    import inspect
+
+    return frozenset(k for k, p in inspect.signature(func).parameters.items() if p.kind is p.KEYWORD_ONLY)
+
+
+def _builder(renderer: str):
+    """The function that makes ``renderer``'s picture from the ``**scene_kwargs`` of :func:`render`."""
+    if renderer == "raytrace":
+        from .raytrace import scene_from_data
+
+        return scene_from_data
+    if renderer == "vector":
+        from .vector import render_vector
+
+        return render_vector
+    return build_scene
+
+
+def render_keywords() -> frozenset:
+    """Every keyword :func:`render` takes: its own, the scene keywords of the three renderers and
+    ``color_by``/``colormap``/``color_range``. The names are read from the signatures of the functions
+    that use them, so a keyword added to one of them is known here without another list to keep."""
+    scene = frozenset().union(*(_keyword_names(_builder(r)) for r in RENDERERS)) - _BUILDER_ONLY
+    return _keyword_names(render) | scene | frozenset(_COLOR_RULE_KEYS)
+
+
+def check_keywords(kwargs: dict) -> dict:
+    """Keyword arguments for :func:`render`, checked: the 3D view's names become render()'s
+    (``cell`` -> ``show_cell``, ``colors`` -> ``type_colors``, ...; :func:`ewald.view3d.render_names`)
+    and a name no renderer knows raises TypeError. Every renderer checks the same names, before any
+    work: the ray tracer and vector files used to ignore what they did not know, so ``sizee=(800, 600)``
+    or ``cell=False`` drew the default picture without a word."""
+    from .view3d import _RENDER_NAMES, SETTINGS, render_names
+
+    kwargs = render_names(kwargs)
+    known = render_keywords()
+    unknown = [k for k in kwargs if k not in known]
+    if not unknown:
+        return kwargs
+    import difflib
+
+    names = known | set(_RENDER_NAMES) | {"filename"}
+    lines, listed = [], False
+    for name in unknown:
+        meant = _MEANT.get(name) or name.replace("colour", "color")
+        close = [meant] if meant != name and meant in names else \
+            difflib.get_close_matches(name, sorted(names), n=1, cutoff=0.75)
+        if name in SETTINGS:   # style, bond_factor, ...: the view derives several keywords from them
+            hint = (f" It is a setting of the 3D view that has no render() keyword: set it with "
+                    f"view(pipe, {name}=...) before rendering.")
+        elif close:
+            hint = f" Did you mean {close[0]!r}?"
+        else:
+            hint, listed = "", True
+        lines.append(f"render() got an unexpected keyword argument {name!r}.{hint}")
+    if listed:   # the common ones, not all eighty
+        lines.append(f"Common keywords: {', '.join(k for k in _COMMON if k in names)}; "
+                     "all of them: sorted(ewald.render.render_keywords())")
+    raise TypeError(" ".join(lines))
+
+
+# what people write for a render() keyword that is spelt differently (a close spelling is found without)
+_MEANT = {"show_bonds": "bonds", "bond": "bonds", "width": "size", "height": "size", "resolution": "size",
+          "figsize": "size", "bg": "background", "bgcolor": "background", "background_color": "background",
+          "view": "direction", "view_direction": "direction", "camera_position": "camera",
+          "output": "filename", "path": "filename", "file": "filename", "cmap": "colormap",
+          "color_map": "colormap"}
+_COMMON = ("filename", "size", "direction", "zoom", "camera", "renderer", "quality", "background", "bonds", "cell",
+           "colors", "radii", "color_by", "colormap", "legend", "text", "theme")
+
+
 def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction="iso",
            orthographic: bool = True, zoom: float = 1.0, background=None,
            transparent_background: bool = False, ambient_occlusion: bool | None = None,
-           legend: bool = True, show_cell: bool = True, bonds: float | None = None,
+           legend: bool = True, show_cell: bool | None = None, bonds: float | None = None,
            radius_scale: float = 1.0, antialiasing: bool | None = None, text: str | None = None,
            camera: dict | None = None, renderer: str | None = None, samples: int | None = None,
            ao_samples: int | None = None, noise_threshold: float | None = None, shadows: bool | None = None,
@@ -1077,9 +1155,19 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
     ``theme``: a theme name ('VESTA', 'Journal', 'ASE', 'Dark slide', plugins; see :mod:`ewald.themes`)
     that sets element colors, background, cell color and radius preset; explicit arguments win.
     ``background`` defaults to white.
+
+    A keyword that no renderer knows raises TypeError before anything is drawn, the same on every
+    renderer (:func:`check_keywords`); one that only another renderer uses (``shading`` of vector files,
+    ``mesh_limit`` of OpenGL) is ignored, so a call works with any ``renderer``. The 3D view's setting
+    names are taken for the same things: ``cell`` (``show_cell``, default True), ``colors``
+    (``type_colors``), ``radii`` (``type_radii``), ``atoms`` (``show_atoms``), ``transparency``
+    (``type_transparency``) and ``selection`` (``selection_color``); both spellings together raise.
     """
     import pyvista as pv
 
+    # show_cell=None means "not given", so that cell= next to it is seen as the second spelling
+    scene_kwargs = check_keywords(scene_kwargs if show_cell is None else {**scene_kwargs, "show_cell": show_cell})
+    show_cell = scene_kwargs.pop("show_cell", True)
     if renderer is None:
         renderer = "opengl" if opengl_available() else "raytrace"
     if renderer not in RENDERERS:
@@ -1132,13 +1220,12 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
             camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs, show_cell)
         if scene_kwargs.get("atom_style") == "flat":
             scene_kwargs.setdefault("shading", "flat")  # one color plus outline, as on screen
-        for k in ("atom_style", "sphere_resolution", "mesh_limit", "arrow_resolution"):
-            scene_kwargs.pop(k, None)
+        takes = _keyword_names(render_vector)   # the rest steers only the other renderers (atom_style, ...)
         return render_vector(data, filename, camera=camera, size=size, background=background,
                              transparent_background=transparent_background, radius_scale=radius_scale,
                              bonds=bonds, show_cell=show_cell, dpi=dpi, light=light, large_vector=large_vector,
                              **{k: v for k, v in overlays.items() if k not in ("type_colors", "frame")},
-                             **scene_kwargs)
+                             **{k: v for k, v in scene_kwargs.items() if k in takes})
     if renderer == "raytrace":
         return _render_raytraced(data, filename, size=size, direction=direction, orthographic=orthographic,
                                  zoom=zoom, background=background, transparent_background=transparent_background,
@@ -1154,8 +1241,10 @@ def render(data: DataCollection, filename=None, *, size=(1600, 1200), direction=
 
         scene_kwargs["cell_color"] = cell_line_color(background, transparent_background)
     res = q["sphere_resolution"] if data.count <= 20_000 else min(q["sphere_resolution"], 16)
+    takes = _keyword_names(build_scene)   # the rest steers only the other renderers (shading)
     scene = build_scene(p, data, radius_scale=radius_scale, show_cell=show_cell, bonds=bonds,
-                        sphere_resolution=res, light=light, **scene_kwargs)
+                        sphere_resolution=res, light=light,
+                        **{k: v for k, v in scene_kwargs.items() if k in takes})
     if any(s.transparency > 0 for s in data.surfaces.values()) or needs_depth_peeling(scene):
         p.enable_depth_peeling()
     if camera is not None:
@@ -1252,16 +1341,16 @@ def _render_raytraced(data, filename, *, size, direction, orthographic, zoom, ba
     from .raytrace import raytrace, scene_from_data
 
     flat = scene_kwargs.get("atom_style") == "flat"
-    for k in ("atom_style", "sphere_resolution", "mesh_limit", "antialiasing", "ambient_occlusion", "cell_width"):
-        scene_kwargs.pop(k, None)
     if camera is None:  # same framing as the OpenGL path
         camera = default_camera(data, size, direction, orthographic, zoom, radius_scale, scene_kwargs, show_cell)
-    cell_color = cell_line_color(background, transparent_background)
+    cell_color = scene_kwargs.pop("cell_color", None) or cell_line_color(background, transparent_background)
     view = np.asarray(camera["position"], float) - np.asarray(camera["focal_point"], float)
     scene_kwargs.setdefault("arrow_resolution", 16 if samples <= 4 else 24)
+    takes = _keyword_names(scene_from_data)   # the rest steers only the other renderers (atom_style, ...)
     scene = scene_from_data(data, radius_scale=radius_scale, bonds=bonds, show_cell=show_cell,
-                            cell_color=scene_kwargs.pop("cell_color", None) or cell_color, view_direction=view,
-                            pixel=(pixel_size(camera, size[1]), size[1]), flat=flat, **scene_kwargs)
+                            cell_color=cell_color, view_direction=view,
+                            pixel=(pixel_size(camera, size[1]), size[1]), flat=flat,
+                            **{k: v for k, v in scene_kwargs.items() if k in takes})
     lit = {}
     if light is not None:
         d, k = light_params(light)

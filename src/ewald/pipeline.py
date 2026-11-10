@@ -1,10 +1,13 @@
 """Data pipeline: source -> modifiers -> DataCollection."""
 from __future__ import annotations
 
+import contextlib
 import functools
 import operator
+import sys
 import threading
 import time
+import types
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from typing import Callable
@@ -40,9 +43,22 @@ class ComputeContext:
         return self.backend.xp
 
     def source_frame(self, frame: int) -> DataCollection:
-        """Unmodified input data of another frame (e.g. a reference configuration)."""
+        """Unmodified input data of another frame (e.g. a reference configuration); negative
+        counts from the end, out of range raises IndexError."""
         self.check_cancel()
         return self.pipeline.source_frame(frame)
+
+    def reference_frame(self, frame: int = 0, offset: int | None = None) -> DataCollection:
+        """Source data of a step's reference configuration: ``frame``, or with ``offset`` the
+        frame that far from the current one. An offset that leaves the trajectory raises
+        IndexError at either end (``offset=-1`` at frame 0 used to take the last frame)."""
+        if offset is None:
+            return self.source_frame(frame)
+        n, k = self.pipeline.num_frames, self.frame + operator.index(offset)
+        if not 0 <= k < n:
+            raise IndexError(f"frame_offset={offset} at frame {self.frame} points to frame {k}: "
+                             f"the pipeline has frames 0 to {n - 1}")
+        return self.source_frame(k)
 
     def input_frame(self, frame: int) -> DataCollection:
         """Data at ``frame`` as it enters the running modifier: the source plus every
@@ -59,7 +75,7 @@ class ComputeContext:
         summary of the frame being computed."""
         for frame in frames:
             self.check_cancel()
-            with self.pipeline._compute_lock:
+            with self.pipeline._compute_lock, self.pipeline._tokens_once():
                 data = self.pipeline._compute(frame, self.backend, "raise", self.modifier_index, self.cancel, sweep=True)
             yield data
 
@@ -71,10 +87,16 @@ class ComputeContext:
 
     def upstream_key(self) -> tuple:
         """Hashable fingerprint of the input (source, frame count, upstream modifiers and
-        their parameters); trajectory modifiers cache their result under it."""
-        mods = self.pipeline.modifiers[:self.modifier_index]
-        return (id(self.pipeline.source), self.pipeline.num_frames, self.backend.name,
-                tuple((type(m).__name__, repr(m)) for m in mods if m.enabled))
+        their parameters); trajectory modifiers cache their result under it.
+
+        A Python step above counts with what its function computes from: its code, defaults,
+        closure and the globals it reads (:func:`_token`), so a new value of a variable the
+        function uses gives a new key. What cannot be read that way (a random generator, an
+        open file, a pipeline) counts by identity: a change inside it is not seen."""
+        pipe = self.pipeline
+        mods = pipe.modifiers[:self.modifier_index]
+        return (id(pipe.source), pipe.num_frames, self.backend.name,
+                tuple((type(m).__name__, repr(m), pipe._step_token(m)) for m in mods if m.enabled))
 
 
 @functools.lru_cache(maxsize=None)
@@ -84,6 +106,45 @@ def _aliases(cls) -> dict:
     for klass in reversed(cls.__mro__):
         out.update(klass.__dict__.get("ALIASES", {}))
     return out
+
+
+@functools.lru_cache(maxsize=None)
+def _settings(cls) -> tuple:
+    """Names of ``cls``'s constructor arguments."""
+    import inspect
+
+    try:
+        return tuple(inspect.signature(cls.__init__).parameters)[1:]
+    except (TypeError, ValueError):
+        return ()
+
+
+@functools.lru_cache(maxsize=4096)
+def _misspelled(cls, name: str) -> str | None:
+    """The setting of ``cls`` that ``name`` is a near miss of (``cutof`` -> ``cutoff``, an old
+    name -> its current one), or None: ``name`` is a setting or nothing like one."""
+    import difflib
+
+    settings, aliases = _settings(cls), _aliases(cls)
+    if name in settings:
+        return None
+    close = difflib.get_close_matches(name, (*settings, *aliases), n=1, cutoff=0.8)
+    return aliases.get(close[0], close[0]) if close else None
+
+
+def _in_method_of(obj, frame) -> bool:
+    """Whether ``frame`` runs a method of ``obj``: its first argument is ``obj`` and its code is
+    that of a function (property, wrapped ``__init__``) defined on ``obj``'s class. A helper
+    ``def tune(step): step.cutof = 1`` is not one."""
+    code = frame.f_code
+    if not (code.co_argcount > 0 and frame.f_locals.get(code.co_varnames[0]) is obj):
+        return False
+    for klass in type(obj).__mro__:
+        found = klass.__dict__.get(code.co_name)
+        for part in (found, *(getattr(found, name, None) for name in ("__func__", "fget", "fset", "__wrapped__"))):
+            if getattr(part, "__code__", None) is code:
+                return True
+    return False
 
 
 def _translate(cls, kwargs: dict):
@@ -145,7 +206,23 @@ class Modifier:
         return getattr(self, new)
 
     def __setattr__(self, name, value):
-        object.__setattr__(self, _aliases(type(self)).get(name, name), value)
+        cls = type(self)
+        name = _aliases(cls).get(name, name)
+        if name not in self.__dict__ and name[:1] != "_" and not hasattr(cls, name):
+            # a new public name that is nearly a setting: ``m.cutof = 9`` used to be kept and
+            # ignored. The modifier's own methods may name their attributes as they like.
+            meant = _misspelled(cls, name)
+            if meant is not None and not _in_method_of(self, sys._getframe(1)):
+                raise AttributeError(f"{cls.__name__} has no setting {name!r}. Did you mean {meant!r}? "
+                                     f"Settings: {', '.join(_settings(cls))}")
+        object.__setattr__(self, name, value)
+
+    def _input_token(self):
+        """What the result of this step depends on that ``repr(self)`` does not show, for
+        :meth:`ComputeContext.upstream_key`: None (nothing, the constructor arguments say it
+        all), a hashable value (:func:`_token`), or ``_UNKEYABLE`` when it cannot be told: the
+        steps below then never reuse what they computed from this one."""
+        return None
 
     def modify(self, data: DataCollection, ctx: ComputeContext):
         raise NotImplementedError
@@ -194,6 +271,11 @@ class PythonModifier(Modifier):
     def name(self) -> str:
         return getattr(self.function, "__name__", "PythonModifier")
 
+    def _input_token(self):
+        # repr(self) shows the function's address only: the same function computes something
+        # else once a variable it reads has changed
+        return _token((self.function, self.params))
+
     def modify(self, data, ctx):
         return self._call(ctx.frame, data, ctx)
 
@@ -213,11 +295,21 @@ class PythonModifier(Modifier):
             out = self.function(*args, **self.params)
         finally:
             figures = _take_figures(before)
+        _check_result(self.name, out)
         target = out if isinstance(out, DataCollection) else data
         for k, png in enumerate(figures):
             name = f"Figure: {self.name}" + (f" ({k + 1})" if k else "")
             target.attributes[name] = StepFigure(png, self.name)
         return out
+
+
+def _check_result(step: str, out):
+    """Raise TypeError unless ``out`` is what a step may return (``return data.positions * 2``
+    used to fail later, in whatever read the array as a frame first)."""
+    if out is not None and not isinstance(out, DataCollection):
+        raise TypeError(f"step {step!r} returned {type(out).__name__}: a step sets its result on data "
+                        "(data.positions = ..., data['Name'] = values) and returns None, or returns a "
+                        "DataCollection")
 
 
 class StepFigure:
@@ -301,13 +393,18 @@ class AllFramesModifier(PythonModifier):
     parameters change. Plots of the result then only move their frame marker during playback."""
 
     def modify(self, data, ctx):
-        key = (ctx.upstream_key(), id(self.function), repr(self.params))
+        # the function and its parameters count as in upstream_key: by what they compute from,
+        # not by the function's address
+        pipe = ctx.pipeline
+        upstream = ctx.upstream_key()
         cache = self.__dict__.get("_result")
-        if cache is None or cache[0] != key:
+        if cache is None or cache[0] != (upstream, pipe._step_token(self)):
             before = _contents(data)
             out = self._call(Frames(ctx), data, ctx)
             result = out if isinstance(out, DataCollection) else data
-            cache = (key, _changes(before, result))
+            # the token as the run left it: a function that fills a list of its own
+            # (``calls.append(...)``) would never be reused under the one from before
+            cache = ((upstream, pipe._step_token(self, again=True)), _changes(before, result))
             self._result = cache
             if out is not None:
                 return out
@@ -365,13 +462,30 @@ def all_frames(function: Callable) -> Callable:
     return function
 
 
+def _steps(value, call: str):
+    """``value`` as what goes into a pipeline's list of steps: an iterable of them. One step,
+    text or anything that is not iterable is the mistake ``pipe.modifiers = step``."""
+    if isinstance(value, (Modifier, str, bytes)) or callable(value) or not hasattr(value, "__iter__"):
+        raise TypeError(f"pipe.modifiers is a list of steps: {call}, or pipe.add(step)")
+    return value
+
+
 class ModifierList(list):
     """List that wraps plain callables in PythonModifier on insertion."""
+
+    def __init__(self, modifiers=()):
+        super().__init__(self._wrap(m) for m in modifiers)
 
     @staticmethod
     def _wrap(m):
         if isinstance(m, Modifier):
             return m
+        if isinstance(m, type):
+            # a class is callable, so it used to be wrapped as a Python step and fail at compute
+            name = m.__name__
+            if issubclass(m, Modifier):
+                raise TypeError(f"{name} is the modifier class, not a step: call it, pipe.add({name}(...))")
+            raise TypeError(f"{name} is a class, not a step: add a Modifier instance or a function f(frame, data)")
         if callable(m):
             return AllFramesModifier(m) if getattr(m, "_ewald_frames", None) == "all" else PythonModifier(m)
         raise TypeError(f"{m!r} is not a Modifier or callable")
@@ -383,7 +497,11 @@ class ModifierList(list):
         super().insert(i, self._wrap(m))
 
     def extend(self, ms):
-        super().extend(self._wrap(m) for m in ms)
+        super().extend(self._wrap(m) for m in _steps(ms, "pipe.modifiers += [step]"))
+
+    def __iadd__(self, ms):   # pipe.modifiers += [f]
+        self.extend(ms)
+        return self
 
     def __setitem__(self, i, m):
         super().__setitem__(i, [self._wrap(x) for x in m] if isinstance(i, slice) else self._wrap(m))
@@ -453,13 +571,46 @@ _RUN_STATE = ("enabled", "status", "last_time", "last_output")
 _UNKEYABLE = object()
 
 
-def _freeze(value, depth: int = 0):
+
+class _Same:
+    """Token of a value whose state cannot be read off it (a random generator, an open file, a
+    pipeline): equal to the token of that same object only. It holds the object, so the address
+    never becomes another object's. A copy or pickle of it equals nothing."""
+
+    __slots__ = ("value",)
+
+    def __init__(self, value):
+        self.value = value
+
+    def __eq__(self, other):
+        return type(other) is _Same and other.value is self.value
+
+    def __hash__(self):
+        return id(self.value)
+
+    def __repr__(self):
+        return f"<the {type(self.value).__name__} at {id(self.value):#x}>"
+
+    def __reduce__(self):
+        return (_Same, (object(),))
+
+    def __deepcopy__(self, memo):
+        return _Same(object())
+
+
+_HASHED_BYTES = 1 << 18   # a read-only array above this goes into a token by identity, not by content
+_PLAIN = (list, tuple, set, frozenset, dict)
+
+
+def _freeze(value, depth: int = 0, tokens=None):
     """A hashable stand-in for a modifier setting, or ``_UNKEYABLE`` when its state can't be
-    read off the value (functions, arbitrary objects): such a modifier is always recomputed."""
+    read off the value (functions, arbitrary objects): such a modifier is always recomputed.
+    With ``tokens`` (:class:`_Tokens`) the value is one a Python step computes from: what is
+    not plain data gets a stand-in from there, and nothing is ``_UNKEYABLE``."""
     if value is None or isinstance(value, (bool, int, float, complex, str, bytes)):
         return value
     if depth > 6:
-        return _UNKEYABLE
+        return _UNKEYABLE if tokens is None else _Same(value)
     import enum
     import os
 
@@ -468,23 +619,282 @@ def _freeze(value, depth: int = 0):
     if isinstance(value, (np.generic, enum.Enum, os.PathLike)):
         return (type(value).__name__, str(value))
     if isinstance(value, np.ndarray):
-        import hashlib
-
         if value.dtype == object:
-            return _freeze(value.tolist(), depth + 1)
-        digest = hashlib.blake2b(np.ascontiguousarray(value).view(np.uint8).ravel(), digest_size=16).digest()
-        return ("ndarray", value.shape, value.dtype.str, digest)
-    if isinstance(value, (list, tuple, set, frozenset, dict)):
+            token = _freeze(value.tolist(), depth + 1, tokens) if tokens is None or depth < 6 else _Same(value)
+        elif tokens is not None and value.nbytes > _HASHED_BYTES and _read_only(value):
+            token = ("ndarray", value.shape, value.dtype.str, _Same(value))   # nobody can change it
+        else:
+            token = ("ndarray", value.shape, value.dtype.str, _digest(value))
+        return token if tokens is None else tokens.with_state(value, np.ndarray, token, depth)
+    if isinstance(value, _PLAIN):
+        if tokens is not None and isinstance(value, (list, tuple)) and len(value) > 1024:
+            try:   # a long list of numbers: as one array, not element by element
+                array = np.asarray(value)
+            except Exception:  # noqa: BLE001 - ragged or mixed: element by element
+                array = None
+            if array is not None and array.dtype.kind in "biufc":
+                return (type(value).__name__, array.shape, array.dtype.str, _digest(array))
         items = sorted(value.items(), key=lambda kv: repr(kv[0])) if isinstance(value, dict) else \
             sorted(value, key=repr) if isinstance(value, (set, frozenset)) else value
         out = []
         for item in items:
-            f = _freeze(item, depth + 1)
-            if f is _UNKEYABLE:
+            # a dict's pairs are made here: their two parts are what the dict holds
+            f = tuple(_freeze(part, depth + 1, tokens) for part in item) if isinstance(value, dict) else \
+                _freeze(item, depth + 1, tokens)
+            if f is _UNKEYABLE or isinstance(value, dict) and any(part is _UNKEYABLE for part in f):
                 return _UNKEYABLE
             out.append(f)
-        return (type(value).__name__, tuple(out))
-    return _UNKEYABLE
+        token = (type(value).__name__, tuple(out))
+        return token if tokens is None else tokens.with_state(value, _PLAIN, token, depth)
+    return _UNKEYABLE if tokens is None else tokens.other(value, depth)
+
+
+def _digest(array) -> bytes:
+    import hashlib
+
+    import numpy as np
+
+    return hashlib.blake2b(np.ascontiguousarray(array).view(np.uint8).ravel(), digest_size=16).digest()
+
+
+def _read_only(array) -> bool:
+    """Whether nobody can write into ``array``: it and the arrays it is a view of are read-only
+    (the arrays of a frame; a file mapped with ``mmap_mode="r"``)."""
+    import mmap
+
+    import numpy as np
+
+    while isinstance(array, np.ndarray):
+        if array.flags.writeable:
+            return False
+        array = array.base
+    return array is None or isinstance(array, (bytes, mmap.mmap))
+
+
+def _state(value):
+    """The instance attributes of ``value`` (its ``__dict__`` and slots), or None when it keeps
+    its state where Python cannot read it (an object of a compiled extension)."""
+    state, found = {}, False
+    attributes = getattr(value, "__dict__", None)
+    if isinstance(attributes, dict):
+        state.update(attributes)
+        found = True
+    for klass in type(value).__mro__:
+        slots = klass.__dict__.get("__slots__", ())
+        for name in (slots,) if isinstance(slots, str) else slots:
+            if name in ("__dict__", "__weakref__"):
+                continue
+            found = True
+            try:
+                state[name] = getattr(value, name)
+            except AttributeError:   # not set, or a name the class mangles
+                pass
+    return state if found else None
+
+
+_TOKEN_DEPTH = 4       # functions followed from a step's function (helper of a helper ...)
+_TOKEN_OBJECTS = 2000  # objects whose attributes are read for one token; the rest go by identity
+
+
+def _token(value):
+    """Fingerprint of a value a Python step computes from, for the keys all-frames steps cache
+    under: equal tokens mean the step computes the same.
+
+    - Plain data as in :func:`_freeze`: numbers, strings, containers, arrays by content (a large
+      read-only array by identity, since nobody can change it).
+    - A function by its code and what the code reads (:meth:`_Tokens.function`).
+    - A module by name, and so is what installed code exports (:func:`_installed`).
+    - An object by its class and its attributes (a frame, a dataclass, ``SimpleNamespace``).
+    - By identity (:class:`_Same`) what is left: an object whose state Python cannot read (a
+      random generator, an open file), a pipeline, a class, a helper more than ``_TOKEN_DEPTH``
+      calls away. A change inside one of those is not seen.
+    """
+    return _Tokens().of(value)
+
+
+def _function_token(function):
+    """:func:`_token` of a Python function."""
+    return _Tokens().function(function)
+
+
+class _Tokens:
+    """One fingerprint in the making (:func:`_token`)."""
+
+    def __init__(self):
+        self.functions = []            # being fingerprinted, outermost first
+        self.left = _TOKEN_OBJECTS
+
+    def of(self, value, depth: int = 0):
+        return _freeze(value, depth, self)
+
+    def with_state(self, value, plain, token, depth: int):
+        """``token`` of a container or array, plus the attributes a subclass of it carries (the
+        ``attributes`` of a :class:`~ewald.Table`, the mask of a masked array)."""
+        if type(value) in (plain if isinstance(plain, tuple) else (plain,)):
+            return token
+        if depth > 5:
+            return (token, _Same(value))
+        try:
+            state = _state(value)
+        except Exception:  # noqa: BLE001
+            return (token, _Same(value))
+        return (token, self.of(state, depth + 1)) if state else (type(value).__name__, token)
+
+    def other(self, value, depth: int):
+        """Token of what is not plain data. Deep inside a structure it is the object itself:
+        the parts a token is made from must not go deeper than :func:`_freeze` reads."""
+        try:
+            token = self._other(value, depth) if depth < 6 else None
+        except Exception:  # noqa: BLE001 - an object that cannot even be asked for its name
+            token = None
+        return _Same(value) if token is None else token
+
+    def _other(self, value, depth: int):
+        import collections
+        import datetime
+        import decimal
+        import fractions
+        import inspect
+        import re
+
+        import numpy as np
+
+        if isinstance(value, types.ModuleType):
+            return ("module", value.__name__)
+        if value is Ellipsis or value is NotImplemented:
+            return (repr(value),)
+        if isinstance(value, range):
+            return ("range", value.start, value.stop, value.step)
+        if isinstance(value, slice):
+            return self.of(("slice", value.start, value.stop, value.step), depth + 1)
+        if isinstance(value, bytearray):
+            return ("bytearray", bytes(value))
+        if isinstance(value, re.Pattern):
+            return ("re", value.pattern, value.flags)
+        if isinstance(value, (datetime.date, datetime.time, datetime.timedelta, datetime.tzinfo,
+                              decimal.Decimal, fractions.Fraction, np.dtype)):
+            return (type(value).__name__, repr(value))
+        if isinstance(value, collections.deque):
+            return self.of(("deque", tuple(value), value.maxlen), depth + 1)
+        if isinstance(value, functools.partial):
+            return self.of(("partial", value.func, value.args, value.keywords), depth + 1)
+        if isinstance(value, types.MethodType):
+            return self.of(("method", value.__func__, value.__self__), depth + 1)
+        module = getattr(value, "__module__", None)
+        name = getattr(value, "__qualname__", None) or getattr(value, "__name__", None)
+        if isinstance(module, str) and isinstance(name, str) and _installed(module):
+            found = sys.modules.get(module)
+            for part in name.split("."):
+                found = getattr(found, part, None)
+            if found is value:   # numpy.linalg.norm, math.sqrt, ewald.DataCollection
+                return ("installed", module, name)
+        if isinstance(value, types.FunctionType):
+            return self.function(value)
+        if isinstance(value, (type, Pipeline)):
+            return None
+        if isinstance(value, types.BuiltinFunctionType):   # rng.normal, a list's append
+            owner = getattr(value, "__self__", None)
+            return None if owner is None else ("builtin", value.__name__, self.of(owner, depth + 1))
+        for inner in ("__wrapped__", "py_func"):   # functools.lru_cache, numba.njit
+            wrapped = inspect.getattr_static(value, inner, None)
+            if isinstance(wrapped, types.FunctionType):
+                return ("wrapped", type(value).__name__, self.function(wrapped))
+        return self.instance(value, depth)
+
+    def instance(self, value, depth: int):
+        """Token of an object from its class and its attributes; None when they cannot be read."""
+        if self.left <= 0:
+            return None
+        self.left -= 1
+        state = _state(value)
+        if state is None:
+            return None
+        if isinstance(value, Modifier):   # its settings, not what it kept from the last run
+            state = {k: v for k, v in state.items() if not k.startswith("_") and k not in _RUN_STATE}
+        return ("object", self.of(type(value), depth + 1), self.of(state, depth + 1))
+
+    def function(self, function):
+        """Token of a Python function: a digest of its code (constants and nested functions
+        included) and the tokens of its defaults, its closure cells and the module globals the
+        code reads, so it changes when any of them does. Functions among those are followed
+        ``_TOKEN_DEPTH`` deep (further ones count by identity); one that is being
+        fingerprinted already (recursion) is not followed again."""
+        if any(function is f for f in self.functions):
+            return ("recursion",)
+        if len(self.functions) >= _TOKEN_DEPTH:
+            return _Same(function)
+        digest, names = _code_info(function.__code__)
+        values = [("defaults", function.__defaults__), ("kwdefaults", function.__kwdefaults__)]
+        for k, cell in enumerate(function.__closure__ or ()):
+            try:
+                values.append((k, cell.cell_contents))
+            except ValueError:   # a variable the enclosing function has not set yet
+                values.append((k, "<empty cell>"))
+        scope = function.__globals__
+        values += [(name, scope[name]) for name in names if name in scope]   # the others are builtins
+        self.functions.append(function)
+        try:
+            return (digest, *((name, self.of(value)) for name, value in values))
+        finally:
+            self.functions.pop()
+
+
+@functools.lru_cache(maxsize=256)
+def _code_info(code) -> tuple:
+    """Digest of a code object and the names it reads as globals, both with the code nested
+    in it (lambdas, inner functions, comprehensions). Attribute names are not globals:
+    ``data.cell`` does not read a variable ``cell``."""
+    import dis
+    import hashlib
+    import marshal
+
+    names, todo = set(), [code]
+    while todo:
+        c = todo.pop()
+        names.update(i.argval for i in dis.get_instructions(c)
+                     if i.opname.startswith("LOAD_") and i.opname.endswith(("GLOBAL", "GLOBALS", "NAME"))
+                     and isinstance(i.argval, str))
+        todo.extend(k for k in c.co_consts if isinstance(k, types.CodeType))
+    # version 2 writes no back-references, which depend on reference counts
+    return hashlib.blake2b(marshal.dumps(code, 2), digest_size=16).digest(), tuple(sorted(names))
+
+
+@functools.lru_cache(maxsize=None)
+def _installed(module: str) -> bool:
+    """Whether ``module`` is installed code (the standard library, site-packages, ewald itself)
+    rather than the user's script, notebook or own module. What installed code exports is
+    taken as fixed and goes into a token by name, as the module does: ``from numpy.linalg
+    import norm`` counts like ``np.linalg.norm``. The user's own functions are read."""
+    import os
+    import pathlib
+
+    top = module.partition(".")[0]
+    if top == "__main__":   # the script or notebook, even when started as ``python -m package``
+        return False
+    if top in sys.stdlib_module_names or top in ("ewald", "builtins"):
+        return True
+    file = getattr(sys.modules.get(module), "__file__", None)
+    if not file:
+        return False
+    path = pathlib.Path(os.path.realpath(file))
+    return any(path.is_relative_to(root) for root in _install_roots())
+
+
+@functools.lru_cache(maxsize=1)
+def _install_roots() -> tuple:
+    """The folders packages are installed into: the interpreter's and the user's site-packages,
+    and the folder a frozen app unpacks its packages into."""
+    import os
+    import sysconfig
+
+    roots = [getattr(sys, "_MEIPASS", None)]
+    try:
+        roots += [sysconfig.get_paths().get(k) for k in ("stdlib", "platstdlib", "purelib", "platlib")]
+        site = sys.modules.get("site")   # not there in a frozen app
+        roots += [*getattr(site, "getsitepackages", list)(), getattr(site, "getusersitepackages", str)()]
+    except Exception:  # noqa: BLE001 - an interpreter without an install scheme: fewer roots
+        pass
+    return tuple(dict.fromkeys(os.path.realpath(r) for r in roots if r))
 
 
 def _modifier_key(m):
@@ -540,6 +950,9 @@ class Pipeline:
         state.pop("_compute_lock", None)
         state["_outputs"] = OrderedDict()
         state.pop("_trajectories", None)
+        state.pop("_token_memo", None)    # per compute, and keyed by id() like the next
+        state.pop("_step_tokens", None)
+        state.pop("_restless", None)
         return state
 
     def __setstate__(self, state):
@@ -547,6 +960,17 @@ class Pipeline:
         self._cache_lock, self._compute_lock = threading.RLock(), threading.RLock()
         self.__dict__.setdefault("_outputs", OrderedDict())
         self.__dict__.setdefault("cache_outputs", True)
+
+    @property
+    def modifiers(self) -> ModifierList:
+        """The steps, in order (a :class:`ModifierList`: functions put into it become Python
+        steps). Assigning any iterable does the same: ``pipe.modifiers = [f, CoordinationAnalysis(3.0)]``."""
+        return self.__dict__["modifiers"]
+
+    @modifiers.setter
+    def modifiers(self, value):
+        self.__dict__["modifiers"] = value if isinstance(value, ModifierList) else \
+            ModifierList(_steps(value, "pipe.modifiers = [step]"))
 
     def add(self, *modifiers):
         """Append modifiers (``pipe.add(m)`` is ``pipe.modifiers.append(m)``) and return the last
@@ -603,6 +1027,14 @@ class Pipeline:
         return [data.to_ase() for data in picked]
 
     def source_frame(self, frame: int) -> DataCollection:
+        """Unmodified data of ``frame`` as the source gives it (negative counts from the end, out of
+        range raises IndexError, as in :meth:`compute`; ``source_frame(999)`` on 10 frames used
+        to give frame 9)."""
+        return self._source_frame(self._frame_index(frame))
+
+    def _source_frame(self, frame: int) -> DataCollection:
+        # A pipeline can have more frames than its source (LoadTrajectory puts a trajectory on a
+        # one-frame structure file): each of them starts from a frame of the source, hence the modulo.
         frame %= self.source.num_frames
         with self._cache_lock:
             data = self._cache.get(frame)
@@ -711,8 +1143,89 @@ class Pipeline:
         another thread sets to stop early; the computation then raises :class:`ComputeCancelled`
         between modifiers or wherever a modifier calls ``ctx.check_cancel()``.
         """
-        with self._compute_lock:
+        with self._compute_lock, self._tokens_once():
             return self._compute(frame, device, errors, upto, cancel)
+
+    @contextlib.contextmanager
+    def _tokens_once(self):
+        """While the outermost :meth:`compute` runs, each step's token (:meth:`_step_token`) is
+        taken once: a step that reads every frame computes the steps above it for each of them,
+        and must find the same key at all of those."""
+        if "_token_memo" in self.__dict__:
+            yield
+            return
+        memo = self.__dict__["_token_memo"] = {}
+        try:
+            yield
+        finally:
+            self.__dict__.pop("_token_memo", None)
+            self._note_restless(memo)
+
+    def _step_token(self, mod, again: bool = False):
+        """:meth:`Modifier._input_token` of ``mod`` as it goes into a cache key; a fresh
+        ``object()``, equal to nothing stored, when it cannot be told. When the token differs
+        from the last one seen, the stacked trajectory the trajectory steps share is dropped
+        as well: its key names the steps above by ``repr``, which does not show the change.
+        ``again``: take it anew (the step has just run), not the one of this compute."""
+        memo = self.__dict__.get("_token_memo")
+        if memo is not None and id(mod) in memo and not again:
+            return memo[id(mod)][1]
+        token = self._take_token(mod)
+        last = self.__dict__.setdefault("_step_tokens", {})
+        changed = last.get(id(mod), (None, None))[1] != token
+        if memo is not None:
+            memo[id(mod)] = (mod, token, changed or (id(mod) in memo and memo[id(mod)][2]))
+        if changed:
+            if len(last) > 4 * len(self.modifiers) + 16:   # steps that were removed since
+                here = {id(m) for m in self.modifiers}
+                for state in (last, self.__dict__.get("_restless", {})):
+                    for key in [k for k in state if k not in here]:
+                        del state[key]
+            last[id(mod)] = (mod, token)
+            with self._cache_lock:
+                self.__dict__.pop("_trajectories", None)
+        return token
+
+    _SLOW_TOKEN = 0.05   # seconds
+
+    def _take_token(self, mod):
+        if self.__dict__.get("_restless", {}).get(id(mod), (None, 0))[1] >= 2:
+            return _Same(mod)
+        start = time.perf_counter()
+        try:
+            token = mod._input_token()
+        except Exception:  # noqa: BLE001 - not told is the safe answer
+            token = _UNKEYABLE
+        if token is _UNKEYABLE:
+            return object()
+        spent = time.perf_counter() - start
+        if spent > self._SLOW_TOKEN and not getattr(mod, "_slow_token_told", False):
+            import warnings
+
+            mod._slow_token_told = True
+            warnings.warn(
+                f"step {mod.name!r}: checking whether what it reads has changed takes {spent:.2f} s at "
+                "every compute, because an all-frames step below it reuses its result only while "
+                "that is unchanged. The step reads large arrays or lists that can be written to: "
+                "make an array read-only (array.flags.writeable = False) and it is not read again.",
+                RuntimeWarning, stacklevel=2)
+        return token
+
+    def _note_restless(self, memo: dict):
+        """After a compute in which a step's token changed, take it once more: when it differs
+        again, the step changes what it reads as it runs (it appends to a list, counts its
+        calls), and no result computed below it would ever be reused. Seen in two computes,
+        such a step counts by identity from then on, like an object that cannot be read."""
+        for mod, token, changed in memo.values():
+            if not changed or type(token) in (object, _Same):
+                continue
+            try:
+                now = mod._input_token()
+            except Exception:  # noqa: BLE001
+                continue
+            if now is not _UNKEYABLE and now != token:
+                restless = self.__dict__.setdefault("_restless", {})
+                restless[id(mod)] = (mod, restless.get(id(mod), (mod, 0))[1] + 1)
 
     def _sweep_frame(self, frame: int) -> DataCollection:
         """:meth:`source_frame` for a sweep over the frames: a cached frame when there is one,
@@ -747,7 +1260,7 @@ class Pipeline:
                     start, data = n, hit.copy()
                     break
         if data is None:
-            data = self._sweep_frame(frame) if sweep else self.source_frame(frame)
+            data = self._sweep_frame(frame) if sweep else self._source_frame(frame)
         failed = False
         for index, mod in enumerate(mods):
             if index < start:
@@ -770,6 +1283,7 @@ class Pipeline:
             t0 = time.perf_counter()
             try:
                 result = mod.modify(data, ctx)
+                _check_result(mod.name, result)
             except ComputeCancelled:
                 raise
             except Exception as exc:
@@ -810,10 +1324,17 @@ class Pipeline:
             self._outputs.move_to_end(key)
             self._trim_cache(data)
 
-    def frames(self, start: int = 0, stop: int | None = None, step: int = 1, device=None):
-        stop = self.num_frames if stop is None else stop
-        for i in range(start, stop, step):
-            yield self.compute(i, device=device)
+    def frames(self, start: int | None = None, stop: int | None = None, step: int | None = None, device=None):
+        """Iterator over the computed frames ``start:stop:step``, which count as in a slice
+        (``pipe.frames(-2)``: the last two; a ``stop`` past the end ends at the last frame)."""
+        try:
+            indices = range(*slice(start, stop, step).indices(self.num_frames))
+        except TypeError:
+            bad = next((v for v in (start, stop, step) if v is not None and not hasattr(v, "__index__")), None)
+            raise TypeError(f"frames(start, stop, step) takes whole numbers or None, not {bad!r}") from None
+        except ValueError:
+            raise ValueError("frames(step=0): the step cannot be zero") from None
+        return (self.compute(i, device=device) for i in indices)
 
     @property
     def view(self):

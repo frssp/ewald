@@ -54,7 +54,8 @@ pipe = load("run.npz", format="npz-trajectory")                 # format= also n
 ## Data model
 
 - `pipe.num_frames`, `pipe.compute(i)` (also `pipe[i]`, `pipe[a:b]`, `for data in pipe`; negative from the end, out of
-  range raises IndexError), `pipe.frames(start, stop, step)`, `pipe.source_frame(i)` (unmodified input).
+  range raises IndexError), `pipe.frames(start, stop, step)` (counted as a slice: `pipe.frames(-2)` is the last two,
+  a `stop` past the end ends at the last frame), `pipe.source_frame(i)` (unmodified input, same indices as `compute`).
 - `pipe.refresh()` picks up frames a running job appended since the file was opened (dump, XDATCAR, OUTCAR,
   extxyz; local or SSH) and returns how many were added; then `pipe.compute(-1)` is the newest frame.
 - `data = pipe.compute(i)` is a `DataCollection`: `data.count`, `data.positions` (N x 3, Angstrom),
@@ -84,7 +85,8 @@ pipe = load("run.npz", format="npz-trajectory")                 # format= also n
 
 OVITO syntax evaluated with numpy: `Position.Z`, `ParticleType`, `ParticleIdentifier`, `Coordination`, `Velocity.X`,
 globals `N`, `Frame`, `CellSize.X`. Combine with `&`, `|`, `~` and parentheses, not `and`/`or`/`not`:
-`(Position.Z > 10) & (ParticleType == "Cu")`. Powers: `**` or OVITO's `^` (`Force.X^2`). OVITO's conditional
+`(Position.Z > 10) & (ParticleType == "Cu")`; OVITO's `&&` and `||` work too and need no parentheses
+(`Position.Z > 10 && ParticleType == "Cu"`). Equality is `==`. Powers: `**` or OVITO's `^` (`Force.X^2`). OVITO's conditional
 `Coordination < 12 ? Position.Z : 0` works (np.where). Functions: `abs sqrt exp log sin cos min max`, numpy ufuncs and array functions such as `np.where`, `np.isin`,
 `np.linalg.norm` (no attribute access beyond those, no file or module access). A property's name drops the spaces and
 other characters a name cannot hold: "Particle Type" is `ParticleType`, "SqDisp (Average)" is `SqDispAverage`; the full
@@ -132,7 +134,8 @@ also inside one LAMMPS dump a restarted run appended to (`pipe.source.restarts`)
 back as a restart, `join="files"` joins only between files, `join="concat"` keeps every frame);
 `pipe.add(m)` appends a modifier (and works as `@pipe.add` on `def f(frame, data)`); `@all_frames` on
 `def f(frames, data)` makes a step that reads every frame once (`frames[k]`, `len(frames)`, slices) and whose
-result (tables, attributes, properties) is reused at every frame; `@each_frame` marks the per-frame default. In a
+result (tables, attributes, properties) is reused at every frame, until the step, a step above or a variable one of
+them reads changes; `@each_frame` marks the per-frame default. A step function returns nothing or a DataCollection. In a
 notebook a cell headed `# %% [each frame]` (or `# %% name [all frames]`) is such a step itself: its code is the body,
 with `frame`/`frames` and `data` given. A verb (`rdf`, `msd`, `cna`, ...)
 adds its analysis step and returns its table (which one: "Functions" below). The `Table` is a dict of columns (`pandas.DataFrame(table)` works) with `.x`, `.plot()` and, for
@@ -207,7 +210,8 @@ compare side by side (steps matched by name, `align="position"` by order; `label
 Every display setting of the structure view belongs to the pipeline: `view(pipe, **settings)` (`from ewald import view`)
 sets some and returns `pipe.view`; `pipe.render()`, `snapshot(pipe)`, the Jupyter picture and the GUI viewport draw with
 it, and the GUI writes viewport edits back into the notebook's `view(pipe, ...)` cell. Settings not named keep their value;
-`None` resets one. `View.help()` lists them all. Every color here and in steps (`AssignColor`, `Vectors`, `paint`, ...)
+`None` resets one. `View.help()` lists them all. `render()`, `pipe.render()` and `snapshot()` take the view's names for
+one picture as well (`cell=False`, `colors=`, `radii=`, ...); a keyword they do not know raises TypeError on every renderer. Every color here and in steps (`AssignColor`, `Vectors`, `paint`, ...)
 takes any form of `ewald.colors`: `'red'`, `'tab:blue'`, `'#ff8800'`, `'#f80'`, `'rgb(255, 128, 0)'`, `(1, 0.5, 0)` or
 `(255, 128, 0)`; a bad one fails at once:
 
@@ -398,6 +402,7 @@ FUNCTIONS = [
                "xrd", "bond_angles", "cna", "ptm", "voronoi", "clusters", "run_info", "check_run", "load_runs",
                "arrhenius", "sensitivity", "workflow_table")),
     ("ewald.views", ("show", "snapshot", "figure")),
+    ("ewald.movie", ("render_animation",)),
     ("ewald.paint", ("paint", "hide", "isolate", "fade", "resize")),
 ]
 
@@ -476,12 +481,17 @@ def recipes_reference() -> str:
     return "\n".join(lines)
 
 
+def _function_modules() -> dict:
+    """The modules of :data:`FUNCTIONS` by name (no import by name)."""
+    import ewald
+    from .. import movie, paint, views
+
+    return {"ewald": ewald, "ewald.views": views, "ewald.movie": movie, "ewald.paint": paint}
+
+
 def function_reference() -> str:
     """Exact signatures of the notebook functions, read from the code."""
-    import ewald
-    from .. import paint, views
-
-    modules = {"ewald": ewald, "ewald.views": views, "ewald.paint": paint}   # no import by name
+    modules = _function_modules()
     lines = ["## Functions", ""]
     for module, names in FUNCTIONS:
         mod = modules[module]
@@ -563,19 +573,303 @@ def api_reference(with_plugins: bool = False) -> str:
 # ------------------------------------------------------------------------------------------- search
 _WORD = re.compile(r"[A-Za-z][a-z]+|[A-Z]+(?![a-z])|\d+")
 
+#: Words people search an entry by that its own reference text lacks: ``{entry: phrases}``, an entry
+#: being a modifier, a notebook function or a recipe title. A phrase counts when the query holds all
+#: of its words, and then weighs like a word of the entry's name. They go into the search index
+#: only, never into the printed reference (``llms.txt`` stays as it is). Be accurate, not generous:
+#: a wrong phrase sends the model to the wrong step (``tests/test_api_review_search.py`` checks the
+#: keys and a list of queries). Write them in lower case ("x-ray": a lone lower-case letter is no word).
+SYNONYMS: dict[str, tuple[str, ...]] = {
+    # --- selection, coloring and editing
+    "AssignColor": ("uniform color", "single color", "one color", "same color"),
+    "ColorCoding": ("colormap", "color map", "color scale", "color by property", "color by value", "heatmap",
+                    "color gradient", "color atoms by"),
+    "ClearSelection": ("deselect", "unselect", "select nothing", "reset selection"),
+    "DeleteSelected": ("remove atoms", "remove particles", "delete atoms", "remove selected"),
+    "ExpressionSelection": ("select atoms", "select by condition", "select by property", "select by value",
+                            "select by threshold", "select where", "filter"),
+    "InvertSelection": ("complement", "opposite selection", "select the rest"),
+    "SelectType": ("select element", "select species", "select atoms", "by element", "by species"),
+    "Slice": ("cut", "clip", "crop", "cross section", "cutting plane", "half space", "cut plane"),
+    "AffineTransformation": ("rotate atoms", "rotate cell", "rotate structure", "rotation matrix", "translate atoms",
+                             "translate structure", "shift atoms", "shift origin", "scale cell", "rescale cell",
+                             "strain cell", "deform cell", "shear cell", "mirror", "transformation matrix"),
+    "ComputeProperty": ("new property", "derived property", "custom property", "calculate property",
+                        "define property", "property from expression"),
+    "Replicate": ("supercell", "repeat cell", "repeat structure", "repeat box", "repeat lattice", "repetition",
+                  "periodic images", "periodic copies", "duplicate cell", "multiply cell", "expand cell",
+                  "enlarge cell", "bigger cell", "larger cell"),
+    "WrapAtoms": ("fold", "pbc", "periodic boundary", "wrap coordinates", "inside the box", "into the box"),
+    # with a selection word each: "first shell" alone is a coordination number question
+    "ExpandSelection": ("select neighbors", "select neighbor shell", "select coordination shell",
+                        "select first shell", "select surroundings", "extend selection", "select atoms around"),
+    "LoadTrajectory": ("topology and trajectory", "separate trajectory file", "data file and dump",
+                       "trajectory onto topology"),
+    "CombineDatasets": ("merge", "combine structures", "combine files", "join structures", "add another structure",
+                        "second file", "insert molecule"),
+    # --- neighbors, bonds and topology
+    "CalculateDisplacements": ("displacement vector", "moved atoms", "distance moved", "how far", "atomic displacement",
+                               "compare with initial", "relaxation displacement"),
+    "CoordinationAnalysis": ("rdf", "pair distribution", "pair correlation", "pdf", "coordination number", "cn",
+                             "number of neighbors", "neighbor count", "radial distribution"),
+    "ClusterAnalysis": ("connected components", "fragments", "aggregates", "molecule identification", "largest cluster",
+                        "cluster size", "cluster size distribution", "group atoms"),
+    "CreateBonds": ("connectivity", "find bonds", "draw bonds", "show bonds", "bond cutoff", "bond search",
+                    "nearest neighbor bonds", "make bonds"),
+    "EditBonds": ("add bond", "remove bond", "delete bond", "break bond", "manual bond"),
+    "CoordinationPolyhedra": ("polyhedron", "polyhedral", "octahedra", "octahedron", "tetrahedra", "tetrahedron",
+                              "coordination environment"),
+    "BondAngleDistribution": ("adf", "angular distribution", "angle histogram", "three body"),
+    "BondLengthDistribution": ("bond distance", "bond distance distribution", "interatomic distance",
+                               "length histogram"),
+    "FindRings": ("ring statistics", "ring size distribution", "ring distribution", "membered rings",
+                  "network topology", "shortest path rings"),
+    # --- structure identification and local order
+    "CommonNeighborAnalysis": ("cna", "structure identification", "identify crystal structure", "structure type",
+                               "local structure", "local crystal structure", "crystalline atoms", "crystallinity",
+                               "phase identification", "identify fcc", "identify hcp", "identify bcc"),
+    "PolyhedralTemplateMatching": ("ptm", "structure identification", "identify crystal structure", "structure type",
+                                   "local structure", "local crystal structure", "crystalline atoms", "crystallinity",
+                                   "phase identification", "lattice orientation", "crystal orientation",
+                                   "chemical ordering", "identify fcc", "identify hcp", "identify bcc"),
+    "VoronoiAnalysis": ("atomic volume", "volume per atom", "tessellation", "voronoi polyhedron", "voronoi polyhedra",
+                        "voronoi index", "voronoi cell", "voronoi coordination"),
+    "WignerSeitzAnalysis": ("vacancy", "interstitial", "point defect", "frenkel pair", "antisite", "defect count",
+                            "site occupancy"),
+    "DislocationAnalysis": ("dxa", "burgers vector", "dislocation line", "dislocation density",
+                            "dislocation length", "line defect"),
+    "AcklandJones": ("bond angle analysis", "structure identification", "identify crystal structure", "structure type"),
+    "AtomicStrain": ("local strain", "shear strain", "von mises", "volumetric strain", "strain tensor",
+                     "deformation gradient", "nonaffine", "non-affine", "plastic deformation", "shear band",
+                     "shear transformation"),
+    "CentroSymmetry": ("csp", "defect detection", "inversion symmetry"),
+    "ChillPlus": ("ice", "cubic ice", "hexagonal ice", "clathrate", "hydrate", "water structure", "ice nucleation"),
+    "IdentifyDiamond": ("diamond structure", "diamond lattice", "zincblende", "wurtzite", "lonsdaleite",
+                        "structure identification"),
+    "SteinhardtOrderParameters": ("bond orientational order", "bond order parameter", "boo", "local order"),
+    "SymmetryAnalysis": ("space group", "point group", "crystal system", "symmetry operations", "asymmetric unit",
+                         "inequivalent atoms", "unique atoms", "hermann mauguin", "international symbol",
+                         "find symmetry", "crystallographic"),
+    "ElasticStrain": ("lattice strain", "lattice distortion", "strain tensor", "strain field", "elastic deformation"),
+    "GrainSegmentation": ("grain size", "grain boundary", "grain orientation", "grain count",
+                          "polycrystalline", "nanocrystalline", "misorientation"),
+    "IdentifyFCCPlanarFaults": ("stacking fault", "twin", "twin boundary", "twinning", "isf", "planar defect"),
+    # --- trajectories, transport, NEB and phonons
+    "MeanSquaredDisplacement": ("msd", "diffusion", "diffusivity", "diffusion coefficient", "self diffusion",
+                                "tracer diffusion", "einstein relation"),
+    "VelocityAutocorrelation": ("vacf", "velocity correlation", "green kubo", "velocity auto correlation"),
+    "TimeAveraging": ("time average", "time averaged", "average over frames", "average over trajectory",
+                      "average over time", "ensemble average", "trajectory average"),
+    "TimeSeries": ("time evolution", "versus time", "vs time", "over time", "as a function of frame", "per frame value",
+                   "evolution"),
+    "GenerateTrajectoryLines": ("atom path", "trace", "trail", "track atoms", "diffusion path", "migration path",
+                                "draw trajectory"),
+    "NebEnergyProfile": ("nudged elastic band", "migration barrier", "energy barrier", "activation barrier",
+                         "minimum energy path", "mep", "saddle point", "transition state", "reaction path"),
+    "OverlayFrames": ("superimpose", "ghost atoms", "all images at once", "several frames at once",
+                      "all frames at once"),
+    "PhononMode": ("vibration", "vibrational mode", "normal mode", "eigenvector", "eigenmode", "lattice vibration",
+                   "animate phonon"),
+    "FreezeProperty": ("keep property", "initial value", "persistent selection", "same atoms every frame",
+                       "fixed selection"),
+    "UnwrapTrajectories": ("unwrap coordinates", "periodic jumps", "pbc", "continuous trajectory"),
+    "IonicConductivity": ("ion conductivity", "ion transport", "charge transport", "solid electrolyte",
+                          "superionic", "einstein helfand"),
+    "VanHoveCorrelation": ("self correlation", "distinct correlation", "displacement distribution",
+                           "jump distance distribution", "hop distance"),
+    "SelfIntermediateScattering": ("sisf", "isf", "incoherent scattering", "relaxation time", "structural relaxation",
+                                   "alpha relaxation", "glassy dynamics"),
+    "NonGaussianParameter": ("alpha2", "dynamic heterogeneity", "dynamical heterogeneity", "heterogeneous dynamics",
+                             "caging"),
+    "SiteHopping": ("jump", "jump rate", "jump frequency", "hopping rate", "hop rate", "ion migration",
+                    "jump diffusion", "migration events", "residence time", "dwell time"),
+    # --- statistics and diffraction
+    "Histogram": ("property distribution", "value distribution", "distribution of values", "distribution of property",
+                  "frequency distribution", "probability density"),
+    "SpatialBinning": ("density profile", "concentration profile", "number density", "profile along",
+                       "temperature profile", "layer average", "spatial average", "slab average", "density map",
+                       "average per bin"),
+    "ReduceProperty": ("mean value", "average value", "mean of property", "average of property", "sum", "median",
+                       "standard deviation", "variance", "minimum value", "maximum value", "property statistics"),
+    "PowderDiffraction": ("xrd", "x-ray diffraction", "xray", "neutron diffraction", "bragg peaks", "diffractogram",
+                          "two theta", "2theta", "powder pattern"),
+    "StructureFactor": ("scattering", "total scattering", "neutron scattering", "x-ray scattering",
+                        "scattering intensity", "faber ziman", "reciprocal space"),
+    # --- grids and vector arrows
+    "CreateIsosurface": ("elf", "electron localization function", "electron density", "spin density",
+                         "partial charge density", "orbital", "contour surface", "level surface",
+                         "isovalue"),
+    "GridSlice": ("contour map", "contour plot", "heat map", "density map", "plane cut", "cross section", "2d slice",
+                  "elf slice", "potential slice", "charge density slice"),
+    "GridDifference": ("differential charge density", "charge transfer", "charge redistribution", "deformation density",
+                       "delta rho", "subtract grids", "density difference"),
+    "VectorVis": ("arrow", "force vectors", "show forces", "velocity vectors", "magnetic moments", "spin arrows",
+                  "quiver", "displacement arrows", "draw vectors"),
+    # --- notebook functions
+    "load": ("open", "read", "import"),
+    "import_file": ("open file", "read file", "several files", "file sequence", "restarted run", "join dumps"),
+    # a format with its verb: "poscar" alone would put this first for "read a POSCAR"
+    "export_file": ("save", "write", "convert", "output file", "save structure", "write structure",
+                    "write trajectory",
+                    *(f"{verb} {fmt}" for verb in ("save", "write", "convert", "export")
+                      for fmt in ("poscar", "cif", "xyz", "lammps data", "lammps dump"))),
+    "each_frame": ("custom step", "custom modifier", "python modifier", "own analysis", "user defined", "per frame"),
+    "all_frames": ("custom step", "whole trajectory", "across frames", "over all frames"),
+    "view": ("camera", "viewing direction", "view direction", "look along", "zoom", "background", "orthographic",
+             "perspective", "transparent background", "display style", "ball and stick", "legend", "scale bar",
+             "atom labels", "element colors", "visualize", "visualization"),
+    "run_info": ("incar", "input parameters", "input settings", "simulation settings", "calculation settings",
+                 "timestep", "time step", "thermostat", "ensemble"),
+    "check_run": ("convergence", "converged", "equilibration", "equilibrated", "sanity check", "health check",
+                  "validate run", "diagnose", "warnings", "run finished", "energy drift"),
+    "load_runs": ("multiple runs", "many runs", "several trajectories", "batch", "series of runs",
+                  "temperature series", "compare runs", "parameter sweep"),
+    "arrhenius": ("arrhenius plot", "temperature dependence", "activation barrier", "prefactor"),
+    "sensitivity": ("parameter scan", "parameter sweep", "vary parameter", "parameter dependence", "cutoff dependence",
+                    "robustness", "convergence test"),
+    "workflow_table": ("workflow steps", "summary table", "compare workflows", "compare calculations"),
+    "show": ("plot", "graph", "chart", "curve", "plot table", "draw", "save plot", "save figure", "save pdf",
+             "save png", "side by side", "compare frames"),
+    "snapshot": ("render", "screenshot", "render image", "render structure", "render frame", "save image",
+                 "save picture", "save png", "ray tracing", "publication image"),
+    "render_animation": ("movie", "make movie", "video", "animation", "animate", "gif", "mp4"),
+    "figure": ("matplotlib", "savefig", "save figure", "save pdf", "customize plot", "annotate plot",
+               "publication plot", "figure size"),
+    "paint": ("color atoms", "highlight", "mark atoms", "color by condition", "color selected atoms", "recolor"),
+    "hide": ("invisible", "hide atoms", "remove from view", "do not show"),
+    "isolate": ("show only", "only show", "display only", "focus on", "keep only visible"),
+    "fade": ("transparent", "transparency", "translucent", "semi transparent", "opacity"),
+    "resize": ("atom size", "sphere size", "bigger atoms", "larger atoms", "smaller atoms", "enlarge atoms",
+               "shrink atoms"),
+    # --- recipes, by title
+    "Crystal structure: bonds, TiO6 octahedra, space group": ("visualize crystal", "polyhedra", "octahedron",
+                                                             "perovskite"),
+    "MD trajectory: diffusion coefficient": ("diffusivity", "molecular dynamics", "aimd", "self diffusion",
+                                             "most mobile atoms", "fastest atoms"),
+    "Defects in a crystal: structure types, show only non-FCC atoms": ("defect atoms", "show defects",
+                                                                      "non crystalline atoms", "disordered atoms",
+                                                                      "hide bulk", "hide crystalline"),
+    "NEB band: barrier and energy profile": ("nudged elastic band", "migration barrier", "energy barrier",
+                                             "activation barrier", "minimum energy path", "saddle point",
+                                             "transition state"),
+    "Charge density: isosurface and a lattice-plane slice": ("planar average", "work function", "vacuum level",
+                                                            "macroscopic average", "potential profile",
+                                                            "electrostatic potential", "electron density"),
+    "Atoms picked at one frame, followed through the trajectory": ("track atoms", "follow atoms", "tag atoms",
+                                                                  "same atoms over time", "fixed selection",
+                                                                  "persistent selection"),
+}
+# a verb adds its modifier, so the same words find both
+SYNONYMS.update({verb: SYNONYMS[step] for verb, step in (
+    ("rdf", "CoordinationAnalysis"), ("msd", "MeanSquaredDisplacement"), ("vacf", "VelocityAutocorrelation"),
+    ("sq", "StructureFactor"), ("xrd", "PowderDiffraction"), ("bond_angles", "BondAngleDistribution"),
+    ("cna", "CommonNeighborAnalysis"), ("ptm", "PolyhedralTemplateMatching"), ("voronoi", "VoronoiAnalysis"),
+    ("clusters", "ClusterAnalysis"))})
+
+#: Query words the tokenizer cannot read, with the reference's English words for them: Korean terms
+#: (the owner and many users write Korean, and models pass their words through), notation
+#: (``g(r)``: single letters are no words), British spellings, and names the reference only
+#: abbreviates. Matched anywhere in the query, the longest first, so particles may be attached
+#: (배위수의, 확산계수를); spaces inside a term of four or more characters are optional (평균 제곱 변위).
+#: An empty value only keeps a shorter term from matching inside the word (검색 is not 색). A term
+#: with two meanings takes the one this library has a step for (전위: dislocation; 정전위: potential).
+GLOSSARY: dict[str, str] = {
+    # structure and neighbors
+    "배위수": "coordination number", "배위": "coordination", "이웃": "neighbor", "최근접": "nearest neighbor",
+    "동경분포함수": "radial distribution function", "동경분포": "radial distribution function",
+    "방사분포함수": "radial distribution function", "지름분포함수": "radial distribution function",
+    "반경분포함수": "radial distribution function", "쌍분포함수": "pair distribution function",
+    "쌍상관함수": "pair correlation function", "분포": "distribution", "히스토그램": "histogram",
+    "결합각": "bond angle", "결합길이": "bond length", "결합거리": "bond length", "결합": "bond", "각도": "angle",
+    "다면체": "polyhedra", "팔면체": "octahedra", "사면체": "tetrahedra", "고리": "ring",
+    "클러스터": "cluster", "군집": "cluster", "보로노이": "voronoi", "원자부피": "atomic volume", "부피": "volume",
+    "슈퍼셀": "supercell", "수퍼셀": "supercell", "초격자": "supercell", "복제": "replicate", "반복": "repeat",
+    "주기경계": "periodic boundary", "언랩": "unwrap", "원자": "atom", "입자": "particle",
+    # crystals and defects
+    "결정구조": "crystal structure", "구조식별": "structure identification",
+    "대칭": "symmetry", "공간군": "space group", "점군": "point group", "와이코프": "wyckoff",
+    "중심대칭": "centrosymmetry", "공공": "vacancy", "빈자리": "vacancy", "침입형": "interstitial",
+    "격자간": "interstitial", "점결함": "point defect", "결함": "defect", "전위": "dislocation", "버거스": "burgers",
+    "결정립계": "grain boundary", "입계": "grain boundary", "결정립": "grain", "다결정": "polycrystalline",
+    "적층결함": "stacking fault", "쌍정": "twin", "변형률": "strain", "변형": "strain deformation", "전단": "shear",
+    "다이아몬드": "diamond", "얼음": "ice",
+    # dynamics and transport
+    "확산계수": "diffusion coefficient", "확산": "diffusion", "평균제곱변위": "mean squared displacement",
+    "평균자승변위": "mean squared displacement", "변위": "displacement", "궤적": "trajectory", "경로": "path",
+    "속도자기상관": "velocity autocorrelation", "자기상관": "autocorrelation", "속도": "velocity",
+    "이온전도도": "ionic conductivity", "전도도": "conductivity", "호핑": "hopping hop", "도약": "jump", "점프": "jump",
+    "체류시간": "residence time", "점유": "occupancy", "자리": "site", "시계열": "time series", "시간평균": "time average",
+    "평균": "average", "동영상": "movie", "애니메이션": "animation", "활성화에너지": "activation energy", "에너지장벽": "energy barrier", "장벽": "barrier",
+    "아레니우스": "arrhenius", "포논": "phonon", "진동": "vibration", "반호브": "van hove", "비가우시안": "non-gaussian",
+    "중간산란함수": "intermediate scattering function", "수렴": "convergence", "평형": "equilibration",
+    "온도": "temperature", "에너지": "energy",
+    # diffraction, electronic structure and grids
+    "구조인자": "structure factor", "회절": "diffraction", "엑스선": "x-ray", "x선": "x-ray", "분말": "powder",
+    "중성자": "neutron", "산란": "scattering", "상태밀도": "DOS", "밴드구조": "bands", "밴드": "bands", "띠구조": "bands",
+    "전하밀도": "charge density", "전자밀도": "electron density", "스핀밀도": "spin density", "전하": "charge",
+    "밀도": "density", "등위면": "isosurface", "등치면": "isosurface", "등고면": "isosurface", "단면": "slice cross section",
+    "슬라이스": "slice", "평면평균": "planar average", "일함수": "work function", "정전위": "electrostatic potential",
+    "퍼텐셜": "potential", "포텐셜": "potential", "프로파일": "profile", "차이": "difference",
+    # view, colors, selection and files
+    "색": "color", "컬러": "color", "검색": "", "탐색": "", "색인": "", "선택": "select selection", "삭제": "delete",
+    "제거": "remove", "숨기": "hide", "숨김": "hide", "투명": "transparent", "크기": "size", "반지름": "radius",
+    "화살표": "arrow", "벡터": "vector", "힘": "force", "자기모멘트": "magnetic moments", "렌더": "render",
+    "그림": "picture", "이미지": "image", "스냅샷": "snapshot", "그래프": "plot", "플롯": "plot",
+    "시각화": "visualize", "그리": "draw", "그려": "draw", "그리고": "", "그리드": "grid", "카메라": "camera",
+    "내보내": "export", "저장": "save", "변환": "convert", "불러오": "load open file", "읽어": "read file",
+    # notation, British spellings and spelled-out abbreviations
+    "g(r)": "radial distribution function", "s(q)": "structure factor", "g(r,t)": "van Hove correlation",
+    "fs(q,t)": "self intermediate scattering", "f_s(q,t)": "self intermediate scattering",
+    "f(q,t)": "intermediate scattering", "q4": "Steinhardt order parameters", "q6": "Steinhardt order parameters",
+    "w4": "Steinhardt order parameters", "w6": "Steinhardt order parameters", "d2min": "nonaffine squared displacement",
+    "density of states": "DOS", "colour": "color", "neighbour": "neighbor", "centre": "center",
+}
+
+
+def _glossary() -> tuple[dict[str, str], "re.Pattern"]:
+    """GLOSSARY keyed without spaces and in lower case, and the pattern that finds its terms."""
+    words = {"".join(key.split()).lower(): value for key, value in GLOSSARY.items()}
+    pieces = [("(?<![a-z])" if key[0].isascii() else "")           # "q6" is not the end of an English word
+              + (r"\s*".join(map(re.escape, key)) if len(key) > 3 else re.escape(key))
+              for key in sorted(words, key=len, reverse=True)]     # the longest first: 확산계수 before 확산
+    return words, re.compile("|".join(pieces), re.IGNORECASE)
+
+
+def _expand(query: str) -> str:
+    """``query`` with every GLOSSARY term replaced by its English search words."""
+    words, pattern = _glossary()
+    return pattern.sub(lambda m: f" {words[''.join(m.group().split()).lower()]} ", query)
+
 
 def _terms(text: str) -> list[str]:
-    """Lower-case search terms: CamelCase and snake_case split (SiteHopping -> site, hopping),
-    a plural or -ing ending dropped, so "hops" finds "hop" and "Hopping"."""
+    """Lower-case search terms: CamelCase and snake_case split (SiteHopping -> site, hopping), a
+    plural or -ing ending dropped, so "hops" finds "hop" and "Hopping", and "trajectory" finds
+    "UnwrapTrajectories"."""
     out = []
     for word in _WORD.findall(text):
         w = word.lower()
-        for end in ("ing", "es", "s"):
-            if len(w) > len(end) + 2 and w.endswith(end):
-                w = w[:-len(end)]
-                break
+        if len(w) > 4 and w.endswith("ies"):
+            w = w[:-3] + "y"                                  # trajectories -> trajectory
+        elif len(w) > 4 and w.endswith(("sses", "xes", "ches", "shes")):
+            w = w[:-2]                                        # classes, boxes, meshes
+        elif len(w) > 3 and w.endswith("s") and not w.endswith(("ss", "us", "is")):
+            w = w[:-1]                                        # sites -> site (not "sit"); analysis, radius stay
+        if len(w) > 5 and w.endswith("ing"):
+            w = w[:-3]
+            if len(w) > 3 and w[-1] == w[-2] and w[-1] not in "lsz":
+                w = w[:-1]                                    # hopping -> hop, but filling -> fill
         out.append(w)
     return out
+
+
+def _entry(text: str) -> str:
+    """The name a piece of the reference has in SYNONYMS: the modifier or function of an entry
+    line, the title of a recipe, '' for other text."""
+    m = re.match(r"- `(\w+)\(", text)
+    if m:
+        return m.group(1)
+    title, cells, _ = text.partition(":\n```")
+    return title if cells else ""
 
 
 def reference_chunks(with_plugins: bool = False) -> list[tuple[str, str]]:
@@ -614,26 +908,32 @@ def reference_chunks(with_plugins: bool = False) -> list[tuple[str, str]]:
 
 def search_reference(query: str, limit: int = 6, with_plugins: bool = False) -> list[dict]:
     """The pieces of the reference that best match ``query`` (BM25 over words; an entry whose name
-    contains a query word ranks first): ``[{"section", "text", "score"}]``, best first."""
+    or SYNONYMS contain a query word ranks first; GLOSSARY terms of the query, such as Korean ones,
+    are read as their English words): ``[{"section", "text", "score"}]``, best first."""
     import math
 
     chunks = reference_chunks(with_plugins)
     docs = [_terms(text) for _, text in chunks]
     names = [_terms(m.group(1)) if (m := re.match(r"- `(\w+)", text)) else [] for _, text in chunks]
-    want = list(dict.fromkeys(_terms(query)))
+    want = list(dict.fromkeys(_terms(_expand(query))))
     if not want or not docs:
         return []
+    asked = set(want)
+    # the words of an entry's synonym phrases this query holds whole: "pair distribution" must not
+    # make CoordinationAnalysis a match for every "distribution"
+    extras = [{t for phrase in SYNONYMS.get(_entry(text), ()) if asked.issuperset(words := _terms(phrase))
+               for t in words} for _, text in chunks]
     avg = sum(map(len, docs)) / len(docs)
-    df = {t: sum(t in set(d) for d in docs) for t in want}
+    df = {t: sum(t in extra or t in doc for doc, extra in zip(docs, extras)) for t in want}
     scored = []
-    for (section, text), doc, name in zip(chunks, docs, names):
+    for (section, text), doc, name, extra in zip(chunks, docs, names, extras):
         score = 0.0
         for t in want:
-            f = doc.count(t)
+            f = doc.count(t) or int(t in extra)    # a synonym counts as the word written once, and like a name
             if f:
                 idf = math.log(1 + (len(docs) - df[t] + 0.5) / (df[t] + 0.5))
                 score += idf * f * 2.2 / (f + 1.2 * (0.25 + 0.75 * len(doc) / avg))
-                if t in name:
+                if t in name or t in extra:
                     score += 2 * idf
         if score > 0:
             scored.append((score, section, text))
@@ -643,12 +943,11 @@ def search_reference(query: str, limit: int = 6, with_plugins: bool = False) -> 
 
 def _documented(name: str):
     """The modifier (core or plugin) or notebook function called ``name``, or None."""
-    from .. import modifiers, paint, plugins, views
-    import ewald
+    from .. import modifiers, plugins
 
     for module, names in FUNCTIONS:
         if name in names:
-            return getattr({"ewald": ewald, "ewald.views": views, "ewald.paint": paint}[module], name)
+            return getattr(_function_modules()[module], name)
     if name in modifiers.__all__:
         return getattr(modifiers, name)
     plugin = plugins.modifiers().get(name)

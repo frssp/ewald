@@ -15,7 +15,47 @@ from __future__ import annotations
 
 import io
 
-options: dict = {"enabled": True, "size": (480, 360), "renderer": "raytrace", "quality": None, "scale": 1.0}
+_BASE = ("enabled", "size", "renderer", "quality", "scale")
+
+
+class _Options(dict):
+    """:data:`options`. A key that is neither a base option nor a ``render()`` keyword raises
+    TypeError when it is set: ``options["qualty"] = "draft"`` used to be ignored, and with
+    render() checking its keywords it would cost the picture without a word."""
+
+    @staticmethod
+    def _check(key):
+        if key in _BASE:
+            return
+        from .render import check_keywords
+
+        try:
+            check_keywords({key: None})
+        except TypeError as exc:
+            told = str(exc).replace("render() got an unexpected keyword argument", "ewald.display.options has no option")
+            raise TypeError(told.replace("Common keywords:", f"Options: {', '.join(_BASE)} and the keywords "
+                                                             "of render():")) from None
+
+    def __setitem__(self, key, value):
+        self._check(key)
+        super().__setitem__(key, value)
+
+    def setdefault(self, key, default=None):
+        self._check(key)
+        return super().setdefault(key, default)
+
+    def update(self, *args, **kwargs):
+        new = dict(*args, **kwargs)
+        for key in new:
+            self._check(key)
+        super().update(new)
+
+    def __ior__(self, other):
+        self.update(other)
+        return self
+
+
+options: dict = _Options({"enabled": True, "size": (480, 360), "renderer": "raytrace", "quality": None, "scale": 1.0})
 LARGE = 100_000  # quality=None draws more atoms than this as 'draft', fewer as 'standard'
 
 
@@ -29,8 +69,6 @@ def _quiet_vtk():
     vtkLogger.SetStderrVerbosity(vtkLogger.VERBOSITY_ERROR)
     return lambda: vtkLogger.SetStderrVerbosity(level)
 
-
-_BASE = tuple(options)
 
 
 def data_png(data, view=None, frame: int = 0) -> bytes | None:
