@@ -82,6 +82,8 @@ class Kernel:
         with self._lock:
             if self.alive:
                 return
+            if self._km is not None:   # it died (crashed, or killed): forget it and its folder first
+                self._forget()
             if self.name:
                 km = KernelManager(kernel_name=self.name)
             else:
@@ -99,9 +101,15 @@ class Kernel:
                 raise KernelError(f"could not start {self.display_name}: {exc}") from exc
             self._km, self._kc = km, kc
             self._dir = tempfile.mkdtemp(prefix="ewald-kernel-")
-            self._call("import ewald.kernel_bridge as _ewald_bridge",
-                       hint=f"{self.display_name} has no ewald: run `{self.python or 'python'} -m pip install ewald` "
-                            "in that environment (the GUI extras are not needed)")
+            try:
+                self._call("import ewald.kernel_bridge as _ewald_bridge",
+                           hint=f"{self.display_name} has no ewald: run `{self.python or 'python'} -m pip install "
+                                "ewald` in that environment (the GUI extras are not needed)")
+            except BaseException:
+                # a kernel without the bridge is not started: the next run starts it again and
+                # gives the same hint, instead of "name '_ewald_bridge' is not defined"
+                self.shutdown()
+                raise
 
     def restart(self):
         with self._lock:
@@ -128,12 +136,19 @@ class Kernel:
             except Exception:  # noqa: BLE001 - already gone
                 pass
         with self._lock:
-            if self._kc is not None:
+            self._forget()
+
+    def _forget(self):
+        """Drop the client, the manager and the kernel's folder (under the lock)."""
+        if self._kc is not None:
+            try:
                 self._kc.stop_channels()
-            self._km = self._kc = None
-            if self._dir:
-                shutil.rmtree(self._dir, ignore_errors=True)
-                self._dir = None
+            except Exception:  # noqa: BLE001 - its kernel is gone already
+                pass
+        self._km = self._kc = None
+        if self._dir:
+            shutil.rmtree(self._dir, ignore_errors=True)
+            self._dir = None
 
     # ------------------------------------------------------------ requests
     def _call(self, code: str, timeout: float | None = None, hint: str | None = None) -> str:
@@ -173,13 +188,14 @@ class Kernel:
             path: str | None = None, data_dirs=(), plot_style=("publication", None)) -> dict:
         """Run cell ``index`` of ``cells`` (``[{id, kind, source}]``) in the kernel; the bridge's result.
         ``plot_style`` is the notebook's ``(style, tokens, user rcParams)`` for the cells' own matplotlib plots."""
-        self.start()
-        out = os.path.join(self._dir, "result.json")
-        args = [cells, index, bool(run_below), int(counter), out, pipeline_name, path, list(data_dirs),
-                list(plot_style)]
-        self._call(f"_ewald_bridge.run(*__import__('json').loads({json.dumps(json.dumps(args))}))")
-        with open(out, encoding="utf-8") as f:
-            return json.load(f)
+        with self._lock:   # a shutdown from the GUI thread in between must not leave _dir None here
+            self.start()
+            out = os.path.join(self._dir, "result.json")
+            args = [cells, index, bool(run_below), int(counter), out, pipeline_name, path, list(data_dirs),
+                    list(plot_style)]
+            self._call(f"_ewald_bridge.run(*__import__('json').loads({json.dumps(json.dumps(args))}))")
+            with open(out, encoding="utf-8") as f:
+                return json.load(f)
 
     def reset(self):
         """A fresh namespace, like restarting the kernel (it is restarted)."""

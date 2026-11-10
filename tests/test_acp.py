@@ -169,6 +169,11 @@ def test_stop_cancels_the_prompt_and_keeps_the_conversation(fake):
     cancel.clear()
     agent.on_event = lambda kind, payload: None
     assert agent.ask("after the stop") == "Echo: after the stop"   # the session still works
+    prompts = [m["params"]["prompt"] for m in received("session/prompt")]
+    assert prompts[-1][0]["text"] == acp.STOPPED_NOTE      # the agent hears that the stopped turn is gone
+    agent.ask("and then")
+    prompts = [m["params"]["prompt"] for m in received("session/prompt")]
+    assert all(b["text"] != acp.STOPPED_NOTE for b in prompts[-1])   # only once
 
 
 def test_api_reference_is_written_into_the_working_folder(fake):

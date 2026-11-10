@@ -193,3 +193,35 @@ def test_view_tabs_come_back_from_the_kernel(kernel, lammps_dir):
     nb.cells[1].source = "pipe.views.remove('Top')"
     assert nb.run_cell(1)
     assert "Top" not in nb.pipeline.views
+
+
+def test_a_kernel_without_the_bridge_is_not_left_half_started():
+    """A Python without ewald fails the bridge import: the kernel must not stay "alive", or the
+    next run skipped start() and failed with a NameError instead of the install hint."""
+    from ewald.kernel import KernelError
+
+    class NoBridge(Kernel):
+        def _call(self, code, timeout=None, hint=None):
+            if code.startswith("import ewald.kernel_bridge"):
+                raise KernelError(hint or "no bridge")
+            return super()._call(code, timeout, hint)
+
+    k = NoBridge(python=sys.executable)
+    try:
+        for _ in range(2):   # the same hint every time
+            with pytest.raises(KernelError, match="pip install"):
+                k.start()
+            assert not k.alive and k._km is None and k._dir is None
+    finally:
+        k.shutdown()
+
+
+def test_a_dead_kernel_is_started_again_without_leaking_its_folder(kernel):
+    import os
+
+    kernel.start()
+    old = kernel._dir
+    kernel._km.shutdown_kernel(now=True)    # the kernel process died (crash, killed)
+    assert not kernel.alive and kernel._km is not None
+    kernel.start()
+    assert kernel.alive and kernel._dir != old and not os.path.exists(old)

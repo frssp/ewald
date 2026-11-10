@@ -637,7 +637,8 @@ class PluginsPanel(QtWidgets.QWidget):
         it needs before and after (what is loaded, a GitHub token) is read in a thread, pip's
         output goes to the log, Cancel stops it at any point."""
         if self._pip_job is not None:
-            self._say("pip is still running; wait for it to finish or press Cancel.")
+            self._say("pip is still running; wait for it to finish or press Cancel." if self._process is not None
+                      else "The last pip run's plugins are still loading; try again in a moment.")
             return
         cmd = pc.pip_command(action, requirement)
         if QtWidgets.QMessageBox.question(
@@ -707,6 +708,7 @@ class PluginsPanel(QtWidgets.QWidget):
         cut off, the process is killed and waited for, so Qt never destroys a QProcess whose
         program still runs and its ``finished`` never reaches a half-deleted panel."""
         p, self._process = self._process, None
+        self._busy.pop(self._pip_key or "", None)   # its row stops showing "Installing…"
         self._pip_job = self._pip_key = self._before = None
         if p is None or not shiboken6.isValid(p):
             return

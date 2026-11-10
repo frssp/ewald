@@ -43,6 +43,10 @@ PROTOCOL_VERSION = 1
 #: something (merged over the user's own OpenCode configuration).
 OPENCODE_PERMISSIONS = {"edit": "deny", "bash": "deny", "webfetch": "deny", "external_directory": "deny"}
 
+#: Told to the agent with the question after one the user stopped (the agent's session still has it).
+STOPPED_NOTE = "(The user stopped your previous answer before it ended; it is not part of the conversation " \
+               "any more. Answer only the question below.)"
+
 #: Told to the agent with the first question of a session (after the agent's system prompt).
 ACP_NOTE = """
 
@@ -134,6 +138,8 @@ class AcpClient:
         except OSError as exc:
             raise AcpError(f"Could not start {program}: {exc}") from exc
         self.generation += 1
+        for q in list(self._pending.values()):   # requests to the old process: they fail now, not never
+            q.put({"error": {"message": "the agent was restarted"}})
         self._pending.clear()
         self._stderr = []
         errors = threading.Thread(target=self._read_stderr, args=(self.proc,), daemon=True,
@@ -346,6 +352,7 @@ class AcpChat(Chat):
         self.models: dict = {}
         self._model_set = None
         self._told = None
+        self._stopped_turn = False      # the last prompt was stopped: the agent's session still holds it
         self._pending: list[dict] = []
         self._images: list[bytes] = []
 
@@ -389,6 +396,10 @@ class AcpChat(Chat):
         self._session()
         blocks = self._image_blocks() + list(self._pending)
         instructions = (self.system or "") + ACP_NOTE
+        if self._stopped_turn:
+            # Stop takes the question out of ewald's conversation, but the agent's own session
+            # keeps it and its half answer: say so, or the two conversations differ
+            blocks.insert(0, {"type": "text", "text": STOPPED_NOTE})
         if instructions != self._told:
             blocks.insert(0, {"type": "text", "text": instructions})
         pieces: list[str] = []
@@ -416,13 +427,19 @@ class AcpChat(Chat):
         finally:
             self.client.listen(self.session_id, None)
         if failure:
+            self._stopped_turn = True
             raise failure[0]
-        self._told = instructions
+        self._told, self._stopped_turn = instructions, False
         self._pending, self._images = [], []
         text = "".join(pieces)
         self.messages.append({"role": "assistant", "content": text})
         stop = {"max_tokens": "max_tokens", "refusal": "refusal"}.get(result.get("stopReason"), "end")
         return Reply(text, [], stop)
+
+    def forget_stopped_turn(self):
+        """The agent loop dropped a stopped question from :attr:`messages`; the agent's session
+        still has it, so the next prompt says it is gone."""
+        self._stopped_turn = True
 
     def tool_results(self, results):    # never asked for: answers hold no tool calls
         raise AcpError("an ACP agent's answers hold no ewald tool calls")
@@ -430,6 +447,7 @@ class AcpChat(Chat):
     def reset(self):
         super().reset()
         self.session_id = None
+        self._stopped_turn = False
         self._pending, self._images = [], []
 
 

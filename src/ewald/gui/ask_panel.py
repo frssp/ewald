@@ -542,9 +542,13 @@ class _Conversation:
         self.pending: Message | None = None
         self.tools_used: list[str] = []
         self.modifiers_before: list = []
+        self.dropped = False            # its notebook closed: late signals of its worker are ignored
 
     def busy(self) -> bool:
-        return self.worker is not None and self.worker.isRunning()
+        """An answer is on its way: from the question until its answer, error or Stop has been
+        shown (not only while the worker thread runs: its answer reaches the GUI thread after the
+        thread ended, and a question sent in between had that answer written into its bubble)."""
+        return self.pending is not None
 
     @property
     def chats(self) -> list:
@@ -882,6 +886,7 @@ class AskPanel(QtWidgets.QWidget):
         """Forget a closed notebook's chat; an answer on its way is stopped."""
         if conv.busy():
             self._stop(conv)
+        conv.dropped, conv.pending = True, None   # an answer already on its way to the GUI thread finds no page
         self._conversations.pop(id(conv.key), None)
         if conv is self.conversation:
             self.conversation = None
@@ -1159,7 +1164,7 @@ class AskPanel(QtWidgets.QWidget):
             conv.worker.event.emit(kind, payload)
 
     def _on_event(self, conv, kind, payload):
-        if conv.pending is None:
+        if conv.pending is None or conv.dropped:
             return
         if kind == "tool_call":
             conv.tools_used.append(payload["name"])
@@ -1233,6 +1238,8 @@ class AskPanel(QtWidgets.QWidget):
             self.pipelineChanged.emit()
 
     def _on_answer(self, conv, text):
+        if conv.dropped:
+            return
         conv.history = ""   # the agent has it now
         if conv.pending is not None:
             conv.pending.set_answer(text)
@@ -1247,6 +1254,8 @@ class AskPanel(QtWidgets.QWidget):
         self._finish(conv)
 
     def _on_failed(self, conv, message):
+        if conv.dropped:
+            return
         conv.sent_notebook = conv.sent_errors = None  # they may not have reached the model: send again
         low = message.lower()
         hint = f" {_SETUP_HINT}" if any(w in low for w in ("anthropic", "openai", "api_key", "api key",

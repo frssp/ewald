@@ -253,6 +253,7 @@ class ViewSyncMixin:
         vp.contextMenuRequested.connect(lambda n=name: self._view_tab_menu(n))
         vp.viewBuilt.connect(lambda n=name: self._view_tab_camera(n))
         self.timeline.play.toggled.connect(vp.set_playing)
+        vp.set_playing(self.timeline.play.isChecked())   # made while the timeline plays
         group = self.workbench.group_of("viewport")
         self.workbench.register(t.view_id, vp, f"Structure · {name}", home="editor", closable=True,
                                 native=True, group=group)

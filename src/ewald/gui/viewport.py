@@ -757,8 +757,8 @@ class Viewport(QtWidgets.QWidget):
         self.playing, self._play_coarse = playing, None
         if playing:
             self._refine_timer.stop()
-        elif self.coarse:
-            self._refine_timer.start(int(self.refine_delay * 1000))
+        else:
+            self._schedule_refine()
 
     parked = False
     _parked_stale = False
@@ -767,9 +767,13 @@ class Viewport(QtWidgets.QWidget):
         """Parked: behind another tab or in a folded panel (the window's workbench says so).
         Frames that arrive meanwhile build no scene; the last one is drawn on return."""
         was, self.parked = self.parked, parked
+        if parked:
+            self._refine_timer.stop()   # no full scene built for a view nobody sees
         if was and not parked and self._parked_stale:
             self._parked_stale = False
             self.redraw()
+        elif was and not parked:
+            self._schedule_refine()     # a coarse scene parked before its refine
 
     def snapshot(self) -> QtGui.QPixmap:
         """The widget as a picture, 3D view included (``grab`` leaves a GL window black); shown
@@ -950,8 +954,8 @@ class Viewport(QtWidgets.QWidget):
             self._draw_measurements(kw["measurements"])
         self._draw_picks()
         self.coarse = coarse
-        if coarse and not self.playing:
-            self._refine_timer.start(int(self.refine_delay * 1000))
+        if coarse:
+            self._schedule_refine()
         if self._paint_driven:
             self._pending_build = None if coarse else time.perf_counter() - t0
             self.render()  # timed by _render_ended when the paint draws it
@@ -1053,8 +1057,7 @@ class Viewport(QtWidgets.QWidget):
         if event == "RightButtonReleaseEvent" and start is not None \
                 and (QtGui.QCursor.pos() - start).manhattanLength() < 5:
             self.contextMenuRequested.emit()  # a click, not a zoom drag
-        if self.coarse:
-            self._refine_timer.start(int(self.refine_delay * 1000))
+        self._schedule_refine()
 
     def _on_move(self, obj, event):
         if self._dragging:
@@ -1085,7 +1088,12 @@ class Viewport(QtWidgets.QWidget):
 
     def _on_wheel(self, obj, event):
         self._go_coarse_for_motion()
-        if self.coarse:
+        self._schedule_refine()
+
+    def _schedule_refine(self):
+        """Refine a coarse scene after ``refine_delay`` of idle; not while playing (frames keep the
+        first one's level of detail, a refine in between flickered the bonds) or parked."""
+        if self.coarse and not self.playing and not self.parked:
             self._refine_timer.start(int(self.refine_delay * 1000))
 
     def opengl_info(self) -> dict:

@@ -11,6 +11,7 @@ One cell's widget is :class:`ewald.gui.cell_widget.CellWidget` and the code edit
 """
 from __future__ import annotations
 
+import contextlib
 import os
 
 from PySide6 import QtCore, QtGui, QtWidgets
@@ -1510,10 +1511,9 @@ class NotebookPanel(QtWidgets.QWidget):
                 self.plotCreated.emit(p)
         view.titleChanged.connect(lambda v=view: self._retitle(v))
         view.pipRequested.connect(self.pipRequested.emit)
-        self._switching = True
-        i = self.tabs.addTab(view, nb.name)
-        self.tabs.setCurrentIndex(i)
-        self._switching = False
+        with self._quiet_switch():
+            i = self.tabs.addTab(view, nb.name)
+            self.tabs.setCurrentIndex(i)
         self._retitle(view)
         return view
 
@@ -1596,6 +1596,16 @@ class NotebookPanel(QtWidgets.QWidget):
         self.tabs.removeTab(index)
         view.deleteLater()      # the last one closed: the welcome page (no notebook is made up)
 
+    @contextlib.contextmanager
+    def _quiet_switch(self):
+        """Tabs change here without the 3D view following each step (``_switching``); the flag
+        is cleared even when Qt raises, or no later tab switch would reach the 3D view."""
+        self._switching = True
+        try:
+            yield
+        finally:
+            self._switching = False
+
     def _tab_changed(self, index):
         old, self._shown = getattr(self, "_shown", None), self.view
         if old is not self._shown:   # also for tabs added or closed (_switching)
@@ -1655,9 +1665,8 @@ class NotebookPanel(QtWidgets.QWidget):
         for view in self.views():
             if view.notebook.pipeline is pipeline:
                 if view is not self.view:
-                    self._switching = True
-                    self.tabs.setCurrentWidget(view)
-                    self._switching = False
+                    with self._quiet_switch():
+                        self.tabs.setCurrentWidget(view)
                 view.update_results()
                 return
         if name is None:
@@ -1667,10 +1676,9 @@ class NotebookPanel(QtWidgets.QWidget):
         blank = self.view if self.view is not None and self._is_blank(self.view) else None
         view = self.add_notebook(nb)
         if blank is not None:
-            self._switching = True
-            self.tabs.removeTab(self.tabs.indexOf(blank))
-            blank.deleteLater()
-            self._switching = False
+            with self._quiet_switch():
+                self.tabs.removeTab(self.tabs.indexOf(blank))
+                blank.deleteLater()
         view.update_results()
 
     def set_data(self, data):
