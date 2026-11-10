@@ -795,6 +795,60 @@ def test_plots_hidden_tab_waits_and_idle_frames_do_not_repaint(app, cu_fcc):
     _dispose(tabs)
 
 
+
+def test_plots_move_the_frame_marker_without_drawing_the_figure_again(app, cu_fcc):
+    """During playback a time series only moves its current-frame marker: it is drawn over
+    the picture kept from the last full drawing (blitting) instead of drawing the figure, and
+    a per-frame histogram updates its axis limits from the bars without relim."""
+    from ewald.gui.plots import PlotsPanel, _bars_limits
+
+    def frame(step):
+        d = cu_fcc.copy()
+        d.attributes["Timestep"] = step
+        d.particles["E"] = np.linspace(0, 1, d.count) ** 2 + step / 100
+        d.tables["run"] = {"Timestep": np.arange(0.0, 1000.0, 100.0), "Energy": np.linspace(-5, -4, 10)}
+        return d
+
+    panel = PlotsPanel()
+    panel.resize(600, 300)
+    panel.show()
+    panel.set_data(frame(0))
+    panel.table.setCurrentText("run")
+    panel.canvas.draw()                       # what the event loop does: keeps the picture
+    app.processEvents()
+    marker = panel._marker
+    assert marker.get_animated() and panel._background is not None
+    draws, blits = [], []
+    real_blit = panel.canvas.blit
+    panel.canvas.draw_idle = lambda: draws.append(1)
+    panel.canvas.blit = lambda bbox=None: (blits.append(1), real_blit(bbox))
+    for step in (100, 200, 300):
+        panel.set_data(frame(step))
+        panel.set_highlight([])
+    assert draws == [] and len(blits) == 3 and panel._marker is marker
+    assert list(marker.get_xdata()) == [300, 300]
+    rgba = np.asarray(panel.canvas.buffer_rgba())
+    panel.canvas.draw_idle = type(panel.canvas).draw_idle.__get__(panel.canvas)
+    panel.canvas.draw()                       # a full drawing gives the same picture
+    np.testing.assert_array_equal(np.asarray(panel.canvas.buffer_rgba()), rgba)
+
+    panel.resize(500, 250)                    # another size: the kept picture no longer fits
+    app.processEvents()
+    panel._background = (panel._background[0], (0, 0, 1, 1))
+    assert not panel._blit_marker()
+
+    panel.table.setCurrentText("")
+    panel.hist.setCurrentText("E")
+    for step in (1, 2):
+        panel.set_data(frame(step))
+    ax = panel._ax
+    got = ax.dataLim.get_points().copy()
+    ax.relim()
+    np.testing.assert_allclose(got, ax.dataLim.get_points())
+    _bars_limits(ax, panel._live[1])
+    np.testing.assert_allclose(got, ax.dataLim.get_points())
+    _dispose(panel)
+
 LEVELS = {"energy_axis": "E - E_F",
           "levels": [{"name": "E_F", "energy": 0.0, "z": None, "style": "dashed"},
                      {"name": "VBM", "energy": -1.0, "z": [12.0, 18.0], "style": "solid"}],

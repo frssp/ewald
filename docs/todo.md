@@ -165,7 +165,12 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   (1) playback with a notebook's plots open, done: hidden plot tabs wait for their tab and
   frames that change nothing do not repaint (tutorial notebook, 108 atoms, four plots: 177 ms
   per frame until idle, now about 100 ms, of which the one plot on screen is about 55 ms of
-  matplotlib; blitting its bars or marker instead of drawing the whole figure is what is left);
+  matplotlib. Then (D101) a time series moves its frame marker over the picture kept from the
+  last drawing (blitting; with the energy plot in front 138 ms per frame until idle, now 98 ms,
+  no figure drawing during playback) and a per-frame histogram sets its limits from the bars
+  instead of `relim` (28 ms of 44 ms in the call). Left: the histogram's bars still draw the
+  whole figure each frame (about 15 ms); the rest of a frame is the 3D view. The y label of a
+  plot narrowed by resizing the window is cut off at the left (also before D101));
   (2) all-frames analyses, done: XDATCAR and OUTCAR atom tables are read in one piece by the
   compiled parser, a sweep (`ctx.input_frames`) skips the pipeline's caches, the cache's memory
   count is skipped while it cannot be over budget, MeanSquaredDisplacement takes total, types,
