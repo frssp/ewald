@@ -1305,6 +1305,20 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   the JSON description.
 - **Landed:** public PR #145.
 
+### D100. Three measured hot spots, all taken, in the order plots, all-frames analyses, notebook cells (2026-11-10)
+
+- **Decision:** of three performance candidates measured on `main` (playback redrawing every
+  plot of the notebook on each frame; the all-frames analysis path: XDATCAR and OUTCAR parsing,
+  the pipeline's per-frame bookkeeping, MeanSquaredDisplacement's three FFT passes; the
+  notebook rebuilding every cell widget on each edit) all three are done, one pull request
+  each, in that order.
+- **Why:** the owner chose "셋 다, 2 → 3 → 1 순서" from the options (all three, or any one alone).
+  The order puts the smallest change first and the notebook cells last, since they share files
+  with the notebook state fixes of public PR #147.
+- **Alternatives:** only the playback plots; only the all-frames analyses; only the notebook
+  cells.
+- **Landed:** public PR #148 (playback plots); the other two follow.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses
