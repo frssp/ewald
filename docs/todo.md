@@ -103,13 +103,20 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   `index=":"`); internal state (`Color.rule`) out of `data.attributes`; `data.tables` values as
   `verbs.Table` (a column missing from a table a step wrote as a plain dict is still a bare
   KeyError).
-- Library design review (D102), the two design questions still to build (the owner picked on
+- Library design review (D102), the design question still to build (the owner picked on
   2026-11-10): output names of steps, as an `output=` argument plus a warning when a step
   replaces what an earlier one wrote (two `CoordinationAnalysis` overwrite each other, CNA and
   PTM share "Structure Type", `pipe.add` lets the later step win and verbs the earlier,
-  attribute prefixes differ); units as labels only, numbers unchanged (`msd(pipe)` without
-  `time_per_frame` reports D per frame under a `Time` column, LAMMPS readers know no unit
-  system).
+  attribute prefixes differ).
+- Unit labels, left after D105: `run_info` does not read a dump's own `ITEM: UNITS` or `ITEM:
+  TIME`, so `time_per_frame` from a `real` run's log is taken as ps; `lj` time (tau) is never
+  used; VACF from a velocity property mixes the property's units with ps, and vaspout.h5
+  velocities (Å/fs) make that D 1e3 off; thermo and NEB energies are labeled eV whatever the
+  style, as is the energy-drift check of `check_run`; covalent-radius bonds and `check_run`
+  distances assume Å for non-Å styles; H5MD and MDAnalysis writers invent times; text output
+  (`[Time]` labels, `describe`) does not carry units yet; the kernel bridge and
+  `TimeAveraging`/`@all_frames` tables drop `data.units` and Table metadata; the
+  trajectory-lines "Time" column is a step count.
 - API stability, left after D104: old names that still work (`XxxModifier`, `Modifier.ALIASES`)
   give no DeprecationWarning (decide at the 1.0 cleanup); the snapshot does not hold the names a
   step writes into a frame, `settings.json` option names or the public attributes of classes
@@ -534,8 +541,6 @@ Runs (`ewald/runinfo.py`, `ewald/runs.py`; manual page docs/user/runs.md)
 - Use `check.equilibrated` as the default `start=` of MSD, time averaging and the transport
   modifiers (now the user passes it); the transport modifiers still default
   `time_per_frame` to 0 (frames) instead of the run's value.
-- Time units on plot axes: the MSD/VACF `Time` column is in ps when `time_per_frame` is known, but
-  the table does not say so, so the axis reads "Time".
 - Block-averaged error bars for every per-run number (D, temperature, energy), and an Arrhenius
   fit weighted by them (now unweighted, with the fit's own standard error).
 - `show(runs, ...)` as a live GUI view cell: a view cell binds to `pipe`, so the overlaid runs show as
@@ -613,8 +618,7 @@ Electronic structure
   `%load_ext ewald` or `ewald.plotstyle.use()` hint in the manual is all there is now; the GUI
   console's interactive figure windows read a few draw-time rcParams outside the swapped style.
 - Plot style (`ewald/plotstyle.py`): per-plot overrides in view cells (`show(..., size=,
-  labels=)`; `xlim=`/`ylim=` exist), time units on MSD/VACF axes when `time_per_frame` is set (the unit is not
-  stored now, so the axis says "Time"), multi-panel figures (DOS beside bands sharing the energy
+  labels=)`; `xlim=`/`ylim=` exist), multi-panel figures (DOS beside bands sharing the energy
   axis), and a journal preset list (ACS, APS, Nature widths and fonts).
 - Plots tab: Gaussian smearing of the DOS,
   orbital choice for fat bands independent of the DOS column, spin texture of non-collinear runs.

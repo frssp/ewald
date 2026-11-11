@@ -80,16 +80,27 @@ __all__ = ["Table", "bond_angles", "clusters", "cna", "load_table", "msd", "ptm"
 
 
 class Table(dict):
-    """A data table (``{column: array}``, the first column is x) with where it came from."""
+    """A data table (``{column: array}``, the first column is x) with where it came from.
 
-    def __init__(self, name: str, columns: dict, pipe=None, frame: int = 0, labels=None, attributes=None):
+    ``units`` maps columns and attributes to their unit (``{"Time": "ps", "MSD": "Å$^2$",
+    "MeanSquaredDisplacement.diffusion_coefficient": "Å$^2$/ps"}``; :mod:`ewald.units`): labels
+    only, the numbers are as the step computed them. Without it, the units the column names
+    tell (Angstrom and eV) are taken."""
+
+    def __init__(self, name: str, columns: dict, pipe=None, frame: int = 0, labels=None, attributes=None,
+                 units=None):
         super().__init__((k, np.asarray(v)) for k, v in columns.items())
         self.name, self.pipe, self.frame = name, pipe, frame
         self.labels = None if labels is None else list(labels)  # names of the rows (structure types)
         self.attributes = dict(attributes or {})  # global results of the step (diffusion coefficient, ...)
+        if units is None:
+            from .units import column_unit
+
+            units = {c: column_unit(c) for c in self if column_unit(c) is not None}
+        self.units = dict(units)
 
     def __copy__(self):   # DataCollection.copy(): new containers, shared arrays, as for a plain table
-        return Table(self.name, self, self.pipe, self.frame, self.labels, self.attributes)
+        return Table(self.name, self, self.pipe, self.frame, self.labels, self.attributes, self.units)
 
     def __missing__(self, key):   # table["g"]: say which columns there are ("in" and .get never come here)
         from .data import _no_column
@@ -201,7 +212,10 @@ def _verb(pipe, cls, table: str, frame: int, labels=None, **params) -> Table:
     prefix = cls.__name__ + "."
     attrs = {k: v for k, v in {**data.attributes, **getattr(mod, "_verb_attributes", {})}.items()
              if k.startswith(prefix)}
-    return Table(table_name, columns, pipe, frame, labels, attrs)
+    from .units import attribute_units, table_units
+
+    units = {**table_units(data, table_name), **attribute_units(data, attrs)}
+    return Table(table_name, columns, pipe, frame, labels, attrs, units)
 
 
 def rdf(pipe, cutoff: float = 6.0, bins: int = 200, partial: bool = False, frame: int = 0) -> Table:

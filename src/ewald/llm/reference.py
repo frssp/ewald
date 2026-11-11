@@ -39,7 +39,11 @@ print(np.bincount(data["Coordination"]))            # coordination histogram as 
 Rules: change the structure, the view or a result only through such cells (never by mutating `pipe` from a plain
 cell or a tool), so the notebook alone reproduces the analysis. Read the output names a modifier writes (properties,
 `data.tables[...]`, `data.attributes[...]`) from its entry under "Modifiers" below instead of guessing them. Units:
-Angstrom, eV, ps for `time_per_frame` and trajectory times, fs for MD time steps, e/A^3 for charge densities.
+numbers stay in the file's units (Angstrom and eV for VASP and most formats; a LAMMPS file in its `units` style, named
+by the frame's `Units` attribute: `load(path, units="real")` when the file does not say); `time_per_frame` is in ps,
+and without it trajectory times are frame lags; MD time steps are fs, charge densities e/A^3. A result says its
+units: `table.units` (`{"Time": "ps" or "frames", "MSD": "Å$^2$", "MeanSquaredDisplacement.diffusion_coefficient":
+"Å$^2$/ps" or "Å$^2$/frame"}`); quote D with that unit.
 Outside a notebook the same API works as a script: `pipe = import_file(path)` (= `load`), `pipe.add(m)`
 (= `pipe.modifiers.append(m)`), any `def f(frame, data)` is a modifier, `pipe.render("fig.png", frame=10)`,
 `data = pipe.compute(10, device="cuda")` (GPU kernels where supported). Loading variants:

@@ -408,7 +408,7 @@ def _reader_keywords(factory) -> list[str] | None:
 
     extra: tuple = ()
     if factory is _open_lammps_data:      # the wrappers here that only hand their keywords on
-        factory, extra = LammpsDataReader, ("style", "units")
+        factory, extra = LammpsDataReader, ("style",)
     elif factory is _open_vaspout:
         factory = VaspoutReader
     elif factory is _open_optimade:
@@ -459,7 +459,6 @@ def _check_reader_keywords(plugin, path, format, kwargs) -> bool:
 def _open_lammps_data(path, **kwargs):
     if "style" in kwargs:  # ASE's keyword name
         kwargs["atom_style"] = kwargs.pop("style")
-    kwargs.pop("units", None)
     return LammpsDataReader(path, **kwargs)
 
 

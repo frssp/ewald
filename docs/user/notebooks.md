@@ -416,6 +416,25 @@ A notebook that loads several runs (`runs = load_runs("T*/XDATCAR")`) shows a ru
 picking a run binds `pipe` to it, so the 3D view follows ([Runs](runs.md)). Opening an MD run or a relaxation
 whose input files say so adds a `check_run(pipe)` cell, run at once.
 
+### Units of results
+
+ewald never converts numbers: a table, an attribute or a property holds what the file and the
+step give. What it adds is the unit, as a label. A verb's result and the table a view cell draws
+carry `units`, a dict from column (and attribute) to unit, and the axes are labeled with it:
+
+```python
+d = msd(pipe)
+d.units["Time"]                                           # 'ps', or 'frames' without a time step
+d.units["MeanSquaredDisplacement.diffusion_coefficient"]  # 'Å$^2$/ps' or 'Å$^2$/frame'
+plotstyle.axis_label("Time", d.units["Time"])             # 'Time (ps)'
+```
+
+Lengths and energies follow the frame's unit system, its `Units` attribute: a LAMMPS style from
+the dump (`ITEM: UNITS`) or from `load(path, units="real")`. Without one they are Angstrom and
+eV. The time axes of the trajectory analyses (MSD, VACF, Fs, NGP, site hopping, conductivity)
+are in ps when `time_per_frame` is known and in frames when it is not; a step records that in
+`data.units` (`data.units[("msd", "Time")]`, `data.units["MeanSquaredDisplacement.diffusion_coefficient"]`).
+
 ## Notebook tabs
 
 Each open notebook has a tab at the top of the notebook panel. **+** or

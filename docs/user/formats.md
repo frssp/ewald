@@ -245,8 +245,12 @@ import_file("train.db", selection="energy<-3")                 # rows of an ASE 
 import_file("run.xyz", format="ase")                           # ASE's own reader instead of the native one
 ```
 
-LAMMPS values stay in the file's unit style; the dump's `Units` attribute is kept when the
-file has one.
+LAMMPS values stay in the file's unit style: ewald never converts them. The frames' `Units`
+attribute names the style, from the dump's `ITEM: UNITS` (`dump_modify units yes`) or from
+`load(path, units="real")` for a dump or data file that does not say (one of `lj`, `real`,
+`metal`, `si`, `cgs`, `electron`, `micro`, `nano`). It labels the results: with `units="real"`
+energies are labeled kcal/mol, with `units="nano"` lengths nm, and without a style ewald labels
+Angstrom and eV as for VASP. See [units of results](notebooks.md#units-of-results).
 
 ## Property names
 

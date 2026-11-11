@@ -509,7 +509,8 @@ class ModifierList(list):
 
 def _upstream(data: DataCollection) -> tuple:
     """What a step's input holds, for :func:`_keep_upstream`."""
-    return dict(data.particles), {k: dict(v) for k, v in data.tables.items()}, dict(data.attributes)
+    return (dict(data.particles), {k: dict(v) for k, v in data.tables.items()}, dict(data.attributes),
+            dict(getattr(data, "units", {})))
 
 
 def _keep_upstream(mod, upstream: tuple, data: DataCollection):
@@ -518,7 +519,7 @@ def _keep_upstream(mod, upstream: tuple, data: DataCollection):
     ``CoordinationAnalysis(cutoff=3)`` must not change their "Coordination". Particle properties and
     attributes that existed before keep their values; a table of the same name keeps the earlier one,
     and the verb's goes in beside it as ``"<name> (<verb>)"`` (``mod._verb_tables`` maps the names)."""
-    particles, tables, attributes = upstream
+    particles, tables, attributes, units = upstream
     renamed = {}
     for name, arr in particles.items():
         if name in data.particles and data.particles[name] is not arr and len(arr) == data.count:
@@ -536,6 +537,10 @@ def _keep_upstream(mod, upstream: tuple, data: DataCollection):
             data.tables[new] = out
             data.tables[name] = table
             renamed[name] = new
+            from .units import rename_table
+
+            rename_table(data, name, new)   # the step's units go with its table, the earlier ones stay
+            data.units.update({k: u for k, u in units.items() if isinstance(k, tuple) and k[0] == name})
     mod._verb_tables = renamed
 
 

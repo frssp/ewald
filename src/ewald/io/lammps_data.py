@@ -45,9 +45,16 @@ def is_lammps_data(path) -> bool:
 
 
 class LammpsDataReader(FrameReader):
+    """A LAMMPS data file. ``units`` names the LAMMPS unit style its numbers are in ("real",
+    "metal", ...): it becomes the frame's ``Units`` attribute, which labels results; the numbers
+    are not converted (:mod:`ewald.units`)."""
+
     def __init__(self, path, atom_style: str | None = None, type_map: dict | None = None,
-                 sort_by_id: bool = True):
+                 sort_by_id: bool = True, units: str | None = None):
+        from ..units import check_style
+
         self.path = str(path)
+        self.units = check_style(units)
         self.atom_style = atom_style
         self.type_map = {str(k): v for k, v in (type_map or {}).items()}
         self.sort_by_id = sort_by_id
@@ -61,7 +68,10 @@ class LammpsDataReader(FrameReader):
             raise IndexError(index)
         if self._data is None:
             self._data = self._parse()
-        return self._data.copy()
+        data = self._data.copy()
+        if self.units is not None:
+            data.attributes["Units"] = self.units
+        return data
 
     # ------------------------------------------------------------------------
     def _parse(self) -> DataCollection:

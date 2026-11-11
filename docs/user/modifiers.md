@@ -368,7 +368,8 @@ pipe.modifiers.append(MeanSquaredDisplacement(time_per_frame=0.002))   # ps per 
 pipe.modifiers.append(CoordinationAnalysis(cutoff=3.0))
 pipe.modifiers.append(TimeAveraging("table:coordination-rdf"))
 data = pipe.compute(0)
-data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # Å²/ps
+data.attributes["MeanSquaredDisplacement.diffusion_coefficient"]       # Å²/ps (Å²/frame without time_per_frame)
+data.units["MeanSquaredDisplacement.diffusion_coefficient"]            # 'Å$^2$/ps': what it is in
 data.tables["coordination-rdf[average]"]
 ```
 

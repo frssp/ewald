@@ -116,6 +116,22 @@ class _TrajectoryModifier(Modifier):
         tpf = getattr(self, "time_per_frame", 0.0) or 0.0
         return (tpf * self.step, True) if tpf > 0 else (float(self.step), False)
 
+    def _label_units(self, data, tables=(), times=(), per_time=(), length2=True):
+        """Record in ``data.units`` (:mod:`ewald.units`) what the time axes of ``tables`` and the
+        attributes ``times`` are in (ps, or frame lags without ``time_per_frame``) and the unit of
+        the rates ``per_time`` (length squared per time when ``length2``, else per time). Labels
+        only: the numbers stay as computed."""
+        from ..units import per_time as per, system, time_unit, unit
+
+        tpf = getattr(self, "time_per_frame", 0.0)
+        for table in tables:
+            data.units[(table, "Time")] = time_unit(tpf)
+        for name in times:
+            data.units[name] = time_unit(tpf)
+        rate = per(unit("length^2", system(data)) if length2 else "1", tpf)
+        for name in per_time:
+            data.units[name] = rate
+
 
 def _real(data):
     """``data`` without the see-through copies an :class:`OverlayFrames` step above appended."""
@@ -189,6 +205,8 @@ class MeanSquaredDisplacement(_TrajectoryModifier):
         table, attrs, traj, per_particle = self._cached(ctx, lambda: self._compute(ctx))
         data.tables["msd"] = dict(table)
         data.attributes.update(attrs)
+        self._label_units(data, ["msd"], ["MeanSquaredDisplacement.fit_start", "MeanSquaredDisplacement.fit_end"],
+                          [a for a in attrs if ".diffusion_coefficient" in a])
         data.particles["MSD"] = _scatter_to_frame(data, traj, per_particle)
 
     def _compute(self, ctx):
@@ -256,12 +274,19 @@ class VelocityAutocorrelation(_TrajectoryModifier):
         table, attrs = self._cached(ctx, lambda: self._compute(ctx))
         data.tables["vacf"] = dict(table)
         data.attributes.update(attrs)
+        # from a Velocity property D is in the reader's velocity units squared times the time:
+        # those differ between readers (Å/fs, Å/ps, the file's), so only the time axis is labeled
+        positions = getattr(self, "_velocity_source", None) == "positions"
+        self._label_units(data, ["vacf"], per_time=list(attrs) if positions else ())
+        if positions:
+            data.units[("vacf", "D(t)")] = data.units["VelocityAutocorrelation.diffusion_coefficient"]
 
     def _compute(self, ctx):
         be = ctx.backend
         source = self.velocities
         if source == "auto":
             source = "property" if "Velocity" in ctx.input_frame(self._frames(ctx)[0]) else "positions"
+        self._velocity_source = source
         dt, _ = self._dt()
         if source == "property":
             traj = self._input(ctx, self.only_selected, ("Velocity",))

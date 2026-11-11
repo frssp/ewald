@@ -282,6 +282,8 @@ class DataCollection:
     isosurfaces, grid slices) and ``grids`` maps names to volumetric
     :class:`VoxelGrid` data (CHGCAR, LOCPOT, cube files). ``vectors`` maps particle property
     names to :class:`ewald.arrows.VectorStyle`: those properties are drawn as arrows (VectorVis).
+    ``units`` maps ``(table, column)`` pairs and attribute names to the unit a step recorded for
+    them where the name does not tell (a time axis in ps or in frames; :mod:`ewald.units`).
 
     Modifiers receive a shallow copy, so they must *replace* arrays instead of
     writing into them in place; this keeps cached source frames untouched.
@@ -295,6 +297,7 @@ class DataCollection:
         self.surfaces: dict = {}
         self.grids: dict[str, VoxelGrid] = {}
         self.vectors: dict = {}
+        self.units: dict = {}
         self.cell = cell if cell is not None else Cell()
         if positions is not None:
             self.particles["Position"] = np.asarray(positions, dtype=float).reshape(-1, 3)
@@ -396,6 +399,7 @@ class DataCollection:
         new.surfaces = dict(getattr(self, "surfaces", {}))
         new.grids = {k: v.copy() for k, v in getattr(self, "grids", {}).items()}
         new.vectors = dict(getattr(self, "vectors", {}))
+        new.units = dict(getattr(self, "units", {}))
         new.cell = self.cell.copy()
         return new
 
@@ -544,6 +548,7 @@ class DataCollection:
             dropped.append("the bonds")
         new.vectors = {name: style for name, style in new.vectors.items() if name in new.particles}
         new.attributes.update(other.attributes)
+        new.units.update(getattr(other, "units", {}))
         for name, table in other.tables.items():
             new.tables[name] = dict(table) if type(table) is dict else copy.copy(table)
         if dropped:
