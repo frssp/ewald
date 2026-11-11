@@ -196,12 +196,13 @@ def _verb(pipe, cls, table: str, frame: int, labels=None, **params) -> Table:
     mod._verb_name = VERB_OF.get(cls.__name__, cls.__name__)
     with _atomic([pipe]):
         for i, m in enumerate(pipe.modifiers):
-            if getattr(m, "_verb", None) == cls.__name__:
+            if getattr(m, "_verb", None) == cls.__name__ and m.output == mod.output:
                 pipe.modifiers[i] = mod
                 break
         else:
             pipe.add(mod)
         data = pipe.compute(frame)
+        table = getattr(mod, "_output_names", {}).get("tables", {}).get(table, table)   # output= (D106)
         table_name = getattr(mod, "_verb_tables", {}).get(table, table)
         if table_name not in data.tables:
             raise RuntimeError(f"{cls.__name__} wrote no {table_name!r} table: "

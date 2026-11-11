@@ -25,6 +25,29 @@ pipe.modifiers.append(ExpressionSelection("StructureType == 1"))   # select FCC 
 pipe.modifiers.append(DeleteSelected())
 ```
 
+Two steps that write the same names overwrite each other: a second `CoordinationAnalysis` with
+another cutoff replaces the `Coordination` property and the `coordination-rdf` table of the
+first, and `CommonNeighborAnalysis` after `PolyhedralTemplateMatching` replaces its
+`Structure Type`. ewald warns when a step replaces what an earlier step wrote. To keep both,
+give the step a name for its results with `output=`, which every modifier takes:
+
+```python
+pipe.add(CoordinationAnalysis(cutoff=3.0))
+pipe.add(CoordinationAnalysis(cutoff=4.5, output="second shell"))
+data = pipe.compute()
+data["Coordination"], data["Coordination (second shell)"]
+data.tables["coordination-rdf (second shell)"]
+```
+
+Everything that step writes gets the name in parentheses (properties, attributes, tables), and
+what the steps above wrote keeps its plain name. In expressions the name drops its spaces and
+brackets (`Coordinationsecondshell`), or is written in backticks. Names that several steps
+change on purpose stay as they are and are not warned about: `Color`, `Selection`,
+`Transparency`, `Radius`, the structure (`Position`, `Particle Type`, ...) and the color
+coding attributes. Without `output=` the default names are OVITO's. `ComputeProperty` and
+`GridDifference` keep the meaning of their own `output` argument (the property they write).
+Python steps are not warned about, since they write the names they are given.
+
 Every constructor argument is listed with its default in the
 [API reference](../reference/api.md) and in `llms.txt`; `help(CommonNeighborAnalysis)` shows
 the full docstring.

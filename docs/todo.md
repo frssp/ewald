@@ -103,11 +103,11 @@ it removes the items it finishes, adds what it leaves open, and moves its own li
   `index=":"`); internal state (`Color.rule`) out of `data.attributes`; `data.tables` values as
   `verbs.Table` (a column missing from a table a step wrote as a plain dict is still a bare
   KeyError).
-- Library design review (D102), the design question still to build (the owner picked on
-  2026-11-10): output names of steps, as an `output=` argument plus a warning when a step
-  replaces what an earlier one wrote (two `CoordinationAnalysis` overwrite each other, CNA and
-  PTM share "Structure Type", `pipe.add` lets the later step win and verbs the earlier,
-  attribute prefixes differ).
+- Step output names, left after D106: verbs keep what earlier steps wrote (their table goes
+  beside as "<table> (<verb>)") while `pipe.add` lets the later step win with a warning; the
+  attribute prefixes still differ between steps (`WignerSeitz.`, `Voronoi.`,
+  `SelectExpression.`); a Python step saved in a session does not keep `output=`; the warning
+  is checked only on the frame being shown, not inside trajectory-wide sweeps.
 - Unit labels, left after D105: `run_info` does not read a dump's own `ITEM: UNITS` or `ITEM:
   TIME`, so `time_per_frame` from a `real` run's log is taken as ps; `lj` time (tau) is never
   used; VACF from a velocity property mixes the property's units with ps, and vaspout.h5

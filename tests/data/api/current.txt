@@ -9,6 +9,7 @@ ewald.AllFramesModifier.last_output = None
 ewald.AllFramesModifier.last_time = None
 ewald.AllFramesModifier.modify(data, ctx)
 ewald.AllFramesModifier.name
+ewald.AllFramesModifier.output = None
 ewald.AllFramesModifier.parameters()
 ewald.AllFramesModifier.status = None
 ewald.Cell(matrix=<factory>, origin=<factory>, pbc=<factory>)
@@ -69,6 +70,7 @@ ewald.Modifier.last_output = None
 ewald.Modifier.last_time = None
 ewald.Modifier.modify(data, ctx)
 ewald.Modifier.name
+ewald.Modifier.output = None
 ewald.Modifier.parameters()
 ewald.Modifier.status = None
 ewald.Pipeline(source, modifiers=(), device=None, cache_size=8, cache_memory=2147483648)
@@ -101,6 +103,7 @@ ewald.PythonModifier.last_output = None
 ewald.PythonModifier.last_time = None
 ewald.PythonModifier.modify(data, ctx)
 ewald.PythonModifier.name
+ewald.PythonModifier.output = None
 ewald.PythonModifier.parameters()
 ewald.PythonModifier.status = None
 ewald.StaticSource(frames)
