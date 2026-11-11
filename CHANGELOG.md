@@ -10,7 +10,7 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
-- Every step takes `output="name"` (D106, #PR): what it writes is then called
+- Every step takes `output="name"` (D106, #156): what it writes is then called
   "Coordination (name)", "coordination-rdf (name)", "CommonNeighborAnalysis.counts.FCC (name)",
   and what earlier steps wrote keeps its plain name, so two `CoordinationAnalysis` cutoffs, or
   CNA beside PTM, stay side by side. Verbs pass it on (`cna(pipe, output="b")` adds a second
