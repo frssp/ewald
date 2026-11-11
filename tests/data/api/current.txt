@@ -55,6 +55,7 @@ ewald.DataCollection.take(index)
 ewald.DataCollection.to_ase()
 ewald.DataCollection.to_pymatgen()
 ewald.DataCollection.types
+ewald.DataCollection.units
 ewald.DataCollection.vectors
 ewald.DataCollection.with_structure(structure)
 ewald.Frames(ctx, indices=None)
@@ -155,7 +156,7 @@ ewald.sensitivity(pipe, step, parameter, values, attributes=None, frame=0)
 ewald.show(source, table=None, y=None, histogram=None, frame=0, bins=50, xlim=None, ylim=None, layout=None, panel=None, save=None)
 ewald.sq(pipe, q_max=10.0, bins=200, frame=0, **kwargs)
 ewald.vacf(pipe, frame=0, time_per_frame=None, **kwargs)
-ewald.verbs.Table(name, columns, pipe=None, frame=0, labels=None, attributes=None)
+ewald.verbs.Table(name, columns, pipe=None, frame=0, labels=None, attributes=None, units=None)
 ewald.verbs.Table.attribute(name)
 ewald.verbs.Table.attributes
 ewald.verbs.Table.columns
@@ -165,6 +166,7 @@ ewald.verbs.Table.labels
 ewald.verbs.Table.name
 ewald.verbs.Table.pipe
 ewald.verbs.Table.plot(y=None)
+ewald.verbs.Table.units
 ewald.verbs.Table.x
 ewald.view(pipe, tab=None, **settings)
 ewald.views.figure(source, table=None, y=None, histogram=None, frame=0, bins=50, size=None, title=False, xlim=None, ylim=None, layout=None)

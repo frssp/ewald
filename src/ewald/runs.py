@@ -288,17 +288,18 @@ class RunTables(dict):
         fig = plotstyle.figure(size)
         with plotstyle.context(*fig._ewald_style):
             ax = fig.add_subplot()
-            xname = None
+            xname, units = None, {}
             for lab, t in self.items():
                 if y not in t:
                     continue
                 xname = t.columns[0]
+                units = getattr(t, "units", None) or units
                 yy = np.asarray(t[y], float)
                 ok = np.isfinite(yy)
                 ax.plot(np.asarray(t.x, float)[ok], yy[ok], label=lab)
             if xname:
-                ax.set_xlabel(axis_label(xname))
-            ax.set_ylabel(axis_label(y))
+                ax.set_xlabel(axis_label(xname, units.get(xname)))
+            ax.set_ylabel(axis_label(y, units.get(y)))
             if len(self) > 1:
                 ax.legend(loc="best", title=None)
         return fig
@@ -417,8 +418,12 @@ def arrhenius(data, values=None, attribute: str = "MeanSquaredDisplacement.diffu
     if isinstance(data, RunTables):
         if data.runs is None:
             raise ValueError("these tables do not know their runs; pass temperatures and values")
-        name = "$D$ (Å$^2$/ps)" if attribute.endswith("diffusion_coefficient") else attribute
-        return Arrhenius(data.runs.temperatures(), data.attribute(attribute), name)
+        # the unit the steps recorded (Å²/ps, or Å²/frame for runs without a time step); runs that
+        # disagree get no unit rather than a wrong one
+        found = {getattr(t, "units", {}).get(attribute) for t in data.values()}
+        unit = found.pop() if len(found) == 1 else None
+        name = "$D$" if attribute.endswith("diffusion_coefficient") else attribute
+        return Arrhenius(data.runs.temperatures(), data.attribute(attribute), f"{name} ({unit})" if unit else name)
     if isinstance(data, Runs):
         return Arrhenius(data.temperatures(), np.asarray(values, float), "value")
     if values is None:

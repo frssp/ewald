@@ -894,7 +894,8 @@ LABELS = {
     "q": "$q$ (Å$^{-1}$)", "S(q)": "$S(q)$", "2theta": r"$2\theta$ (°)", "Intensity": "Intensity (arb. units)",
     "d": "$d$ (Å)", "Experimental": "Intensity (arb. units)",
     "Bond Length": "Bond length (Å)", "Angle": "Bond angle (°)", "Cosine": r"$\cos\theta$",
-    "MSD": "MSD (Å$^2$)", "MSD fit": "MSD (Å$^2$)", "Charge MSD": "Charge MSD (Å$^2$)",
+    "MSD": "MSD (Å$^2$)", "MSD fit": "MSD (Å$^2$)", "Charge MSD": "Charge MSD (e$^2$ Å$^2$)",
+    "Charge MSD fit": "Charge MSD (e$^2$ Å$^2$)",
     "MQD": "MQD (Å$^4$)", "alpha2": r"$\alpha_2$", "VACF (normalized)": "VACF (normalized)",
     "Reaction Coordinate": "Reaction coordinate (Å)", "Energy": "Energy (eV)",
     "Frequency": "Frequency (THz)", "Count": "Count", "count": "Count",
@@ -911,11 +912,26 @@ def _split(name: str) -> tuple[str, str]:
     return name, ""
 
 
-def axis_label(name: str) -> str:
+def axis_label(name: str, unit: str | None = None) -> str:
     """The axis label of table column ``name``: :data:`LABELS` (also for per-pair/per-type
-    columns like "g(r) Cu-Zr" or "Count Cu"), else the name itself."""
+    columns like "g(r) Cu-Zr" or "Count Cu"), else the name itself. ``unit`` (from
+    :attr:`ewald.verbs.Table.units`) replaces the unit the label would have: ``axis_label("r", "nm")``
+    is ``"$r$ (nm)"``, ``axis_label("Time", "ps")`` is ``"Time (ps)"``."""
     base, _ = _split(name)
-    return LABELS.get(base, name)
+    label = LABELS.get(base, name)
+    if unit is None:
+        return label
+    from .units import QUANTITY
+
+    if base in QUANTITY and label.endswith(")") and " (" in label:
+        label = label[:label.rindex(" (")]
+    return f"{label} ({unit})" if unit else label
+
+
+def axis_labels(names, units: dict | None = None) -> list[str]:
+    """:func:`axis_label` of each of ``names`` with its unit from ``units`` (a table's ``units``)."""
+    units = units or {}
+    return [axis_label(n, units.get(n)) for n in names]
 
 
 def legend_labels(names) -> list[str]:

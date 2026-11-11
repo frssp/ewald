@@ -41,7 +41,7 @@ def view_data(source, table: str | None = None, y: str | None = None, histogram:
         names = list(source)
         keep = [names[0]] + ([_known_column(names, y, source.name)] if y is not None else names[1:])
         return source.name, Table(source.name, {n: source[n] for n in keep}, labels=source.labels,
-                                  attributes=source.attributes)
+                                  attributes=source.attributes, units=source.units)
     data = source.compute(frame) if hasattr(source, "compute") else source
     if histogram is not None:
         if histogram not in data.particles:
@@ -60,8 +60,12 @@ def view_data(source, table: str | None = None, y: str | None = None, histogram:
     columns = data.tables[table]   # a missing one: the same KeyError as data.tables[...] anywhere
     names = list(columns)
     keep = [names[0]] + ([_known_column(names, y, table)] if y is not None else names[1:])
+    from .units import attribute_units, table_units
+
+    attributes = getattr(columns, "attributes", None)
+    units = {**table_units(data, table, keep), **attribute_units(data, attributes or ())}
     return table, Table(table, {n: columns[n] for n in keep}, labels=getattr(columns, "labels", None),
-                        attributes=getattr(columns, "attributes", None))
+                        attributes=attributes, units=units)
 
 
 def _known_column(names: list, y, table: str) -> str:
@@ -202,9 +206,10 @@ def _draw_levels(ax, attributes, x, colors, ink="0.15", muted="0.35"):
 
 
 def _draw(ax, title: str, columns: dict, histogram: str | None, show_title: bool = True, labels=None,
-          attributes=None):
-    """Draw a view onto ``ax`` in the active :mod:`ewald.plotstyle` (labels with units); a table
-    of named rows as bars, and the ``levels``/``regions``/``gaps`` of its ``attributes`` over it."""
+          attributes=None, units=None):
+    """Draw a view onto ``ax`` in the active :mod:`ewald.plotstyle` (labels with the ``units`` of
+    the table's columns, :attr:`ewald.verbs.Table.units`); a table of named rows as bars, and the
+    ``levels``/``regions``/``gaps`` of its ``attributes`` over it."""
     from .plotstyle import axis_label, legend_labels, start_at_zero
 
     import matplotlib as mpl
@@ -213,6 +218,8 @@ def _draw(ax, title: str, columns: dict, histogram: str | None, show_title: bool
     first = colors[0]
     labels = getattr(columns, "labels", None) if labels is None else labels
     attributes = getattr(columns, "attributes", None) if attributes is None else attributes
+    units = getattr(columns, "units", None) if units is None else units
+    units = units or {}
     names = list(columns)
     x = np.asarray(columns[names[0]], float)
     if histogram is not None:
@@ -247,13 +254,13 @@ def _draw(ax, title: str, columns: dict, histogram: str | None, show_title: bool
             ax.plot(x[ok], y[ok], ls="--", lw=0.9, label=label, zorder=3)
         else:
             ax.plot(x[ok], y[ok], label=label, zorder=2)
-    ax.set_xlabel(axis_label(names[0]))
+    ax.set_xlabel(axis_label(names[0], units.get(names[0])))
     start_at_zero(ax, x)
     if sticks or title in ("diffraction", "structure-factor") or all(n.startswith("Count") for n in ys):
         ax.set_ylim(bottom=0)
-    units = {axis_label(n) for n in ys}
-    if len(ys) == 1 or len(units) == 1:
-        ax.set_ylabel(units.pop() if units else "")
+    ylabels = {axis_label(n, units.get(n)) for n in ys}
+    if len(ys) == 1 or len(ylabels) == 1:
+        ax.set_ylabel(ylabels.pop() if ylabels else "")
     _draw_levels(ax, attributes or {}, x, colors)
     if len(ys) > 1 and (attributes or {}).get("levels"):   # over the level lines where it must
         ax.legend(loc="best", frameon=True, framealpha=0.85, edgecolor="none")
@@ -391,7 +398,7 @@ def _frame(source, f) -> int:
 def compare_data(source, table: str | None = None, y=None, histogram: str | None = None, frame=0,
                  bins: int = 50) -> tuple[str, str, list]:
     """What a comparison plot draws: ``(title, x column, series)`` with one ``(label, x, values,
-    column)`` per frame of ``frame`` (a list; negative counts from the end) or per column of ``y``
+    column, units)`` (``units``: the table's, :attr:`ewald.verbs.Table.units`) per frame of ``frame`` (a list; negative counts from the end) or per column of ``y``
     (a list of column names or their legend labels, e.g. ``["Cu-Cu", "Cu-Zr"]``). Histograms of
     several frames share their bins."""
     from .verbs import Table
@@ -422,7 +429,7 @@ def compare_data(source, table: str | None = None, y=None, histogram: str | None
         else:
             edges = np.histogram_bin_edges(every, bins=bins)
         x = 0.5 * (edges[1:] + edges[:-1])
-        return histogram, histogram, [(f"frame {f}", x, np.histogram(v, edges)[0].astype(float), "Count")
+        return histogram, histogram, [(f"frame {f}", x, np.histogram(v, edges)[0].astype(float), "Count", {})
                                       for f, v in zip(frames, values)]
     from .plotstyle import legend_labels
 
@@ -437,7 +444,8 @@ def compare_data(source, table: str | None = None, y=None, histogram: str | None
                              "give y= to pick the one to compare across frames")
         x = np.asarray(cols[names[0]], float)
         labels = [f"frame {f}"] if several else legend_labels(pick)
-        series += [(label, x, np.asarray(cols[name], float), name) for label, name in zip(labels, pick)]
+        units = dict(getattr(cols, "units", None) or {})
+        series += [(label, x, np.asarray(cols[name], float), name, units) for label, name in zip(labels, pick)]
     return title, names[0], series
 
 
@@ -460,16 +468,16 @@ def _draw_compare(fig, xname: str, series: list, layout: str, frames: bool) -> l
     else:
         cycle = mpl.rcParams["axes.prop_cycle"].by_key()["color"]
         colors = [cycle[i % len(cycle)] for i in range(n)]
-    units = {axis_label(s[3]) for s in series}
-    ylabel = units.pop() if len(units) == 1 else ""
+    ylabels = {axis_label(s[3], s[4].get(s[3])) for s in series}
+    ylabel = ylabels.pop() if len(ylabels) == 1 else ""
     counts = all(s[3] == "Count" or s[3].startswith("Count ") for s in series)
     if layout == "stack":
         axes = list(fig.subplots(n, 1, sharex=True, squeeze=False)[:, 0])
     else:
         axes = [fig.subplots()]
-    peak = max((np.nanmax(np.abs(v)) for _, _, v, _ in series if np.isfinite(v).any()), default=1.0)
+    peak = max((np.nanmax(np.abs(v)) for _, _, v, *_ in series if np.isfinite(v).any()), default=1.0)
     step = 0.7 * peak if layout == "offset" else 0.0
-    for i, ((label, x, v, _), color) in enumerate(zip(series, colors)):
+    for i, ((label, x, v, *_), color) in enumerate(zip(series, colors)):
         ax = axes[i] if layout == "stack" else axes[0]
         ok = np.isfinite(v)
         shift = i * step
@@ -491,7 +499,7 @@ def _draw_compare(fig, xname: str, series: list, layout: str, frames: bool) -> l
         axes[0].set_ylim(top=(n - 1) * step + 1.08 * peak)
     elif layout == "overlay" and n > 1:
         axes[0].legend(loc="best")
-    axes[-1].set_xlabel(axis_label(xname))
+    axes[-1].set_xlabel(axis_label(xname, series[0][4].get(xname) if series else None))
     start_at_zero(axes[-1], series[0][1])
     return axes
 

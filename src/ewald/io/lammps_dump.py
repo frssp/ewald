@@ -8,6 +8,7 @@ files (``.gz``/``.bz2``/``.xz``) and a truncated last frame from a killed run.
 from __future__ import annotations
 
 import io
+import os
 
 import numpy as np
 
@@ -48,8 +49,11 @@ def is_lammps_dump(path) -> bool:
 
 
 class LammpsDumpReader(FrameReader):
-    def __init__(self, path, type_map: dict | None = None, sort_by_id: bool = True):
+    def __init__(self, path, type_map: dict | None = None, sort_by_id: bool = True, units: str | None = None):
+        from ..units import check_style
+
         self.path = str(path)
+        self.units = check_style(units)   # the LAMMPS unit style, when the file does not say (labels only)
         self.type_map = {str(k): v for k, v in (type_map or {}).items()}
         self.sort_by_id = sort_by_id
         self._size = file_size(self.path)
@@ -67,6 +71,11 @@ class LammpsDumpReader(FrameReader):
         self._last = None
         self._units = None  # LAMMPS writes ITEM: UNITS only in the first snapshot
         self._read_units()
+        if self.units is not None and self._units is not None and str(self._units).lower() != self.units:
+            import warnings
+
+            warnings.warn(f"{os.path.basename(self.path)} says ITEM: UNITS {self._units}, but units={self.units!r} "
+                          f"was given: the frames are labeled {self.units!r}", stacklevel=3)
 
     def _read_units(self):
         if len(self._offsets) > 1:
@@ -190,7 +199,9 @@ class LammpsDumpReader(FrameReader):
                 data = data.take(order)
         data.attributes.update(attrs)
         data.attributes.setdefault("Timestep", 0)
-        if self._units is not None:
+        if self.units is not None:
+            data.attributes["Units"] = self.units
+        elif self._units is not None:
             data.attributes.setdefault("Units", self._units)
         return data
 

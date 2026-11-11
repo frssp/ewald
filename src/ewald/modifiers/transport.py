@@ -90,6 +90,8 @@ class IonicConductivity(_TrajectoryModifier):
         table, attrs = self._cached(ctx, lambda: self._compute(ctx))
         data.tables["conductivity"] = dict(table)
         data.attributes.update(attrs)
+        self._label_units(data, ["conductivity"])
+        data.units["IonicConductivity.conductivity"] = data.units["IonicConductivity.nernst_einstein_conductivity"] = "S/cm"
 
     def _charges(self, first, traj):
         types = np.asarray(traj["types"]).astype(str)
@@ -251,6 +253,7 @@ class SelfIntermediateScattering(_TrajectoryModifier):
         table, attrs = self._cached(ctx, lambda: self._compute(ctx))
         data.tables["intermediate-scattering"] = dict(table)
         data.attributes.update(attrs)
+        self._label_units(data, ["intermediate-scattering"], [a for a in attrs if ".relaxation_time" in a])
 
     def _compute(self, ctx):
         be = ctx.backend
@@ -304,6 +307,7 @@ class NonGaussianParameter(_TrajectoryModifier):
         table, attrs = self._cached(ctx, lambda: self._compute(ctx))
         data.tables["non-gaussian"] = dict(table)
         data.attributes.update(attrs)
+        self._label_units(data, ["non-gaussian"], ["NonGaussianParameter.peak_time"])
 
     def _compute(self, ctx):
         be = ctx.backend
@@ -428,6 +432,9 @@ class SiteHopping(_TrajectoryModifier):
         for name in ("site-hops", "residence-times", "site-occupancy"):
             data.tables[name] = dict(res[name])
         data.attributes.update(res["attributes"])
+        self._label_units(data, ["site-hops", "residence-times"], ["SiteHopping.mean_residence_time"],
+                          ["SiteHopping.jump_diffusion_coefficient"])
+        self._label_units(data, per_time=["SiteHopping.hop_rate"], length2=False)
         frames = list(self._frames(ctx))
         here = ctx.frame % ctx.pipeline.num_frames
         current = res["assign"][frames.index(here)] if here in frames else np.full(len(res["hops"]), -1)

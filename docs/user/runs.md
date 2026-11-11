@@ -33,7 +33,11 @@ from OUTCAR). LAMMPS `lj` units have no time in ps: `time_per_frame` stays `None
 
 `msd(pipe)` and `vacf(pipe)` use `time_per_frame` when you do not pass one, so the MSD is against
 time in ps and the diffusion coefficient in Å²/ps without looking up `POTIM`. The VACF does this
-only where velocities are in Å/ps (VASP, LAMMPS `metal`).
+only where velocities are in Å/ps (VASP, LAMMPS `metal`). When no time step is found (no input
+files next to the trajectory, LAMMPS `lj`), the times are frame lags and the result says so:
+`d.units["Time"]` is `"frames"`, the diffusion coefficient's unit
+`d.units["MeanSquaredDisplacement.diffusion_coefficient"]` is `"Å$^2$/frame"`, the plot's axis
+reads "Time (frames)", and `arrhenius()` labels D the same way.
 
 ## Can I trust it: `check_run`
 

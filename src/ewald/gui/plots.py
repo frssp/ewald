@@ -39,7 +39,7 @@ from __future__ import annotations
 import numpy as np
 from PySide6 import QtCore, QtGui, QtWidgets
 
-from .. import linking, plotstyle, views
+from .. import linking, plotstyle, units, views
 from ..linking import grid_map
 from .theme import TOKENS
 
@@ -391,10 +391,11 @@ class PlotsPanel(QtWidgets.QWidget):
                 else:
                     line, = ax.plot(x[ok], y[ok], label=label, zorder=2)
                 lines.append((k, line))
+            tu = units.table_units(d, self.table.currentText())
             if lines:
-                self._live = ("lines", lines, tuple(table))
+                self._live = ("lines", lines, tuple(table), tu)
             self._xname = keys[0]
-            ax.set_xlabel(plotstyle.axis_label(keys[0]))
+            ax.set_xlabel(plotstyle.axis_label(keys[0], tu.get(keys[0])))
             if not _is_series(table):
                 plotstyle.start_at_zero(ax, x)
             if sticks or all(k.startswith("Count") for k in keys[1:]) or \
@@ -403,9 +404,9 @@ class PlotsPanel(QtWidgets.QWidget):
             if _is_series(table):
                 self._marker = ax.axvline(x[0], color=TOKENS["secondary"], lw=0.8, ls="--")
                 self._place_marker()
-            units = {plotstyle.axis_label(k) for k in keys[1:]}
-            if len(units) == 1:
-                ax.set_ylabel(units.pop())
+            ylabels = {plotstyle.axis_label(k, tu.get(k)) for k in keys[1:]}
+            if len(ylabels) == 1:
+                ax.set_ylabel(ylabels.pop())
             if levels:   # band edges, E_F, plateaus, barriers of an analysis (views._draw_levels)
                 import matplotlib as mpl
 
@@ -472,7 +473,8 @@ class PlotsPanel(QtWidgets.QWidget):
             ax.set_ylim(bottom=0)
         elif kind == "lines":
             table = self._table()
-            if not table or tuple(table) != live[2] or views.decorations(table):
+            if not table or tuple(table) != live[2] or views.decorations(table) or \
+                    units.table_units(d, self.table.currentText()) != live[3]:   # a label changed: draw anew
                 return False   # levels are placed for the old numbers: a full redraw
             keys = list(table)
             x = np.asarray(table[keys[0]])
