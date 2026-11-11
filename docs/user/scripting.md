@@ -27,6 +27,25 @@ print(data.summary())          # everything above with dtypes and ranges
 `data.take(mask)` and `data.delete(mask)` return new collections. `data.to_ase()` and
 `DataCollection.from_ase(atoms)` convert to and from ASE, `data.to_pymatgen()` and
 `DataCollection.from_pymatgen(structure)` to and from pymatgen (when it is installed).
+
+A step that changes the structure with ASE or pymatgen returns `data.with_structure(...)`.
+`DataCollection.from_ase(atoms)` starts an empty frame, so the attributes and tables of the
+steps above would be gone; `with_structure` keeps them:
+
+```python
+def strain(frame, data):
+    atoms = data.to_ase()
+    atoms.set_cell(atoms.cell * 1.02, scale_atoms=True)
+    return data.with_structure(atoms)      # attributes, tables, per-atom properties stay
+
+pipe.add(strain)
+```
+
+Per-atom properties and bonds stay while the number of atoms is the same. When it changes
+(`del atoms[i]`, `atoms.repeat(...)`), the numeric properties come back through ASE, which
+carries them along; what the new structure does not carry (text properties, bonds) is dropped
+with a warning that names it. `with_structure` also takes a pymatgen `Structure` or
+`Molecule` and another `DataCollection`.
 `data.apply(modifier)` runs one step on this frame alone and returns the result, as OVITO's
 `data.apply` does.
 

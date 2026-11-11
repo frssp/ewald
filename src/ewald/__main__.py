@@ -98,6 +98,8 @@ def build_parser():
     n.add_argument("--json", action="store_true", help="print JSON instead of Markdown")
     a = sub.add_parser("api", help="print the Python API reference for LLMs (llms.txt)")
     a.add_argument("--with-plugins", action="store_true", help="append the modifier plugins installed here")
+    a.add_argument("--signatures", action="store_true",
+                   help="print the public API as one signature per line instead (tests/data/api/current.txt)")
     pl = sub.add_parser("plugins", help="list installed plugins and any that failed to load")
     pl.add_argument("--json", action="store_true")
     pl.add_argument("--enable", metavar="ID", help="switch a disabled plugin back on")
@@ -331,6 +333,11 @@ def _run(args):
             return 1
         return
     if args.cmd == "api":
+        if args.signatures:
+            from . import api_surface
+
+            print(api_surface.render(), end="")
+            return
         from .llm.reference import api_reference
 
         print(api_reference(with_plugins=args.with_plugins), end="")

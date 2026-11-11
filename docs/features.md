@@ -331,7 +331,7 @@ Details: [Command line](user/cli.md).
 | `ewald check [INPUT...]` | what a run is (from INCAR / log.lammps) and whether it converged and equilibrated | `--json` `--type-map` |
 | `ewald ask INPUT [QUESTION...]` | ask AI about a structure (Claude by default; needs the provider's package + key) | `--type-map` `--model` `--provider` `--profile` `--base-url` `--allow-code` `--script` `--select` `--ids` `--frame` |
 | `ewald narrate INPUT` | timeline of events in a trajectory (an AI writes it if available) | `--type-map` `--no-llm` `--render` `--model` `--provider` `--profile` `--base-url` `--json` |
-| `ewald api` | print the Python API reference for LLMs (llms.txt) | `--with-plugins` |
+| `ewald api` | print the Python API reference for LLMs (llms.txt) | `--with-plugins` `--signatures` |
 | `ewald plugins` | list installed plugins and any that failed to load | `--json` `--enable` `--disable` |
 | `ewald forge [REQUEST...]` | have an AI write a modifier plugin, test it and save it | `--yes` `--draft` `--overwrite` `--rounds` `--model` `--provider` `--profile` `--base-url` |
 | `ewald eval` | score an AI model on tasks with known answers (costs API tokens; see --dry-run) | `--model` `--provider` `--profile` `--base-url` `--effort` `--tasks` `--category` `--list` `--allow-code` `--repeat` `--max-turns` `--out` `--compare` `--dry-run` `--price` `--no-download` `--no-related` `--context` |

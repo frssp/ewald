@@ -55,7 +55,9 @@ the methods themselves may name their attributes as they like.
 entries of `data.particles`, `data.attributes` and `data.tables`, but **never write into an
 existing array**, because it is shared with cached frames. Return `None` to keep `data`, or
 return a new `DataCollection` (for example `data.delete(mask)`) when the particle count
-changes.
+changes. After changing the structure with ASE or pymatgen, return
+`data.with_structure(atoms)`, which keeps the attributes and tables of the steps above
+(`DataCollection.from_ase(atoms)` would start an empty frame).
 
 **The context `ctx`.**
 

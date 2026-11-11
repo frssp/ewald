@@ -322,6 +322,15 @@ class Notebook:
         self.on_cell = None               # on_cell(cell, running): a cell starts (True) or ends (False) (any thread)
         self.reset()
 
+    @property
+    def ewald_version(self) -> str | None:
+        """The ewald version that saved this notebook's file (``.py`` header, ``.ipynb`` metadata,
+        ``.ewd`` manifest); None for a new notebook and for a file that does not say."""
+        from . import notebook_io
+
+        saved = self.manifest.get("ewald_version") or (self.metadata.get("ewald") or {}).get("version")
+        return saved if notebook_io.is_version(saved) else None
+
     # ------------------------------------------------------------ namespace
     def reset(self):
         """Fresh namespace (like restarting a Jupyter kernel); cells keep their source."""
@@ -892,8 +901,9 @@ class Notebook:
     # ------------------------------------------------------------ files
     def to_py(self, header: bool = False) -> str:
         """The notebook as a percent-format Python file. With ``header`` (what :meth:`save` writes)
-        a jupytext-style comment header keeps the kernel, the viewer state (style, frame,
-        camera, render settings) and links to the data files (path, size, fingerprint)."""
+        a jupytext-style comment header keeps the ewald version that wrote the file, the kernel,
+        the viewer state (style, frame, camera, render settings) and links to the data files
+        (path, size, fingerprint)."""
         parts = [self._py_header()] if header else []
         parts = [p for p in parts if p] + [cell_py(cell) for cell in self.cells]
         return "\n\n".join(parts) + "\n"
@@ -901,7 +911,9 @@ class Notebook:
     def _py_header(self) -> str:
         from . import notebook_io
 
-        ewald = {k: v for k, v in (self.metadata.get("ewald") or {}).items() if k not in ("version", "state", "data")}
+        # the version that writes the file comes first: what a later ewald needs to read an old notebook
+        ewald = {"version": notebook_io._version(),
+                 **{k: v for k, v in (self.metadata.get("ewald") or {}).items() if k not in ("version", "state", "data")}}
         if self.pipeline_name != PIPELINE_NAME:
             ewald["pipeline"] = self.pipeline_name
         if self.state:
@@ -912,8 +924,6 @@ class Notebook:
         links = links or self.links   # not run yet: keep the links it was opened with
         if links:
             ewald["data"] = links
-        if not ewald and not self.py_header:
-            return ""
         lines = ["# ---"]
         rest = list(self.py_header)
         if "# jupyter:" in rest:
@@ -921,9 +931,8 @@ class Notebook:
             rest = rest[rest.index("# jupyter:") + 1:]
         else:
             lines.append("# jupyter:")
-        if ewald:
-            lines.append("#   ewald:")
-            lines += [f"#     {k}: {json.dumps(v, ensure_ascii=False)}" for k, v in ewald.items()]
+        lines.append("#   ewald:")
+        lines += [f"#     {k}: {json.dumps(v, ensure_ascii=False)}" for k, v in ewald.items()]
         return "\n".join(lines + rest + ["# ---"])
 
     def _read_py_header(self, header: list):
@@ -1015,6 +1024,7 @@ class Notebook:
             nb = cls.from_py(text, path=os.path.abspath(path), **kwargs)
             if nb.links:
                 nb.warnings = notebook_io.check_data({"data": nb.links}, os.path.dirname(nb.path), Path())
+        nb.warnings = nb.warnings + notebook_io.version_warnings(nb.ewald_version)
         nb.restricted = trusted is False
         return nb
 

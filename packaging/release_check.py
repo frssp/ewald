@@ -94,6 +94,11 @@ def check(tag: str | None) -> list[str]:
         errors.append(f"CHANGELOG.md has no '[{ver}]: <url>' link at the bottom")
     if tag and tag != f"v{ver}":
         errors.append(f"tag {tag} does not match __version__ {ver} (expected v{ver})")
+    released = ROOT / "tests" / "data" / "api" / "released.txt"
+    head = released.read_text(encoding="utf-8").splitlines()[:1] if released.exists() else [""]
+    if not re.match(rf"# The public API of ewald {re.escape(ver)},", head[0] if head else ""):
+        errors.append(f"tests/data/api/released.txt is not the API of {ver}: run "
+                      "'python -m ewald api --signatures' into it (docs/developer/api-stability.md)")
     return errors
 
 

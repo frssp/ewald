@@ -73,6 +73,9 @@ regenerates the LAMMPS ones.
   [Compute backends](backends.md).
 - `test_llm.py::test_llms_txt_lists_every_modifier` and `test_docs.py` fail when a modifier is
   missing from `llms.txt` or from the user manual.
+- `test_api_stability.py` fails when the public API differs from `tests/data/api/current.txt`, or
+  when it breaks code written for the last release without a changelog line
+  ([API stability](api-stability.md)).
 
 ## CI
 

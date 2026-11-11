@@ -460,13 +460,16 @@ which Python, VS Code and jupytext ignore or keep:
 # ---
 # jupyter:
 #   ewald:
+#     version: "0.2.0"
 #     kernel: {"python": "/opt/conda/envs/ml/bin/python", "display_name": "Python (ml)"}
 #     state: {"frame": 3, "camera": {...}, "style": {...}, "render": {...}}
 #     data: [{"path": "traj.dump", "size": 81234567, "fingerprint": "sha256-ends:..."}]
 # ---
 ```
 
-Opening it restores the viewer and says when a linked data file changed or is missing, as for
+`version` is the ewald that saved the file (every format records it); a notebook saved by a
+newer ewald than the one you run says so when it opens, because its cells may use names your
+version does not have. Opening it restores the viewer and says when a linked data file changed or is missing, as for
 an `.ewd`. Each notebook tab also keeps its own Render page settings (renderer, quality, size,
 overlays): switching tabs switches them, and saving the notebook saves them.
 

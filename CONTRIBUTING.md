@@ -39,6 +39,10 @@ checklist for people too). The rules that tests enforce:
   (`xvfb-run -a python -m ewald inventory -o docs/features.md --gui`) and updates
   [docs/todo.md](docs/todo.md); a new or changed modifier also updates `llms.txt`
   (`python -m ewald api > llms.txt`), README.md and docs/user/modifiers.md.
+- A pull request that changes the public API regenerates its snapshot
+  (`python -m ewald api --signatures > tests/data/api/current.txt`), and what breaks code
+  written for the last release is named in CHANGELOG.md
+  ([API stability](docs/developer/api-stability.md)).
 - Code that evaluates strings, imports by name or runs notebook cells goes through the trust
   checks in `src/ewald/trust.py` and gets a case in `tests/test_security.py`.
 - Code ported from OVITO is used under its MIT option and keeps its notice

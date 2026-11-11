@@ -487,6 +487,73 @@ class DataCollection:
         """A DataCollection from a pymatgen ``Structure`` or ``Molecule`` (via ASE)."""
         return cls.from_ase(_pymatgen_adaptor("from_pymatgen").get_atoms(structure))
 
+    def with_structure(self, structure) -> "DataCollection":
+        """This frame with its atoms and cell taken from ``structure`` (an ASE ``Atoms``, a pymatgen
+        ``Structure`` or ``Molecule``, or another DataCollection); ``self`` stays as it was. What a
+        step returns after it changed the structure with ASE or pymatgen::
+
+            def rattle(frame, data):
+                atoms = data.to_ase()
+                atoms.rattle(0.05, seed=frame)
+                return data.with_structure(atoms)
+
+        ``DataCollection.from_ase(atoms)`` would start an empty frame; this one keeps what the
+        pipeline had: attributes, tables, grids and surfaces always (a value the structure carries
+        itself, such as the energy of an ASE calculator, replaces the one of that name), and the
+        per-atom properties and bonds while the number of atoms is the same. Properties the
+        structure carries (ASE keeps the numeric ones of :meth:`to_ase` through ``del atoms[i]``
+        or ``atoms.repeat``) come from it. When the number of atoms changed, what the structure
+        does not carry cannot be matched to the new atoms and is dropped, with a warning that
+        names it. The cell keeps its origin, which ASE and pymatgen do not have. Atoms are matched
+        by position in the list: when the structure has the same number of atoms in another order
+        (``ase.build.sort``), the properties it carries follow the atoms and the others stay where
+        they were, so sort before ``to_ase()`` or move such properties yourself."""
+        if isinstance(structure, DataCollection):
+            other, foreign = structure, False
+        elif hasattr(structure, "arrays") and hasattr(structure, "get_positions"):
+            other, foreign = DataCollection.from_ase(structure), True
+        elif hasattr(structure, "sites") and hasattr(structure, "cart_coords"):
+            other, foreign = DataCollection.from_pymatgen(structure), True
+        else:
+            raise TypeError("with_structure takes an ASE Atoms, a pymatgen Structure or Molecule, or a DataCollection, "
+                            f"not {type(structure).__name__}")
+        new = self.copy()
+        spelled = {name.replace(" ", "_"): name for name in self.particles}   # to_ase() writes "Structure_Type"
+        carried = {spelled.get(name, name): values for name, values in other.particles.items()}
+        same = other.count == self.count
+        if foreign:
+            origin = np.array(self.cell.origin, dtype=float)
+            carried["Position"] = carried["Position"] + origin   # to_ase() took the origin off
+            new.cell = Cell(other.cell.matrix.copy(), origin, other.cell.pbc.copy())
+            if same and "Particle Type" in self.particles:
+                # to_ase() writes a type that is no element ("1", "Cu_surface") as X: such atoms keep their name
+                unknown = carried["Particle Type"] == "X"
+                if unknown.any():
+                    carried["Particle Type"] = np.where(unknown, self.particles["Particle Type"], carried["Particle Type"])
+        else:
+            new.cell = other.cell.copy()
+        dropped = [] if same else [name for name in self.particles if name not in carried]
+        new.particles = {**self.particles, **carried} if same else carried
+        if not foreign:
+            new.bonds = None if other.bonds is None else other.bonds.copy()
+            if same and other.bonds is None and self.bonds is not None:
+                new.bonds = self.bonds.copy()
+        elif not same:
+            new.bonds = None
+        if not same and new.bonds is None and self.bonds is not None:
+            dropped.append("the bonds")
+        new.vectors = {name: style for name, style in new.vectors.items() if name in new.particles}
+        new.attributes.update(other.attributes)
+        for name, table in other.tables.items():
+            new.tables[name] = dict(table) if type(table) is dict else copy.copy(table)
+        if dropped:
+            import warnings
+
+            warnings.warn(f"with_structure: the number of atoms changed ({self.count} -> {other.count}), so "
+                          f"{', '.join(dropped)} could not be kept (the new structure does not carry "
+                          f"{'it' if len(dropped) == 1 else 'them'}); attributes and tables are kept", stacklevel=2)
+        return new
+
     def apply(self, modifier) -> "DataCollection":
         """Run ``modifier`` (a :class:`~ewald.pipeline.Modifier` or an ``f(frame, data)`` function) on
         this frame alone and return the result, as OVITO's ``data.apply(mod)``; ``self`` stays as it

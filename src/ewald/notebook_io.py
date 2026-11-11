@@ -399,6 +399,7 @@ def load_ewd(path, cls=None, trusted: bool | None = None, **kwargs):
     nb.warnings = check_data(manifest, os.path.dirname(path), bundle) + chat_warning
     nb.warnings += [f"needs the pip package {e['requirement']} for {', '.join(e.get('modifiers', [])) or e['id']} "
                     f"(pip install {e['requirement']})" for e in missing_packages(manifest)]
+    nb.warnings += version_warnings(nb.ewald_version)
     nb.data_dirs = [str(bundle / "data")]
     nb.restricted = not trusted
     if trusted:
@@ -508,6 +509,25 @@ def _version() -> str:
     from . import __version__
 
     return __version__
+
+
+def is_version(text) -> bool:
+    """Whether ``text`` (from a file, so not trusted) reads as a version: ``0.3.0``, ``1.0.0rc1``."""
+    return isinstance(text, str) and re.fullmatch(r"\d{1,6}(\.\d{1,6}){0,3}[A-Za-z0-9.+-]{0,16}", text) is not None
+
+
+def version_warnings(saved) -> list[str]:
+    """What to tell the user about a notebook saved by ewald ``saved``: one line when that is
+    newer than this ewald (its cells may use names this one does not have), else nothing."""
+    from .plugin_manifest import _version_tuple
+
+    if not is_version(saved):
+        return []
+    theirs, ours = _version_tuple(saved), _version_tuple(_version())
+    n = max(len(theirs), len(ours))
+    if theirs + (0,) * (n - len(theirs)) <= ours + (0,) * (n - len(ours)):
+        return []
+    return [f"saved with ewald {saved}, which is newer than this ewald {_version()}: update ewald if a cell fails"]
 
 
 def _jsonable(value):
