@@ -504,7 +504,10 @@ class DataCollection:
         structure carries (ASE keeps the numeric ones of :meth:`to_ase` through ``del atoms[i]``
         or ``atoms.repeat``) come from it. When the number of atoms changed, what the structure
         does not carry cannot be matched to the new atoms and is dropped, with a warning that
-        names it. The cell keeps its origin, which ASE and pymatgen do not have."""
+        names it. The cell keeps its origin, which ASE and pymatgen do not have. Atoms are matched
+        by position in the list: when the structure has the same number of atoms in another order
+        (``ase.build.sort``), the properties it carries follow the atoms and the others stay where
+        they were, so sort before ``to_ase()`` or move such properties yourself."""
         if isinstance(structure, DataCollection):
             other, foreign = structure, False
         elif hasattr(structure, "arrays") and hasattr(structure, "get_positions"):
