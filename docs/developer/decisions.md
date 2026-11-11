@@ -1390,6 +1390,23 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   version; leaving it.
 - **Landed:** public PR #154.
 
+### D105. Units are labels: results say what their numbers are in, nothing is converted (2026-11-10)
+
+- **Decision:** ewald never converts the numbers it reads. A frame's unit system is its `Units`
+  attribute (a LAMMPS dump's `ITEM: UNITS`, or `load(path, units="real")` for LAMMPS files);
+  without one, lengths are Å and energies eV. Tables, plot axes and attributes carry the units
+  of their numbers (`Table.units`, `data.units`): time axes are in ps when the time between
+  frames is known and in frames otherwise, and a diffusion coefficient without a time step is
+  reported per frame.
+- **Why:** question B2 of the design review (D102): `msd(pipe)` without `time_per_frame`
+  reported D per frame under a column called `Time`, and the LAMMPS readers knew no unit
+  system. The owner chose "단위 표시만, 숫자는 그대로" from the options, as recommended; the
+  recommendation's reason was that a LAMMPS dump does not always say its units, so a conversion
+  could silently be wrong, while labels keep the numbers equal to the file's.
+- **Alternatives:** converting everything to eV, Å and ps on read; labelling only the MSD time
+  axis; leaving it.
+- **Landed:** public PR #155.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

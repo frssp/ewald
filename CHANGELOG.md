@@ -10,7 +10,7 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
-- Units as labels (D105, #PR): tables, plot axes and attributes say what their numbers are in;
+- Units as labels (D105, #155): tables, plot axes and attributes say what their numbers are in;
   the numbers themselves are never converted. `load(path, units="real")` (LAMMPS dump and data
   files) names the LAMMPS unit style when the file does not, and a dump's `ITEM: UNITS` is read;
   the style is the frame attribute `Units`, and without one lengths are Å and energies eV.
@@ -109,7 +109,7 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 - Plot axes of time series read "Time (ps)" or "Time (frames)" instead of "Time", the Arrhenius
   plot "$D$ (Å$^2$/ps)", and lengths, energies and q follow the frame's unit system ("$r$ (nm)"
-  for a `nano` dump) (D105, #PR). `views.compare_data` series are now
+  for a `nano` dump) (D105, #155). `views.compare_data` series are now
   `(label, x, values, column, units)`.
 - A `.py` notebook saved by ewald always has the comment header now (it holds the version), also
   a notebook without viewer state or data links, which used to be saved as the bare cells
