@@ -100,3 +100,18 @@ def test_verbs_take_output(pipe):
     assert first.name == "structures" and second.name == "structures (b)"
     assert len(pipe.modifiers) == 2
     np.testing.assert_array_equal(np.asarray(first["Count"]), np.asarray(second["Count"]))
+
+
+def test_dataclass_steps_keep_their_generated_constructor():
+    from dataclasses import dataclass
+
+    from ewald.pipeline import Modifier
+
+    @dataclass
+    class Scale(Modifier):
+        factor: float = 2.0
+
+        def modify(self, data, ctx):
+            return None
+
+    assert Scale(factor=3.0).factor == 3.0 and Scale().parameters() == {"factor": 2.0}

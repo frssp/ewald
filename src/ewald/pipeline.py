@@ -211,16 +211,19 @@ class Modifier:
     output: str | None = None
     _OWN_OUTPUT = False   # whether the constructor itself has an ``output`` argument
 
-    def __init__(self):
-        pass
+    def __init__(self, **kwargs):
+        # the constructor of steps that have none of their own: ``output=`` only
+        output = kwargs.pop("output", None)
+        if kwargs:
+            raise TypeError(f"{type(self).__name__}() got unexpected keyword arguments: {', '.join(kwargs)}")
+        if output is not None:
+            self.output = _check_output(output)
 
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         init = cls.__dict__.get("__init__")
-        if init is None:
-            if getattr(cls.__init__, "_takes_output", False):
-                return      # a base's wrapped constructor already handles ``output``
-            init = cls.__init__
+        if init is None:    # inherited: a base's constructor already takes ``output``
+            return          # (a @dataclass adds its own __init__ only after this runs)
         cls._OWN_OUTPUT = "output" in _init_parameters(init)
         own = cls._OWN_OUTPUT
 
@@ -232,7 +235,6 @@ class Modifier:
             if output is not None:
                 self.output = _check_output(output)
 
-        __init__._takes_output = True
         cls.__init__ = __init__
 
     def __getattr__(self, name):
@@ -290,6 +292,15 @@ class Modifier:
     def __repr__(self):
         params = ", ".join(f"{k}={v!r}" for k, v in self.parameters().items())
         return f"{self.name}({params})"
+
+
+def _no_arguments_signature():
+    import inspect
+
+    return inspect.Signature([inspect.Parameter("self", inspect.Parameter.POSITIONAL_OR_KEYWORD)])
+
+
+Modifier.__init__.__signature__ = _no_arguments_signature()   # ``output=`` is every step's, not listed
 
 
 class PythonModifier(Modifier):
