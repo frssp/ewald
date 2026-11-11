@@ -1407,6 +1407,24 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   axis; leaving it.
 - **Landed:** public PR #155.
 
+### D106. Every step takes `output=` for the names of its results, and replacing an earlier step's result warns (2026-11-10)
+
+- **Decision:** every modifier takes `output="name"`; what it writes is then called
+  "Coordination (name)", "coordination-rdf (name)", ... and what earlier steps wrote keeps its
+  plain name. A step without `output=` that replaces a property, attribute or table an earlier
+  step wrote, with other values, warns once and says how to keep both. Default names stay
+  OVITO's. Names several steps change on purpose (`Color`, `Selection`, the structure) are left
+  alone.
+- **Why:** question B1 of the design review (D102): two `CoordinationAnalysis` steps overwrote
+  each other and CNA and PTM shared `Structure Type`, silently. The owner chose
+  "output= 인자 + 덮어쓰기 warning" from the options, as recommended; the recommendation's
+  reason was that default names stay the same as OVITO's and that people and the AI can use
+  the same analysis twice (first and second shell) without depending on the order of the steps.
+- **Alternatives:** numbering a second step of the same kind automatically ("Coordination 2",
+  no argument, but names change when steps are reordered); only the warning, with no way to
+  name results; leaving it (the later step wins silently).
+- **Landed:** public PR #156.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

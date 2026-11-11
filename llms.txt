@@ -25,7 +25,10 @@ print(np.bincount(data["Coordination"]))            # coordination histogram as 
 
 Rules: change the structure, the view or a result only through such cells (never by mutating `pipe` from a plain
 cell or a tool), so the notebook alone reproduces the analysis. Read the output names a modifier writes (properties,
-`data.tables[...]`, `data.attributes[...]`) from its entry under "Modifiers" below instead of guessing them. Units:
+`data.tables[...]`, `data.attributes[...]`) from its entry under "Modifiers" below instead of guessing them. Two
+steps that write the same names (two `CoordinationAnalysis` cutoffs, CNA and PTM) overwrite each other with a warning:
+give each step `output="name"` (every modifier takes it) and its results are called "Coordination (name)",
+"coordination-rdf (name)" (`ComputeProperty`'s own `output` is the property it writes). Units:
 numbers stay in the file's units (Angstrom and eV for VASP and most formats; a LAMMPS file in its `units` style, named
 by the frame's `Units` attribute: `load(path, units="real")` when the file does not say); `time_per_frame` is in ps,
 and without it trajectory times are frame lags; MD time steps are fs, charge densities e/A^3. A result says its

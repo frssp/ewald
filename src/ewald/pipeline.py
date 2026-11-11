@@ -147,6 +147,23 @@ def _in_method_of(obj, frame) -> bool:
     return False
 
 
+def _init_parameters(init) -> tuple:
+    """Argument names of a constructor (none when its signature cannot be read)."""
+    import inspect
+
+    try:
+        return tuple(inspect.signature(init).parameters)
+    except (TypeError, ValueError):
+        return ()
+
+
+def _check_output(output) -> str:
+    """``output=`` as a name: a non-empty string."""
+    if not isinstance(output, str) or not output.strip():
+        raise ValueError(f"output must be a name such as 'cna', not {output!r}")
+    return output.strip()
+
+
 def _translate(cls, kwargs: dict):
     """Rewrite old argument names in ``kwargs`` to ``cls``'s current ones, in place."""
     for old, new in _aliases(cls).items():
@@ -186,16 +203,37 @@ class Modifier:
         for name in self.CACHE_ATTRS:
             self.__dict__.pop(name, None)
 
+    #: The name this step's results go under (D106): with ``output="cna"`` the properties,
+    #: attributes and tables it writes are called "Structure Type (cna)", "structures (cna)", ...
+    #: and what earlier steps wrote under the plain names stays. Every step takes it as a
+    #: constructor keyword; None (the default) keeps the plain names. Steps whose own ``output``
+    #: argument names what they write (``ComputeProperty``, ``GridDifference``) keep that meaning.
+    output: str | None = None
+    _OWN_OUTPUT = False   # whether the constructor itself has an ``output`` argument
+
+    def __init__(self, **kwargs):
+        # the constructor of steps that have none of their own: ``output=`` only
+        output = kwargs.pop("output", None)
+        if kwargs:
+            raise TypeError(f"{type(self).__name__}() got unexpected keyword arguments: {', '.join(kwargs)}")
+        if output is not None:
+            self.output = _check_output(output)
+
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         init = cls.__dict__.get("__init__")
-        if init is None or not (_aliases(cls) or hasattr(cls, "_legacy_arguments")):
-            return
+        if init is None:    # inherited: a base's constructor already takes ``output``
+            return          # (a @dataclass adds its own __init__ only after this runs)
+        cls._OWN_OUTPUT = "output" in _init_parameters(init)
+        own = cls._OWN_OUTPUT
 
         @functools.wraps(init)
         def __init__(self, *args, **kw):
             _translate(cls, kw)   # idempotent: a subclass's wrapper may have translated them already
+            output = kw.pop("output", None) if not own else None
             init(self, *args, **kw)
+            if output is not None:
+                self.output = _check_output(output)
 
         cls.__init__ = __init__
 
@@ -236,9 +274,12 @@ class Modifier:
         import inspect
 
         sig = inspect.signature(type(self).__init__)
-        return {k: getattr(self, k) for k in list(sig.parameters)[1:]
-                if hasattr(self, k) and sig.parameters[k].kind not in (inspect.Parameter.VAR_KEYWORD,
-                                                                       inspect.Parameter.VAR_POSITIONAL)}
+        params = {k: getattr(self, k) for k in list(sig.parameters)[1:]
+                  if hasattr(self, k) and sig.parameters[k].kind not in (inspect.Parameter.VAR_KEYWORD,
+                                                                         inspect.Parameter.VAR_POSITIONAL)}
+        if not type(self)._OWN_OUTPUT and self.output is not None:
+            params["output"] = self.output   # every step's keyword (D106), last
+        return params
 
     def _check_positive(self, *names: str):
         """Raise ValueError unless each named setting is a number above zero (a cutoff, a count):
@@ -251,6 +292,15 @@ class Modifier:
     def __repr__(self):
         params = ", ".join(f"{k}={v!r}" for k, v in self.parameters().items())
         return f"{self.name}({params})"
+
+
+def _no_arguments_signature():
+    import inspect
+
+    return inspect.Signature([inspect.Parameter("self", inspect.Parameter.POSITIONAL_OR_KEYWORD)])
+
+
+Modifier.__init__.__signature__ = _no_arguments_signature()   # ``output=`` is every step's, not listed
 
 
 class PythonModifier(Modifier):
@@ -542,6 +592,128 @@ def _keep_upstream(mod, upstream: tuple, data: DataCollection):
             rename_table(data, name, new)   # the step's units go with its table, the earlier ones stay
             data.units.update({k: u for k, u in units.items() if isinstance(k, tuple) and k[0] == name})
     mod._verb_tables = renamed
+
+
+#: Names several steps write on purpose, each over the last one: what the atoms look like, what
+#: is selected, the structure itself. ``output=`` leaves them as they are and replacing one is no
+#: overwrite to warn about (D106).
+SHARED_NAMES = frozenset({
+    "Position", "Particle Type", "Particle Identifier", "Periodic Image", "Velocity", "Force", "Mass",
+    "Charge", "Color", "Selection", "Transparency", "Radius", "Color.rule",
+})
+
+
+def _shared(name: str) -> bool:
+    return name in SHARED_NAMES or name.startswith("ColorCoding.")
+
+
+def _refs(data: DataCollection) -> tuple:
+    """What a collection holds before a step (the arrays themselves, not copies)."""
+    return (data.count, dict(data.particles), dict(data.attributes), dict(data.tables), dict(data.units))
+
+
+def _differs(old, new) -> bool:
+    """Whether ``new`` holds other values than ``old`` (a step that rebuilt an array with the
+    same numbers did not overwrite it)."""
+    import numpy as np
+
+    if old is new:
+        return False
+    if isinstance(old, dict) or isinstance(new, dict):
+        return not (isinstance(old, dict) and isinstance(new, dict) and old.keys() == new.keys()
+                    and not any(_differs(old[k], new[k]) for k in old))
+    try:
+        if isinstance(old, np.ndarray) or isinstance(new, np.ndarray):
+            a, b = np.asarray(old), np.asarray(new)
+            if a.shape != b.shape:
+                return True
+            try:
+                return not np.array_equal(a, b, equal_nan=True)
+            except TypeError:   # text: no NaN
+                return not np.array_equal(a, b)
+        return bool(old != new)
+    except Exception:  # noqa: BLE001 - values that do not compare: count them as changed
+        return True
+
+
+def _apply_output(mod, refs: tuple, data: DataCollection) -> dict:
+    """Move what ``mod`` wrote to names with ``" (<mod.output>)"`` after them and put back what
+    the steps above had under the plain names (D106). Returns ``{"properties"|"attributes"|
+    "tables": {old: new}}``."""
+    from .units import rename_table
+
+    count, props, attrs, tables, units = refs
+    tag = f" ({mod.output})"
+    same = data.count == count     # a step that changed the atom count replaced every array
+    moved = {"properties": {}, "attributes": {}, "tables": {}}
+    for kind, before, now in (("properties", props, data.particles), ("attributes", attrs, data.attributes),
+                              ("tables", tables, data.tables)):
+        for name in [k for k, v in now.items() if not _shared(k) and before.get(k) is not v]:
+            if kind == "properties" and name in before and not same:
+                continue
+            new = name + tag
+            items = []
+            for k, v in now.items():   # the earlier value in its place, this step's right after it
+                if k == name:
+                    items += [(name, before[name])] if name in before else []
+                    items.append((new, v))
+                elif k != new:
+                    items.append((k, v))
+            now.clear()
+            now.update(items)
+            moved[kind][name] = new
+            if kind == "tables":
+                rename_table(data, name, new)
+                data.units.update({k: u for k, u in units.items() if isinstance(k, tuple) and k[0] == name})
+            elif kind == "attributes" and name in data.units:
+                data.units[new] = data.units.pop(name)
+                if name in units:
+                    data.units[name] = units[name]
+    rule = data.attributes.get("Color.rule")
+    if isinstance(rule, dict) and rule is not attrs.get("Color.rule") and rule.get("property") in moved["properties"]:
+        data.attributes["Color.rule"] = {**rule, "property": moved["properties"][rule["property"]]}
+    mod._output_names = moved
+    return moved
+
+
+def _note_writer(writers: dict, mod):
+    """Record that ``mod`` wrote what its :attr:`Modifier.last_output` lists."""
+    out = mod.last_output or {}
+    for kind in ("properties", "attributes", "tables"):
+        for name in out.get(kind, ()):
+            writers[(kind, name)] = mod
+
+
+def _check_overwrite(mod, refs: tuple, data: DataCollection, writers: dict):
+    """Warn (once per name) when ``mod`` replaced a property, attribute or table that an earlier
+    step wrote, with other values: the earlier result is gone below this step (D106). Steps that
+    name their results (``output=``, a step's own ``output`` argument) and Python steps, which
+    write the names they mean to, are not checked."""
+    if mod.output is not None or isinstance(mod, PythonModifier) or data.count != refs[0]:
+        return
+    _, props, attrs, tables, _ = refs
+    lost = []
+    for kind, label, before, now in (("properties", "property", props, data.particles),
+                                     ("attributes", "attribute", attrs, data.attributes),
+                                     ("tables", "table", tables, data.tables)):
+        for name, value in now.items():
+            earlier = writers.get((kind, name))
+            if (earlier is not None and earlier is not mod and name in before and not _shared(name)
+                    and _differs(before[name], value)):
+                lost.append((kind, label, name, earlier))
+    warned = mod.__dict__.setdefault("_overwrite_warned", set())
+    lost = [x for x in lost if (x[0], x[2]) not in warned]
+    if not lost:
+        return
+    warned.update((x[0], x[2]) for x in lost)
+    import warnings
+
+    steps = " and ".join(dict.fromkeys(("an earlier " if x[3].name == mod.name else "") + x[3].name for x in lost))
+    names = ", ".join(f"{label} {name!r}" for _, label, name, _ in lost)
+    first = lost[0][2]
+    warnings.warn(f"{mod.name} replaced what {steps} wrote above it: {names}. To keep both, name this "
+                  f"step's results: {mod.name}(..., output='name') writes {first + ' (name)'!r} instead.",
+                  UserWarning, stacklevel=2)
 
 
 def _snapshot(data: DataCollection) -> tuple:
@@ -1267,8 +1439,11 @@ class Pipeline:
         if data is None:
             data = self._sweep_frame(frame) if sweep else self._source_frame(frame)
         failed = False
+        writers = {}   # (kind, name) -> the step that last wrote it, for _check_overwrite
         for index, mod in enumerate(mods):
             if index < start:
+                if mod.enabled and not sweep:
+                    _note_writer(writers, mod)   # computed before: its last summary says what it wrote
                 continue
             if index == len(keys) and keys and not failed and start < len(keys):
                 self._store_output(base + (tuple(keys),), data)
@@ -1284,6 +1459,8 @@ class Pipeline:
                 continue
             ctx = ComputeContext(frame, self, backend, modifier_index=index, cancel=cancel)
             before = None if sweep else _snapshot(data)
+            named = mod.output is not None and not mod._OWN_OUTPUT
+            refs = _refs(data) if named or not sweep else None
             upstream = _upstream(data) if getattr(mod, "_verb", None) else None
             t0 = time.perf_counter()
             try:
@@ -1307,14 +1484,18 @@ class Pipeline:
                 continue
             if result is not None:
                 data = result
+            if named:
+                _apply_output(mod, refs, data)
             if upstream is not None:
                 _keep_upstream(mod, upstream, data)
             if sweep:
                 continue
+            _check_overwrite(mod, refs, data, writers)
             mod.status = None
             mod.__dict__.pop("_missing_dependency", None)
             mod.last_time = time.perf_counter() - t0
             mod.last_output = output_summary(before, data, frame)
+            _note_writer(writers, mod)
             if index < len(keys) - 1 and not failed and mod.last_time >= self.checkpoint_seconds:
                 self._store_output(base + (tuple(keys[:index + 1]),), data)
         if len(keys) == len(mods) and keys and not failed and start < len(keys):

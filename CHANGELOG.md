@@ -10,6 +10,15 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- Every step takes `output="name"` (D106, #156): what it writes is then called
+  "Coordination (name)", "coordination-rdf (name)", "CommonNeighborAnalysis.counts.FCC (name)",
+  and what earlier steps wrote keeps its plain name, so two `CoordinationAnalysis` cutoffs, or
+  CNA beside PTM, stay side by side. Verbs pass it on (`cna(pipe, output="b")` adds a second
+  step instead of replacing the first). A step that replaces a property, attribute or table an
+  earlier step wrote, with other values and without `output=`, warns once and says how to keep
+  both; `Color`, `Selection`, the structure and Python steps are not warned about. Default
+  names stay OVITO's; `ComputeProperty` and `GridDifference` keep their own `output` argument.
+
 - Units as labels (D105, #155): tables, plot axes and attributes say what their numbers are in;
   the numbers themselves are never converted. `load(path, units="real")` (LAMMPS dump and data
   files) names the LAMMPS unit style when the file does not, and a dump's `ITEM: UNITS` is read;
