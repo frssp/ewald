@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import builtins
+import functools
 import keyword
 import math
 
@@ -25,6 +26,35 @@ def mono_font() -> QtGui.QFont:
 
 
 # ---------------------------------------------------------------- editor
+@functools.lru_cache(maxsize=8)
+def _rules(theme: tuple) -> tuple[list, QtGui.QTextCharFormat]:
+    """The highlighter's (regex, format) rules and the triple-quote format for one theme, built
+    once and shared by every editor: compiling them per editor was a quarter of the time a
+    200-cell notebook took to open."""
+    tokens = dict(theme)
+
+    def fmt(color, bold=False, italic=False):
+        f = QtGui.QTextCharFormat()
+        f.setForeground(QtGui.QColor(color))
+        if bold:
+            f.setFontWeight(QtGui.QFont.DemiBold)
+        f.setFontItalic(italic)
+        return f
+
+    kw = "|".join(keyword.kwlist)
+    bi = "|".join(n for n in dir(builtins) if not n.startswith("_"))
+    rules = [(QtCore.QRegularExpression(rf"\b({kw})\b"), fmt(tokens["accent"], bold=True)),
+             (QtCore.QRegularExpression(rf"\b({bi})\b"), fmt(tokens["secondary"])),
+             (QtCore.QRegularExpression(r"\b[A-Z][A-Za-z0-9_]*(?=\()"), fmt(tokens["accent"])),
+             (QtCore.QRegularExpression(r"\b[0-9][0-9_]*\.?[0-9]*([eE][-+]?[0-9]+)?\b"), fmt(tokens["data"])),
+             (QtCore.QRegularExpression(r"@[A-Za-z_][A-Za-z0-9_.]*"), fmt(tokens["muted"])),
+             (QtCore.QRegularExpression(r"[rbfu]?\"[^\"\\n]*\"|[rbfu]?'[^'\\n]*'"), fmt(tokens["data"])),
+             (QtCore.QRegularExpression(r"#[^\n]*"), fmt(tokens["muted"], italic=True))]
+    for regex, _ in rules:
+        regex.optimize()
+    return rules, fmt(tokens["data"])
+
+
 class PythonHighlighter(QtGui.QSyntaxHighlighter):
     """Keywords, builtins, strings, numbers, comments and decorators."""
 
@@ -35,25 +65,7 @@ class PythonHighlighter(QtGui.QSyntaxHighlighter):
     def _restyle(self):
         """Formats in the colors of the active UI theme (rebuilt when the theme changes)."""
         self._theme = dict(TOKENS)
-
-        def fmt(color, bold=False, italic=False):
-            f = QtGui.QTextCharFormat()
-            f.setForeground(QtGui.QColor(color))
-            if bold:
-                f.setFontWeight(QtGui.QFont.DemiBold)
-            f.setFontItalic(italic)
-            return f
-
-        kw = "|".join(keyword.kwlist)
-        bi = "|".join(n for n in dir(builtins) if not n.startswith("_"))
-        self.rules = [(QtCore.QRegularExpression(rf"\b({kw})\b"), fmt(TOKENS["accent"], bold=True)),
-                      (QtCore.QRegularExpression(rf"\b({bi})\b"), fmt(TOKENS["secondary"])),
-                      (QtCore.QRegularExpression(r"\b[A-Z][A-Za-z0-9_]*(?=\()"), fmt(TOKENS["accent"])),
-                      (QtCore.QRegularExpression(r"\b[0-9][0-9_]*\.?[0-9]*([eE][-+]?[0-9]+)?\b"), fmt(TOKENS["data"])),
-                      (QtCore.QRegularExpression(r"@[A-Za-z_][A-Za-z0-9_.]*"), fmt(TOKENS["muted"])),
-                      (QtCore.QRegularExpression(r"[rbfu]?\"[^\"\\n]*\"|[rbfu]?'[^'\\n]*'"), fmt(TOKENS["data"])),
-                      (QtCore.QRegularExpression(r"#[^\n]*"), fmt(TOKENS["muted"], italic=True))]
-        self.triple = fmt(TOKENS["data"])
+        self.rules, self.triple = _rules(tuple(sorted(TOKENS.items())))
 
     def highlightBlock(self, text):
         if self._theme != TOKENS:

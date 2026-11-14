@@ -211,19 +211,28 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
   7.8 s, now 4.5 s; `vacf` after it 18 s, now 1.2 s; LAMMPS dump 4000 x 1000: 3.1 and 3.1 s, now
   2.3 and 1.0 s. Then (D101) the XDATCAR reader's `read_positions` gives the
   steps every frame's positions in a few reads when nothing above changes the particles: `msd`
-  5.8 s, now 2.5 s. Left: the LAMMPS dump and OUTCAR readers have no `read_positions` yet
-  (a dump's atoms may come in a different order each frame); a selection step above (not
+  5.8 s, now 2.5 s. Then (D107) the LAMMPS dump reader's `read_positions` does the same,
+  sorting each frame's atoms by id (MPI order): `msd` of 4000 atoms x 1000 frames 2.1 s, now
+  1.8 s, of which reading the file is 0.6 s; the rest is unwrapping and the transforms. Left:
+  the OUTCAR reader has no `read_positions` yet; `kernels.unwrap` (0.45 s of that `msd`) runs
+  on one core; a selection step above (not
   `reads_only`) sends the steps back to frame by frame; steps that change particles between
   two analyses (a selection is fine, a transformation is not) make the second one read again;
   (3) the notebook built every cell widget again when one cell was added, removed, moved or
   undone, done: widgets that still show their cell are kept (`CellWidget.fits`; tutorial notebook
   with four plot cells in the container: a new cell 746 ms, now 10 ms; undo at 47 cells 1.0 s,
-  now 35 ms). Left: opening a notebook and Run all still build every widget, and a notebook of
-  hundreds of cells builds them all at once instead of the ones on screen.
+  now 35 ms). Then (D107) opening a notebook builds the cells of the first screens only; the
+  rest stand in (`PendingCell`) at about their height and are built as they scroll into view,
+  cell menus are filled when they open, the code highlighter's rules are built once, and the
+  hidden View tab rebuilds its cards when it is shown: tutorial notebook plus 200 cells
+  1.78 s, now 0.36 s; the ran tutorial as `.ipynb` with its plots 0.56 s, now 0.37 s. Left:
+  scrolling fast through a long notebook builds about five cells per step (25-45 ms each step
+  in the container); a stand-in's height is a guess, so the scroll bar's length changes as
+  cells are built.
 - Pipeline output cache: plugin modifiers are never reused (`Modifier.cacheable` is None for
   them); first-party plugins (ewald-phonopy, ewald-plumed) could set `cacheable = True` where
   their output depends only on their settings.
-- Results that survive Run all (D107): done for built-in steps over file sources and for
+- Results that survive Run all (D108): done for built-in steps over file sources and for
   all-frames steps (`ewald.result_store`; 108k atoms, CNA + PTM + Coordination, Run all 1.0 s,
   now 0.03 s; `msd` over 10000 XDATCAR frames 0.75 s, now 0.01 s). Left: per-frame results of a
   Python step and the steps after it (a deterministic function could be keyed by its token as

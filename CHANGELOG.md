@@ -10,7 +10,7 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
-- Results survive Run all (D107, #157): built-in steps' results are also kept by what they were
+- Results survive Run all (D108, #157): built-in steps' results are also kept by what they were
   computed from (the source files' size and modification time, the frame, the steps' settings
   and the files they name), so a notebook's Run all, which makes a new pipeline, gets them back
   instead of computing again; so do all-frames steps (`msd`, `@all_frames`). Up to 512 MiB in
@@ -155,6 +155,14 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
   than a DataCollection or None, and `pipe.modifiers = step` raise at once (#153).
 
 
+- Long notebooks open fast: only the cells of the first screens are built when a notebook
+  opens; the others are built as they scroll into view. Cell menus are filled when they open
+  and the hidden View tab rebuilds its cards when it is shown. The tutorial notebook plus 200
+  cells: 1.8 s, now 0.36 s; the ran tutorial saved as `.ipynb` with its plots: 0.56 s, now
+  0.37 s (container) (D107, #158).
+- MSD, VACF and the other all-frames analyses read a LAMMPS dump's positions straight from the
+  file, like an XDATCAR's (#151), with each frame's atoms sorted by id: `msd` over 4000 atoms x
+  1000 frames 2.1 s, now 1.8 s (container) (D107, #158).
 - Playback with a time series in front no longer draws the plot on every frame: the
   current-frame marker is drawn over the picture kept from the last drawing (with the tutorial
   notebook's energy plot in front: 138 ms per frame until idle, now 98 ms), and a per-frame

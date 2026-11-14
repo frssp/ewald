@@ -161,6 +161,140 @@ class LammpsDumpReader(FrameReader):
                 self._last = (index, self._parse(fh, end))
         return self._last[1].copy()
 
+    #: bytes of the file read at once by :meth:`read_positions`
+    BLOCK_BYTES = 32 << 20
+
+    def read_positions(self, indices, check=None) -> dict | None:
+        """:meth:`FrameReader.read_positions`: the frames are read in pieces of about
+        :attr:`BLOCK_BYTES`, and the position (and id) columns of every atom line of a piece go
+        to the compiled parser in one call, instead of one :meth:`read` per frame. Atoms are
+        sorted by id frame by frame as :meth:`read` does, so an MPI run's scrambled order is
+        fine. None when the atom count or the columns change between frames, the file has no
+        position columns, ``sort_by_id=False`` and the order changes, or a line cannot be read;
+        :meth:`read` handles those."""
+        indices = np.asarray(indices, dtype=np.int64)
+        if len(indices) == 0 or np.any(np.diff(indices) <= 0) or indices[0] < 0 \
+                or indices[-1] >= len(self._offsets):
+            return None
+        offsets = np.array([self._offsets[i] for i in indices.tolist()], dtype=np.int64)
+        last = self._end if self._end is not None else -1
+        ends = np.array([self._offsets[i + 1] if i + 1 < len(self._offsets) else last
+                         for i in indices.tolist()], dtype=np.int64)
+        pos, cells, steps = [], [], []
+        layout = None   # (n, columns) of the first frame: every frame must match it
+        first_ids = None
+        with open_binary(self.path) as fh:
+            k = 0
+            while k < len(indices):
+                if check is not None:
+                    check()
+                stop = k + 1   # frames k..stop-1 in this piece: at most BLOCK_BYTES of file
+                while stop < len(indices) and ends[stop] >= 0 and ends[stop] - offsets[k] <= self.BLOCK_BYTES:
+                    stop += 1
+                piece = self._positions_piece(fh, offsets[k:stop], ends[stop - 1], layout)
+                if piece is None:
+                    return None
+                layout, p, c, t, ids = piece
+                if ids is not None:
+                    if self.sort_by_id:
+                        p, ids = self._order_by_id(p, ids)
+                    if first_ids is None:
+                        first_ids = ids[0]
+                    if np.any(ids != first_ids):
+                        return None   # other atoms, or (unsorted) another order than the first frame
+                pos.append(p)
+                cells.append(c)
+                steps.append(t)
+                k = stop
+        return {"Position": np.concatenate(pos), "cells": np.concatenate(cells),
+                "Timestep": np.concatenate(steps)}
+
+    def _positions_piece(self, fh, offsets, end, layout):
+        """Positions ``(T, n, 3)``, cell matrices, steps and ids ``(T, n)`` (None without an id
+        column) of the frames starting at ``offsets``, the last one ending at ``end`` (-1: the
+        end of the file); None when a frame does not match ``layout`` or cannot be parsed."""
+        from ._textparse import HAVE_NUMBA, _loadtxt, _run
+
+        start = int(offsets[0])
+        fh.seek(start)
+        block = fh.read(int(end) - start) if end >= 0 else fh.read()
+        rel = (offsets - start).tolist() + [len(block)]
+        buf = np.frombuffer(block, dtype=np.uint8)
+        newlines = np.flatnonzero(buf == 10)
+        line_s = np.concatenate(([0], newlines + 1))
+        line_e = np.concatenate((newlines, [len(buf)]))
+        frames = len(offsets)
+        cells = np.empty((frames, 3, 3))
+        origins = np.empty((frames, 3))
+        steps = np.empty(frames, dtype=np.int64)
+        first = np.empty(frames, dtype=np.int64)   # line index of each frame's first atom
+        for j in range(frames):
+            atoms = block.find(b"ITEM: ATOMS", rel[j], rel[j + 1])
+            if atoms < 0:
+                return None
+            eol = block.find(b"\n", atoms, rel[j + 1])
+            if eol < 0:
+                return None
+            try:
+                attrs, n, cell, cols = _parse_header(io.BytesIO(block[rel[j]:eol + 1]))
+            except (ValueError, IndexError, EOFError):
+                return None
+            if layout is None:
+                layout = (n, tuple(cols))
+            elif layout != (n, tuple(cols)):
+                return None
+            cells[j], origins[j] = cell.matrix, cell.origin
+            steps[j] = attrs.get("Timestep", 0)
+            first[j] = np.searchsorted(line_s, eol + 1)
+            if first[j] + n > len(line_s) or (n and line_e[first[j] + n - 1] > rel[j + 1]):
+                return None   # fewer atom lines than NUMBER OF ATOMS
+        n, cols = layout
+        found = [name for name in _POSITION_PRIORITY
+                 if any(_column_property(c)[0] == name for c in cols)]
+        if not found:
+            return None
+        where = {_column_property(c): k for k, c in enumerate(cols)}
+        xyz = [where.get((found[0], comp)) for comp in range(3)]
+        if None in xyz:
+            return None
+        use = xyz + ([cols.index("id")] if "id" in cols else [])
+        text = [k for k, c in enumerate(cols) if c == "element"]
+        rows = (first[:, None] + np.arange(n)).ravel()
+        starts, stops = line_s[rows], line_e[rows]
+        try:
+            if HAVE_NUMBA and len(rows):
+                values, _, _, bad = _run(buf, starts, stops, len(cols), use, text)
+                if bad.any():
+                    redo = np.flatnonzero(bad)
+                    lines = b"\n".join(buf[starts[r]:stops[r]].tobytes() for r in redo)
+                    values[redo] = _loadtxt(lines, len(redo), use)
+            else:   # pragma: no cover - numba is a core dependency
+                values = _loadtxt(b"\n".join(buf[s:e].tobytes() for s, e in zip(starts, stops)), len(rows), use) \
+                    if len(rows) else np.empty((0, len(use)))
+        except ValueError:
+            return None
+        values = values.reshape(frames, n, len(use))
+        coords = np.ascontiguousarray(values[:, :, :3])
+        if found[0] in ("Position.reduced", "Position.reduced_unwrapped"):
+            coords = np.einsum("tni,tij->tnj", coords, cells) + origins[:, None, :]
+        ids = values[:, :, 3].astype(np.int64) if len(use) > 3 else None
+        return layout, coords, cells, steps, ids
+
+    @staticmethod
+    def _order_by_id(pos, ids):
+        """``pos`` and ``ids`` with every frame's atoms sorted by id, as :meth:`read` sorts them."""
+        if np.all(ids == ids[:1]):   # the same order in every frame of the piece: one permutation
+            order = _id_order(ids[0])
+            if order is not None:
+                pos, ids = pos[:, order], ids[:, order]
+        else:
+            pos, ids = pos.copy(), ids.copy()
+            for t in range(len(ids)):
+                order = _id_order(ids[t])
+                if order is not None:
+                    pos[t], ids[t] = pos[t, order], ids[t, order]
+        return pos, ids
+
     def _parse(self, fh, end=None) -> DataCollection:
         attrs, n, cell, cols = _parse_header(fh)
         # One read of the whole atom block (up to the next frame) instead of n readline calls.
