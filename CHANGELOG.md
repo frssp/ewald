@@ -10,6 +10,14 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- Results survive Run all (D107, #157): built-in steps' results are also kept by what they were
+  computed from (the source files' size and modification time, the frame, the steps' settings
+  and the files they name), so a notebook's Run all, which makes a new pipeline, gets them back
+  instead of computing again; so do all-frames steps (`msd`, `@all_frames`). Up to 512 MiB in
+  `ewald.result_store`; `pipe.share_results = False` or `EWALD_SHARED_RESULTS=0` turns it off.
+  The frame index kept on disk now resumes a file that grew from its old last frame and is
+  kept for remote files too.
+
 - Every step takes `output="name"` (D106, #156): what it writes is then called
   "Coordination (name)", "coordination-rdf (name)", "CommonNeighborAnalysis.counts.FCC (name)",
   and what earlier steps wrote keeps its plain name, so two `CoordinationAnalysis` cutoffs, or

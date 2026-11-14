@@ -1440,7 +1440,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   D64 had left them open.
 - **Alternatives:** keeping the old pipeline's caches across Run all and matching its steps to
   the new ones by position (breaks when cells move); only the disk index; leaving both open.
-- **Landed:** public PR #NNN.
+- **Landed:** public PR #157.
 
 ## Adding an entry
 
