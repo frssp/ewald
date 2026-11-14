@@ -217,3 +217,93 @@ def test_small_and_large_tables_parse_alike(monkeypatch):
     np.testing.assert_array_equal(serial, ref)
     np.testing.assert_array_equal(parallel, ref)
     _textparse.warm_up()
+
+
+def _walk_dump(path, frames=12, n=40, *, columns="id type x y z", scramble=True, triclinic=False, crlf=False,
+               counts=None, seed=0):
+    """A dump of ``n`` atoms walking for ``frames`` frames: ids in a new order in every frame
+    (an MPI run) unless ``scramble`` is False; ``counts`` gives other atom counts per frame."""
+    rng = np.random.default_rng(seed)
+    nl = "\r\n" if crlf else "\n"
+    pos = rng.random((n, 3)) * 10
+    lines = []
+    for t in range(frames):
+        m = n if counts is None else counts[t]
+        pos = pos + 0.1 * rng.standard_normal(pos.shape)
+        order = rng.permutation(m) if scramble else np.arange(m)
+        L = 10 + 0.01 * t
+        lines += ["ITEM: TIMESTEP", str(100 * t), "ITEM: NUMBER OF ATOMS", str(m)]
+        if triclinic:
+            lines += ["ITEM: BOX BOUNDS xy xz yz pp pp pp", f"0 {L} 0.5", f"0 {L} 0.2", f"1 {L} 0.1"]
+        else:
+            lines += ["ITEM: BOX BOUNDS pp pp ff", f"0 {L}", f"0 {L}", f"1 {L}"]
+        lines.append("ITEM: ATOMS " + columns)
+        for i in order:
+            value = {"id": str(i + 1), "type": str(i % 2 + 1), "element": "Cu" if i % 2 else "Zr", "vx": "0.5"}
+            for k, axis in enumerate("xyz"):
+                value[axis] = value[axis + "u"] = f"{pos[i, k]:.6f}"
+                value[axis + "s"] = f"{pos[i, k] / L:.8f}"
+            lines.append(" ".join(value[c] for c in columns.split()))
+    data = (nl.join(lines) + nl).encode()
+    if str(path).endswith(".gz"):
+        data = gzip.compress(data)
+    path.write_bytes(data)
+    return path
+
+
+@pytest.mark.parametrize("kind", ["scrambled", "sorted", "triclinic", "scaled+element", "unwrapped", "no ids",
+                                  "crlf", "gz", "unsorted reader"])
+def test_dump_read_positions_matches_frame_by_frame(tmp_path, monkeypatch, kind):
+    """``read_positions`` (all-frames steps read the dump in a few pieces) gives what ``read``
+    gives frame by frame: atoms sorted by id in every frame (an MPI run writes them in another
+    order each time), Cartesian positions from scaled ones, cells and steps; also over several
+    pieces of the file, CRLF lines (a dump copied from Windows) and a .gz dump."""
+    options = {"scrambled": {}, "sorted": {"scramble": False}, "triclinic": {"triclinic": True},
+               "scaled+element": {"columns": "id element xs ys zs vx", "triclinic": True},
+               "unwrapped": {"columns": "id type xu yu zu"}, "no ids": {"columns": "type x y z", "scramble": False},
+               "crlf": {"crlf": True}, "gz": {}, "unsorted reader": {"scramble": False}}[kind]
+    name = "walk.dump.gz" if kind == "gz" else "walk.dump"
+    reader = LammpsDumpReader(_walk_dump(tmp_path / name, **options), sort_by_id=kind != "unsorted reader")
+    monkeypatch.setattr(reader, "BLOCK_BYTES", 4000)   # several pieces
+    for indices in (range(len(reader)), [0, 3, 4, 11], [5]):
+        got = reader.read_positions(list(indices))
+        frames = [reader.read(i) for i in indices]
+        np.testing.assert_allclose(got["Position"], [d.positions for d in frames], rtol=0, atol=1e-12)
+        np.testing.assert_allclose(got["cells"], [d.cell.matrix for d in frames])
+        assert got["Timestep"].tolist() == [d.attributes["Timestep"] for d in frames]
+
+
+def test_dump_read_positions_declines_what_it_cannot_read(tmp_path):
+    """None (the caller goes frame by frame) for frames out of order, atom counts that change,
+    atoms in another order when the reader does not sort them, and a dump without positions."""
+    reader = LammpsDumpReader(_walk_dump(tmp_path / "a.dump"))
+    assert reader.read_positions([2, 1]) is None and reader.read_positions([]) is None
+    assert reader.read_positions([0, 99]) is None
+    counts = [40] * 6 + [39] * 6
+    assert LammpsDumpReader(_walk_dump(tmp_path / "b.dump", counts=counts)).read_positions(range(12)) is None
+    assert LammpsDumpReader(_walk_dump(tmp_path / "b.dump", counts=counts)).read_positions(range(6)) is not None
+    unsorted = LammpsDumpReader(_walk_dump(tmp_path / "c.dump"), sort_by_id=False)
+    assert unsorted.read_positions(range(12)) is None and unsorted.read_positions([3]) is not None
+    assert LammpsDumpReader(_walk_dump(tmp_path / "d.dump", columns="id type vx")).read_positions([0, 1]) is None
+
+
+def test_msd_of_a_dump_reads_positions_in_one_pass(tmp_path, monkeypatch):
+    """MSD of an MPI dump (ids in another order each frame) takes the positions from
+    ``read_positions`` with the same result as frame by frame through the pipeline."""
+    from ewald import verbs
+
+    path = _walk_dump(tmp_path / "walk.dump", frames=20)
+    real = LammpsDumpReader.read_positions
+    calls = []
+
+    def counted(self, indices, check=None):
+        calls.append(len(indices))
+        return real(self, indices, check)
+
+    monkeypatch.setattr(LammpsDumpReader, "read_positions", counted)
+    fast = verbs.msd(import_file(path))
+    assert calls == [20]
+    monkeypatch.setattr(LammpsDumpReader, "read_positions", lambda self, indices, check=None: None)
+    slow = verbs.msd(import_file(path))
+    for column in ("MSD", "MSD 1", "MSD 2"):
+        np.testing.assert_allclose(fast[column], slow[column], rtol=1e-12, atol=1e-12)

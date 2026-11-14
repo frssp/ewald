@@ -5205,6 +5205,66 @@ def test_notebook_keeps_the_widgets_of_cells_that_did_not_change(app):
     w.close()
 
 
+def test_long_notebook_builds_the_cells_on_screen_first(app, tmp_path):
+    """Opening a notebook of a few hundred cells built every cell widget at once (1.8 s for 212
+    cells in the container). Cells past the first screens stand in (PendingCell) at about their
+    height and are built as they scroll into view, or when something asks for their widget;
+    running, saving and rebuilding work across stand-ins."""
+    from ewald import settings
+    from ewald.gui.app import MainWindow
+    from ewald.gui.cell_widget import CellWidget, PendingCell
+
+    path = tmp_path / "long.py"
+    path.write_text("".join(f"# %%\nx{k} = {k}\n" if k % 4 else f"# %% [markdown]\n# Part {k}\n" for k in range(240)),
+                    encoding="utf-8", newline="\n")
+    w = MainWindow(settings=settings.Settings())
+    w.resize(1200, 800)
+    w.show()
+    view = w.panel.open_notebook(str(path), trusted=True)
+    app.processEvents()
+    nb = view.notebook
+
+    def built():
+        return [x for x in view.widgets if isinstance(x, CellWidget)]
+
+    assert [x.cell for x in view.widgets] == nb.cells
+    assert 0 < len(built()) < 100 and isinstance(view.widgets[-1], PendingCell)
+    assert view.widgets[0].editor is not None
+    # what a notebook does to every widget passes over the stand-ins
+    view.update_results()
+    view.select(nb.cells[0])
+    assert view.widget_for(nb.cells[-1], build=False) is view.widgets[-1]
+    last = view.widget_for(nb.cells[-1])                       # asked for: built in its place
+    assert isinstance(last, CellWidget) and view.widgets[-1] is last
+    assert view.cells_layout.indexOf(last) == len(nb.cells) - 1
+    assert last.editor.toPlainText() == nb.cells[-1].source
+
+    count = len(built())
+    bar = view.scroll.verticalScrollBar()
+    bar.setValue(bar.maximum() // 2)
+    for _ in range(5):
+        app.processEvents()
+    assert len(built()) > count                                # scrolled into view: built
+    while bar.value() < bar.maximum() or any(isinstance(x, PendingCell) for x in view.widgets[:-1]):
+        bar.setValue(bar.value() + view.scroll.viewport().height())
+        for _ in range(3):
+            app.processEvents()
+        if bar.value() >= bar.maximum():
+            break
+    assert view.rebuild() is None and [x.cell for x in view.widgets] == nb.cells
+
+    assert w.panel.open_notebook(str(path), trusted=True) is view   # the same file: its tab
+    assert view.run_all()
+    while view.running:
+        app.processEvents()
+    assert all(c.state == "ok" for c in nb.cells if c.kind == "code")
+    nb.save(str(tmp_path / "saved.py"))
+    from ewald.notebook import Notebook
+
+    assert [c.source for c in Notebook.load(str(tmp_path / "saved.py")).cells] == [c.source for c in nb.cells]
+    w.close()
+
+
 def test_cell_type_switches_and_add_bar_like_jupyter(app, pipe):
     """+ Code, + Text, + Step (with Plugins), + View under the cells; Esc then M / Y turns a cell
     into text / code, A / B insert; the menu and the cell's ⋯ menu do the same; Ask AI about this cell."""
@@ -5251,6 +5311,8 @@ def test_cell_type_switches_and_add_bar_like_jupyter(app, pipe):
 
     cw = view.widget_for(cell)
     menu = cw.findChild(QtWidgets.QToolButton, "cellMenu").menu()
+    assert not menu.actions()   # filled when it first opens
+    menu.aboutToShow.emit()
     names = [a.text() for a in menu.actions()]
     assert "Ask AI about this cell" in names and names.index("Cell type") < names.index("Ask AI about this cell")
     assert names[-1] == "Delete\tD, D"

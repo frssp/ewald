@@ -72,7 +72,7 @@ class AiFollow(QtCore.QObject):
     # ------------------------------------------------------------ geometry
     def visible(self, cell) -> bool:
         """Whether enough of ``cell`` is on screen: its top, or half the view."""
-        w = self.view.widget_for(cell)
+        w = self.view.widget_for(cell, build=False)
         if w is None:
             return True
         QtWidgets.QApplication.sendPostedEvents(None, QtCore.QEvent.LayoutRequest)   # cells just rebuilt
@@ -97,7 +97,7 @@ class AiFollow(QtCore.QObject):
             self.pill.hide()
             return
         n = self.view.notebook.cells.index(cell) + 1
-        w = self.view.widget_for(cell)
+        w = self.view.widget_for(cell, build=False)
         vp = self.view.scroll.viewport()
         below = w is not None and w.mapTo(vp, QtCore.QPoint(0, 0)).y() > 0
         self.pill.setText(f"AI is on cell {n}" if self.active else f"AI edited cell {n}")

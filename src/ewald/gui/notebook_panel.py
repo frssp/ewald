@@ -30,10 +30,12 @@ from .cell_widget import (  # noqa: F401
     CellWidget,
     MiniPlot,
     OutputArea,
+    PendingCell,
     _badge,
     _call_name,
     _same_shape,
     _shape,
+    estimated_height,
     fill_view_menu,
     result_chips,
     result_plot,
@@ -244,6 +246,10 @@ class NotebookView(QtWidgets.QWidget):
         bar = self.scroll.verticalScrollBar()
         bar.actionTriggered.connect(self._scrolled_while_running)   # wheel, drag, keys
         bar.valueChanged.connect(lambda *_: self.running and self._update_chip())
+        # cells of a long notebook are built as they scroll into view (PendingCell)
+        self._pending_timer = QtCore.QTimer(self, singleShot=True, interval=0, timeout=self._build_pending)
+        bar.valueChanged.connect(lambda *_: self._pending_timer.start())
+        bar.rangeChanged.connect(lambda *_: self._pending_timer.start())
         self.file_view = CodeEditor()
         self.file_view.setReadOnly(True)
         self.file_view.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
@@ -497,7 +503,7 @@ class NotebookView(QtWidgets.QWidget):
             w = old.get(id(cell))
             if w is not None and id(w) not in kept and w.fits(cell):
                 kept.add(id(w))
-                if w.content.isHidden() != bool(cell.collapsed):
+                if getattr(w, "pending", False) or w.content.isHidden() != bool(cell.collapsed):
                     w.set_collapsed(cell.collapsed)
             else:
                 w = None
@@ -509,15 +515,15 @@ class NotebookView(QtWidgets.QWidget):
         while self.cells_layout.count():   # the stretch and every widget, kept ones to go back in order
             self.cells_layout.takeAt(0)
         self.widgets = []
+        # many new widgets (a notebook opened): those below the first screens wait as stand-ins
+        lazy = sum(w is None for w in widgets) > self.LAZY_CELLS
+        y = 0
         for cell, w in zip(self.notebook.cells, widgets):
             new = w is None
             if new:
-                w = CellWidget(self.notebook, cell)
-                w.runRequested.connect(self.run)
-                w.selected.connect(self.select)
-                w.edited.connect(self._step_edited)
-                w.actionRequested.connect(self._cell_action)
-                w.plotCreated.connect(self.plotCreated.emit)
+                w = PendingCell(cell) if lazy and y > self.EAGER_PIXELS and cell is not keep \
+                    else self._make_widget(cell)
+            y += estimated_height(cell)
             self.widgets.append(w)
             self.cells_layout.addWidget(w)
             if new:
@@ -536,6 +542,72 @@ class NotebookView(QtWidgets.QWidget):
             self._mark_running()
         if focused is not None:
             self._restore_focus(*focused)
+        if any(getattr(w, "pending", False) for w in self.widgets):
+            self._pending_timer.start()
+
+    #: a rebuild that makes more widgets than this builds those past :attr:`EAGER_PIXELS` (of
+    #: estimated height) only when they scroll into view; :class:`PendingCell` stands in for them
+    LAZY_CELLS = 30
+    EAGER_PIXELS = 1600
+
+    def _make_widget(self, cell) -> CellWidget:
+        w = CellWidget(self.notebook, cell)
+        w.runRequested.connect(self.run)
+        w.selected.connect(self.select)
+        w.edited.connect(self._step_edited)
+        w.actionRequested.connect(self._cell_action)
+        w.plotCreated.connect(self.plotCreated.emit)
+        return w
+
+    def _build_pending(self):
+        """Build the widgets of the cells that stand in (:class:`PendingCell`) within a screen of
+        the part of the notebook on screen. A cell above it that grows or shrinks moves the
+        page by as much, so what you look at stays put."""
+        if not self.scroll.viewport().isVisible() or not any(getattr(w, "pending", False) for w in self.widgets):
+            return
+        self.cells_layout.activate()
+        bar = self.scroll.verticalScrollBar()
+        top, h = bar.value(), self.scroll.viewport().height()
+        lo, hi = top - h // 2, top + 2 * h
+        built = []
+        for i, w in enumerate(self.widgets):
+            if not getattr(w, "pending", False):
+                continue
+            g = w.geometry()
+            if g.bottom() >= lo and g.top() <= hi:
+                built.append((self._build_at(i), g.height(), g.bottom() < top))
+        if not built:
+            return
+        self.cells_layout.activate()
+        shift = sum(w.height() - old for w, old, above in built if above)
+        if shift:
+            bar.setValue(top + shift)
+
+    def _build_at(self, i: int) -> CellWidget:
+        """Replace the stand-in at ``self.widgets[i]`` by the cell's widget, in the state the
+        notebook shows (current, results, running marks)."""
+        stand_in = self.widgets[i]
+        cell = stand_in.cell
+        w = self._make_widget(cell)
+        self.cells_layout.replaceWidget(stand_in, w)
+        stand_in.setParent(None)
+        stand_in.deleteLater()
+        self.widgets[i] = w
+        sel = self.selected_cells
+        w.set_current(cell is self.current)
+        w.set_selected(len(sel) > 1 and cell in sel)
+        w.update_state(self.data)
+        if w.plot_panel is not None:
+            w.set_view_data(*self.view_source(cell))
+        w.set_live_data(self.data, self.notebook.pipeline)
+        if self.running:
+            if cell is self._now:
+                w.set_running("running", self._started)
+            elif cell in self._queued:
+                w.set_running("queued")
+        for p in w.panels():
+            self.plotCreated.emit(p)
+        return w
 
     def _park_focus(self):
         """Before the cell widgets go: move the keyboard focus out of them. A focused cell that is
@@ -564,8 +636,14 @@ class NotebookView(QtWidgets.QWidget):
         else:
             w.setFocus(QtCore.Qt.OtherFocusReason)
 
-    def widget_for(self, cell):
-        return next((w for w in self.widgets if w.cell is cell), None)
+    def widget_for(self, cell, build: bool = True):
+        """The widget of ``cell`` (None when it is not in this notebook). A cell off screen in a
+        long notebook may have only a stand-in (:class:`PendingCell`): it is built now, unless
+        ``build`` is False (a question about where the cell is)."""
+        for i, w in enumerate(self.widgets):
+            if w.cell is cell:
+                return self._build_at(i) if build and getattr(w, "pending", False) else w
+        return None
 
     def _show_live_output(self, cell):
         w = self.widget_for(cell)
@@ -1116,10 +1194,10 @@ class NotebookView(QtWidgets.QWidget):
     def _mark_running(self):
         """Mark the cells of this run: waiting (``*``, like Jupyter) or running now."""
         for c in self._queued:
-            w = self.widget_for(c)
+            w = self.widget_for(c, build=False)   # a stand-in is marked when it is built
             if w is not None:
                 w.set_running("queued")
-        w = self.widget_for(self._now) if self._now is not None else None
+        w = self.widget_for(self._now, build=False) if self._now is not None else None
         if w is not None:
             w.set_running("running", self._started)
 
@@ -1129,7 +1207,7 @@ class NotebookView(QtWidgets.QWidget):
 
         if not self.running:   # a run that ended within CELL_BUDGET: its results are drawn already
             return
-        w = self.widget_for(cell)
+        w = self.widget_for(cell, build=False)
         if running:
             self._queued = [c for c in self._queued if c is not cell]
             self._now, self._started = cell, time.monotonic()
@@ -1157,7 +1235,7 @@ class NotebookView(QtWidgets.QWidget):
             self._run_following = False
 
     def _tick(self):
-        w = self.widget_for(self._now) if self._now is not None else None
+        w = self.widget_for(self._now, build=False) if self._now is not None else None
         if w is not None:
             w.tick()
         self._update_chip()
@@ -1180,7 +1258,7 @@ class NotebookView(QtWidgets.QWidget):
         if chip.text() != text:
             chip.setText(text)
         arrow = None
-        w = self.widget_for(cell)
+        w = self.widget_for(cell, build=False)
         if w is not None and not self.ai_follow.visible(cell):
             vp = self.scroll.viewport()
             arrow = "arrow_down" if w.mapTo(vp, QtCore.QPoint(0, 0)).y() > 0 else "arrow_up"
@@ -1287,7 +1365,7 @@ class NotebookView(QtWidgets.QWidget):
             i = nb.cells.index(cell)
             if i + 1 < len(nb.cells):
                 self.select(nb.cells[i + 1])
-                w = self.widgets[i + 1]
+                w = self.widget_for(nb.cells[i + 1])
                 if w.editor is not None and w.editor.isVisible():
                     w.editor.setFocus()
             else:

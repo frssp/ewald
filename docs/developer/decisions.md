@@ -1425,6 +1425,19 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   name results; leaving it (the later step wins silently).
 - **Landed:** public PR #156.
 
+### D107. The two deferred performance items are done now: a LAMMPS dump batch reader and long notebooks built as they scroll (2026-11-14)
+
+- **Decision:** after the D100/D101 rounds, the owner started both remaining items at once, in
+  a thread of their own and in parallel with the caching work ("성능 캐싱 둘다 시작 별개
+  스레드 병렬진행?"): `LammpsDumpReader.read_positions` for all-frames analyses, and opening
+  a notebook without building every cell widget (deferred in D101). Cells off screen stand in
+  at about their height and are built as they scroll into view or when something asks for
+  them.
+- **Alternatives:** keep building every widget but faster (cheaper menus, highlighter and
+  parsing, done as well: about 15 % for 200 cells); build the rest in the background after
+  the first screen (the whole cost still spent while the person starts working).
+- **Landed:** public PR #158.
+
 ## Adding an entry
 
 Add an entry in the same pull request that implements a decision, whenever the owner chooses

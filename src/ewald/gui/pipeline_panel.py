@@ -538,6 +538,13 @@ class DisplayPanel(QtWidgets.QWidget):
         lay.addWidget(self.scroll, 1)
         self.sections = {}
 
+    _stale = False   # the style changed while the tab was hidden: rebuild the cards when shown
+
+    def showEvent(self, event):
+        if self._stale:
+            self.refresh()
+        super().showEvent(event)
+
     # ------------------------------------------------------------------ model
     def set_pipeline(self, pipeline):
         self.pipeline = pipeline
@@ -562,10 +569,17 @@ class DisplayPanel(QtWidgets.QWidget):
         self.update_marks()
 
     def refresh(self, select=None):
-        """Rebuild the cards from the style (``select`` is accepted for older callers)."""
+        """Rebuild the cards from the style (``select`` is accepted for older callers). While
+        the tab is hidden (its usual state) the cards are rebuilt when it is shown: opening a
+        notebook rebuilt them for its saved style, a third of the time the open took. (Only in a
+        window on screen: a panel of its own is filled at once.)"""
         if self._emitting:
             self.update_marks()
             return
+        if self.sections and not self.isVisible() and self.window() is not self and self.window().isVisible():
+            self._stale = True
+            return
+        self._stale = False
         self._marks, self._forms = [], {}
         fm = self.fontMetrics()
         self._label_w = fm.horizontalAdvance(_LABEL_WIDEST) + 8
