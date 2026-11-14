@@ -88,6 +88,19 @@ longer than `pipe.checkpoint_seconds` (0.02 s) also keep their own result, so ch
 step (its cell) starts from there instead of running the whole chain
 again.
 
+These results are also kept by what they were computed from, for every pipeline in the
+process: the source's files with their size and modification time, the frame, and each step's
+class and settings (with the size and modification time of files a setting names). A new
+pipeline that loads the same files and adds the same steps, as a notebook's Run all does,
+gets them back without computing; so does an all-frames step such as `msd` over a long
+trajectory, or an `@all_frames` Python step (keyed by its code and the values it reads). A
+changed file or setting computes again. The per-frame results of a Python step and of the
+steps after it are not kept this way, and neither are results of sources without files (a
+structure built in memory).
+At most 512 MiB are kept (`ewald.result_store.shared.max_bytes`); `pipe.share_results = False`
+or the environment variable `EWALD_SHARED_RESULTS=0` turns it off, and `pipe.clear_caches()`
+(View › Redraw from scratch) forgets what was kept for that pipeline's files.
+
 ## Function modifiers
 
 Any function with OVITO's signature `f(frame, data)` is a modifier. It can change `data` in

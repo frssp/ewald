@@ -308,7 +308,14 @@ def _indexed_scan(path, steps: dict) -> tuple[list[int], bool]:
     if kept is not None:
         steps.update(zip(kept["step_offsets"].tolist(), kept["steps"].tolist()))
         return kept["offsets"].tolist(), True
-    offsets, complete = _scan_frames(path, steps=steps)
+    grown = index_cache.lookup_prefix(path, "lammps-dump")
+    if grown is not None and len(grown["offsets"]):   # LAMMPS appended frames: scan from the old last one on
+        old = grown["offsets"].tolist()
+        steps.update((o, s) for o, s in zip(grown["step_offsets"].tolist(), grown["steps"].tolist()) if o < old[-1])
+        more, complete = _scan_frames(path, old[-1], steps=steps)
+        offsets = old[:-1] + more
+    else:
+        offsets, complete = _scan_frames(path, steps=steps)
     if offsets and complete:
         index_cache.store(path, "lammps-dump", offsets=offsets, step_offsets=list(steps),
                           steps=list(steps.values()))

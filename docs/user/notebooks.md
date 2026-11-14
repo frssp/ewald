@@ -35,7 +35,9 @@ is the cell's title.
 All cells run in one Python namespace. The variable `pipe` is the notebook's pipeline, and the
 viewport shows it. Run a cell with ▶ or Ctrl+Enter, or with Shift+Enter to run it and move to
 the next one. Notebook › Run all (Ctrl+Shift+Enter) restarts the namespace and runs every cell
-from the top. If a cell fails, its traceback appears under it, and Run all stops there and
+from the top; results of built-in steps that read the same files with the same settings as in
+the last run are taken from then instead of computed again, so Run all after editing one cell
+costs about what that cell and the ones below it compute ([Scripting](scripting.md)). If a cell fails, its traceback appears under it, and Run all stops there and
 marks the cells below as stale. Notebook › Restart (or the Restart button) clears the namespace
 but keeps every cell's output, as in Jupyter; the cells are marked stale (`·`) until they run
 again. Restart & clear outputs (the Restart button's arrow, or the Notebook menu) also removes them.

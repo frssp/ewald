@@ -223,11 +223,15 @@ Performance (measured 2026-10-20 in the cloud container, 4 cores, llvmpipe GL; n
 - Pipeline output cache: plugin modifiers are never reused (`Modifier.cacheable` is None for
   them); first-party plugins (ewald-phonopy, ewald-plumed) could set `cacheable = True` where
   their output depends only on their settings.
-- Results that survive Run all: `Notebook.run_all` starts a new namespace, so the new Pipeline
-  indexes the file again and recomputes every step (cache keys hold `id(source)` and
-  `id(modifier)`). Keys by content (source path, size and mtime, step type and settings, the
-  mtimes of files a step reads) would keep them; an all-frames step over a long trajectory gains
-  the most. Measured 2026-10-25: 108k atoms, CNA + PTM + Coordination, Run all 1.0 s every time.
+- Results that survive Run all (D107): done for built-in steps over file sources and for
+  all-frames steps (`ewald.result_store`; 108k atoms, CNA + PTM + Coordination, Run all 1.0 s,
+  now 0.03 s; `msd` over 10000 XDATCAR frames 0.75 s, now 0.01 s). Left: per-frame results of a
+  Python step and the steps after it (a deterministic function could be keyed by its token as
+  the all-frames steps are; nondeterministic ones are the risk); sources without files
+  (`StaticSource`, workflow folders, plugin schemes such as `aiida:`); a notebook run in a
+  separate kernel restarts it on Run all, so nothing is kept there; the store's 512 MiB is not a
+  preference yet. The frame index on disk now follows grown files and remote files; OUTCAR and
+  vasprun.xml are still scanned on every open (they only look for a few lines).
 - Structure identification at 108k atoms: the periodic kNN is a numba cell list now (0.10-0.22 s
   for k = 12-33, was 0.32-0.71 s with cKDTree + image padding). PTM (0.93 s) and Steinhardt
   (0.95 s) are now dominated by their per-atom kernels (PTM's C++ template matching, the Ylm

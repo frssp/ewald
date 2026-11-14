@@ -62,7 +62,15 @@ class XdatcarReader(FrameReader):
         kept = index_cache.lookup(self.path, "xdatcar")
         if kept is not None:
             return [tuple(f) for f in kept["frames"].tolist()], False
-        frames, truncated = self._scan(0, 0, None)
+        grown = index_cache.lookup_prefix(self.path, "xdatcar")
+        frames = [tuple(f) for f in grown["frames"].tolist()] if grown is not None else []
+        if frames:   # VASP appended configurations since: scan from the old last one on
+            self._header_cache = {}
+            header, cfg = frames[-1]
+            more, truncated = self._scan(cfg, header, sum(self._read_header(header)[3]))
+            frames = frames[:-1] + more
+        else:
+            frames, truncated = self._scan(0, 0, None)
         if frames and not truncated:
             index_cache.store(self.path, "xdatcar", frames=np.asarray(frames).reshape(-1, 2))
         return frames, truncated

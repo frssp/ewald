@@ -95,8 +95,20 @@ class ComputeContext:
         open file, a pipeline) counts by identity: a change inside it is not seen."""
         pipe = self.pipeline
         mods = pipe.modifiers[:self.modifier_index]
-        return (id(pipe.source), pipe.num_frames, self.backend.name,
-                tuple((type(m).__name__, repr(m), pipe._step_token(m)) for m in mods if m.enabled))
+        source = pipe._source_key()
+        # contents only where they can be told (a file source, steps' settings and the files
+        # they name), so that a new pipeline running the same cells finds the result
+        # (:mod:`ewald.result_store`); a Python step's repr shows its function's address, and
+        # its token says what the function computes
+        return (_Same(pipe.source) if source is None else source, pipe.num_frames, self.backend.name,
+                tuple((type(m).__name__, "" if isinstance(m, PythonModifier) else repr(m), pipe._step_token(m),
+                       _stamps_or_same(m)) for m in mods if m.enabled))
+
+    def shared(self, key, compute):
+        """``compute()``, or the result a step in this or another pipeline computed under the
+        same ``key`` (made from :meth:`upstream_key`; :mod:`ewald.result_store`). Steps that
+        compute over every frame keep their result with it, so Run all does not compute it again."""
+        return self.pipeline._shared_result(key, compute)
 
 
 @functools.lru_cache(maxsize=None)
@@ -449,6 +461,11 @@ class AllFramesModifier(PythonModifier):
         upstream = ctx.upstream_key()
         cache = self.__dict__.get("_result")
         if cache is None or cache[0] != (upstream, pipe._step_token(self)):
+            # the same function in a new pipeline running the same cells (Run all) computed it
+            kept = pipe._shared_get(("all-frames", upstream, pipe._step_token(self)))
+            if kept is not None:
+                cache = self._result = ((upstream, pipe._step_token(self)), kept)
+        if cache is None or cache[0] != (upstream, pipe._step_token(self)):
             before = _contents(data)
             out = self._call(Frames(ctx), data, ctx)
             result = out if isinstance(out, DataCollection) else data
@@ -456,6 +473,7 @@ class AllFramesModifier(PythonModifier):
             # (``calls.append(...)``) would never be reused under the one from before
             cache = ((upstream, pipe._step_token(self, again=True)), _changes(before, result))
             self._result = cache
+            pipe._shared_put(("all-frames", *cache[0]), cache[1])
             if out is not None:
                 return out
             return None
@@ -746,6 +764,7 @@ def output_summary(before: tuple, data: DataCollection, frame: int) -> dict:
 
 _RUN_STATE = ("enabled", "status", "last_time", "last_output")
 _UNKEYABLE = object()
+_NOTHING = object()
 
 
 
@@ -1089,6 +1108,73 @@ def _modifier_key(m):
     return None if state is _UNKEYABLE else (id(m), type(m), state)
 
 
+def _stamps_or_same(m):
+    stamps = _file_stamps(m)
+    return _Same(m) if stamps is None else stamps
+
+
+def _shared_step_key(m, key):
+    """``key`` (:func:`_modifier_key` of ``m``) without the step's identity, plus the files its
+    settings name (:func:`_file_stamps`): what a step in another pipeline, made by running the
+    same cell again, has too. None when the files cannot be told (a remote path)."""
+    if key[0] == "off":
+        return ("off",)
+    stamps = _file_stamps(m)
+    return None if stamps is None else (f"{type(m).__module__}.{type(m).__qualname__}", key[2], stamps)
+
+
+_GLOB = frozenset("*?[")
+
+
+def _file_stamps(m) -> tuple | None:
+    """(path, size, mtime in ns) of every local file a setting of ``m`` names (a string or path,
+    alone or in a list; wildcards expanded), so a result computed from a file is not reused
+    once the file changed. None when a setting names a remote file, whose stamp would cost a
+    round trip: results of such a step stay in their own pipeline."""
+    import glob
+    import os
+
+    names = []
+    for k, v in vars(m).items():
+        if k.startswith("_") or k in _RUN_STATE:
+            continue
+        for item in (v if isinstance(v, (list, tuple)) else (v,)):
+            if isinstance(item, os.PathLike):
+                item = os.fspath(item)
+            if isinstance(item, str) and 0 < len(item) < 4096 and "\n" not in item and "\0" not in item:
+                names.append(item)
+    if not names:
+        return ()
+    from .io.remote import is_remote
+
+    stamps = []
+    for name in names:
+        if is_remote(name):
+            return None
+        try:
+            found = sorted(glob.glob(name)) if _GLOB.intersection(name) else [name]
+        except (OSError, ValueError, TypeError):
+            continue
+        for path in found:
+            try:
+                st = os.stat(path)
+            except (OSError, ValueError):
+                continue
+            if os.path.isfile(path):
+                stamps.append((os.path.normcase(os.path.abspath(path)), st.st_size, st.st_mtime_ns))
+    return tuple(stamps)
+
+
+def _portable(key) -> bool:
+    """Whether ``key`` holds contents only, so it can be equal to a key made in another
+    pipeline: no object by identity (:class:`_Same`, a bare ``object()`` token)."""
+    if isinstance(key, _Same) or type(key) is object:
+        return False
+    if isinstance(key, (tuple, list, frozenset)):
+        return all(_portable(k) for k in key)
+    return True
+
+
 class Pipeline:
     """A source plus an ordered list of modifiers, evaluated lazily per frame.
 
@@ -1273,7 +1359,13 @@ class Pipeline:
     def clear_caches(self):
         """Start over: forget every cached source frame and step result (:meth:`invalidate`) and
         what each modifier kept across frames (:meth:`Modifier.forget`), so the next
-        :meth:`compute` recomputes everything. The GUI's View › Redraw from scratch calls it."""
+        :meth:`compute` recomputes everything. The GUI's View › Redraw from scratch calls it.
+        What other pipelines kept for the same files (:mod:`ewald.result_store`) goes too."""
+        source = self._source_key()
+        if source is not None:
+            from .result_store import shared
+
+            shared.drop(source)
         self.invalidate()
         for mod in self.modifiers:
             mod.forget()
@@ -1308,6 +1400,46 @@ class Pipeline:
                 self._cache.popitem(last=False)
 
     checkpoint_seconds = 0.02
+
+    #: Whether results are also kept by content across pipelines (:mod:`ewald.result_store`),
+    #: so a notebook's Run all reuses what the cells computed before.
+    share_results = True
+
+    def _source_key(self):
+        """The source's content key (``FileSource.content_key``), or None."""
+        take = getattr(self.source, "content_key", None)
+        if take is None:
+            return None
+        try:
+            return take()
+        except Exception:  # noqa: BLE001 - not told: results stay in this pipeline
+            return None
+
+    def _sharing(self) -> bool:
+        return self.__dict__.get("cache_outputs", True) and self.share_results
+
+    def _shared_get(self, key):
+        from .result_store import shared
+
+        return shared.get(key) if self._sharing() and _portable(key) else None
+
+    def _shared_put(self, key, value):
+        from .result_store import shared
+
+        if self._sharing() and _portable(key):
+            shared.put(key, value, tag=self._source_key())
+
+    def _shared_result(self, key, compute):
+        from .result_store import shared
+
+        if not self._sharing() or not _portable(key):
+            return compute()
+        hit = shared.get(key, _NOTHING)
+        if hit is not _NOTHING:
+            return hit
+        value = compute()
+        shared.put(key, value, tag=self._source_key())
+        return value
 
     def compute(self, frame: int = 0, device: str | None = None, errors: str = "raise",
                 upto: int | None = None, cancel: threading.Event | None = None) -> DataCollection:
@@ -1428,6 +1560,7 @@ class Pipeline:
                     break
                 keys.append(key)
         base = (id(self.source), frame, backend.name, self.num_frames)
+        shared = self._shared_keys(mods, keys, frame, backend) if keys else []
         start, data = 0, None
         with self._cache_lock:
             for n in range(len(keys), 0, -1):  # the longest prefix computed before
@@ -1435,6 +1568,21 @@ class Pipeline:
                 if hit is not None:
                     self._outputs.move_to_end(base + (tuple(keys[:n]),))
                     start, data = n, hit.copy()
+                    break
+        if data is None and shared:   # computed by another pipeline (Run all) from the same contents
+            from .result_store import shared as store
+
+            for n in range(len(shared), 0, -1):
+                hit = store.get(shared[n - 1])
+                if hit is not None:
+                    data, summaries = hit[0].copy(), hit[1]
+                    start = n
+                    for mod, (summary, spent) in zip(mods, summaries):
+                        if mod.enabled and summary is not None:
+                            mod.last_output, mod.last_time, mod.status = summary, spent, None
+                    with self._cache_lock:
+                        self._outputs[base + (tuple(keys[:n]),)] = hit[0]
+                        self._outputs.move_to_end(base + (tuple(keys[:n]),))
                     break
         if data is None:
             data = self._sweep_frame(frame) if sweep else self._source_frame(frame)
@@ -1446,7 +1594,7 @@ class Pipeline:
                     _note_writer(writers, mod)   # computed before: its last summary says what it wrote
                 continue
             if index == len(keys) and keys and not failed and start < len(keys):
-                self._store_output(base + (tuple(keys),), data)
+                self._store_output(base + (tuple(keys),), data, shared, mods)
             if cancel is not None and cancel.is_set():
                 raise ComputeCancelled
             if not mod.enabled:
@@ -1497,18 +1645,46 @@ class Pipeline:
             mod.last_output = output_summary(before, data, frame)
             _note_writer(writers, mod)
             if index < len(keys) - 1 and not failed and mod.last_time >= self.checkpoint_seconds:
-                self._store_output(base + (tuple(keys[:index + 1]),), data)
+                self._store_output(base + (tuple(keys[:index + 1]),), data, shared, mods)
         if len(keys) == len(mods) and keys and not failed and start < len(keys):
-            self._store_output(base + (tuple(keys),), data)
+            self._store_output(base + (tuple(keys),), data, shared, mods)
         return data
 
-    def _store_output(self, key, data):
+    def _shared_keys(self, mods, keys, frame, backend) -> list:
+        """Content keys (:mod:`ewald.result_store`) of the prefixes ``keys`` covers, as far as
+        they can be told: empty without a file source or with sharing off."""
+        if not self._sharing():
+            return []
+        from .result_store import ResultStore
+
+        if not ResultStore.enabled():
+            return []
+        source = self._source_key()
+        if source is None:
+            return []
+        base = ("frame", source, frame, backend.name, self.num_frames)
+        out, steps = [], []
+        for mod, key in zip(mods, keys):
+            step = _shared_step_key(mod, key)
+            if step is None:
+                break
+            steps.append(step)
+            out.append(base + (tuple(steps),))
+        return out
+
+    def _store_output(self, key, data, shared=(), mods=()):
         with self._cache_lock:
             # ``data`` goes on to later steps and callers: freezing it keeps them from writing
             # into the cached arrays it shares; they change their own copy
-            self._outputs[key] = data.freeze().copy()
+            kept = self._outputs[key] = data.freeze().copy()
             self._outputs.move_to_end(key)
             self._trim_cache(data)
+        n = len(key[-1])
+        if len(shared) >= n:   # for a new pipeline running the same cells, with what each step did
+            from .result_store import shared as store
+
+            summaries = tuple((m.last_output, m.last_time) if m.enabled else (None, None) for m in mods[:n])
+            store.put(shared[n - 1], (kept, summaries), tag=self._source_key())
 
     def frames(self, start: int | None = None, stop: int | None = None, step: int | None = None, device=None):
         """Iterator over the computed frames ``start:stop:step``, which count as in a slice

@@ -98,7 +98,13 @@ def _indexed_scan(path):
     kept = index_cache.lookup(path, "extxyz")
     if kept is not None:
         return [tuple(f) for f in kept["frames"].tolist()], True
-    frames, complete = _scan_frames(path)
+    grown = index_cache.lookup_prefix(path, "extxyz")
+    frames = [tuple(f) for f in grown["frames"].tolist()] if grown is not None else []
+    if frames:   # frames were appended since: scan from the old last one on
+        more, complete = _scan_frames(path, offset=frames[-1][0])
+        frames = frames[:-1] + more
+    else:
+        frames, complete = _scan_frames(path)
     if frames and complete:
         index_cache.store(path, "extxyz", frames=np.asarray(frames).reshape(-1, 2))
     return frames, complete
