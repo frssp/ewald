@@ -7,7 +7,7 @@ from PySide6 import QtCore, QtGui, QtWidgets
 
 from ..notebook import Cell, Notebook, step_call
 from . import header
-from .code_editor import CodeEditor, OutputText, mono_font
+from .code_editor import MAX_EDITOR_LINES, CodeEditor, OutputText, mono_font
 from .icons import icon
 from .palette import native_text
 from .theme import TOKENS
@@ -961,10 +961,24 @@ class CellWidget(QtWidgets.QFrame):
 
     # ----------------------------------------------------------- bodies
     def _menu_button(self):
+        """The cell's actions button. Its menu is filled when it first opens: building two dozen
+        actions for every cell was a sixth of the time a notebook took to open."""
         b = header.button("more", "Cell actions", name="cellMenu")
         b.setPopupMode(QtWidgets.QToolButton.InstantPopup)
         m = QtWidgets.QMenu(b)
         m.setToolTipsVisible(True)
+        self._plugin_actions = []
+
+        def opening():
+            if not m.actions():
+                self._fill_menu(m)
+            self._plugin_menu_items(m)
+
+        m.aboutToShow.connect(opening)
+        b.setMenu(m)
+        return b
+
+    def _fill_menu(self, m):
         act = lambda name: (lambda: self.actionRequested.emit(self.cell, name))  # noqa: E731
         code = self.cell.kind == "code"
         if code:
@@ -1002,10 +1016,6 @@ class CellWidget(QtWidgets.QFrame):
         m.addAction("Merge with the cell below\tShift+M", act("merge"))
         m.addSeparator()   # the destructive entry apart from the rest
         m.addAction("Delete\tD, D", act("delete"))
-        self._plugin_actions = []
-        m.aboutToShow.connect(lambda: self._plugin_menu_items(m))
-        b.setMenu(m)
-        return b
 
     def _plugin_menu_items(self, menu):
         """The "Notebook cell" entries of @menu_item plugins, fresh each time the menu opens."""
@@ -1570,6 +1580,84 @@ class CellWidget(QtWidgets.QFrame):
         self._drag_start = None
         self._select_on_release = False
         super().mouseReleaseEvent(event)
+
+
+class PendingCell(QtWidgets.QWidget):
+    """Stands in for the :class:`CellWidget` of a cell off screen in a long notebook, at about
+    its height, until it scrolls into view (:meth:`NotebookView._build_pending`): opening a
+    notebook of a few hundred cells built every widget at once, a second or two. It takes the
+    calls a notebook makes on every widget and does nothing with them; the widget built later
+    reads the cell's state itself."""
+
+    pending = True
+    editor = None
+    plot_panel = None
+
+    def __init__(self, cell: Cell, parent=None):
+        super().__init__(parent)
+        self.setObjectName("cellPending")
+        self.cell = cell
+        self.built_for = _shape(cell)
+        self._built = (cell.title, cell.id)
+        self._source = cell.source
+        self.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
+        self.setFixedHeight(estimated_height(cell))
+
+    def fits(self, cell: Cell) -> bool:
+        return (_same_shape(self.built_for, _shape(cell)) and self._built == (cell.title, cell.id)
+                and self._source == cell.source)
+
+    def set_collapsed(self, on: bool):
+        self.cell.collapsed = bool(on)
+        self.setFixedHeight(estimated_height(self.cell))
+
+    def panels(self) -> list:
+        return []
+
+    def update_state(self, data=None):
+        pass
+
+    def set_live_data(self, data, pipeline=None, force: bool = False):
+        pass
+
+    def set_view_data(self, data, pipeline=None):
+        pass
+
+    def set_running(self, phase: str = "running", started: float | None = None):
+        pass
+
+    def set_current(self, on: bool):
+        pass
+
+    def set_selected(self, on: bool):
+        pass
+
+    def show_live_outputs(self):
+        pass
+
+    def tick(self):
+        pass
+
+
+def estimated_height(cell: Cell) -> int:
+    """About how tall the :class:`CellWidget` of ``cell`` is, in pixels, without building it: its
+    lines of code (the editor shows at most :data:`MAX_EDITOR_LINES`) and saved outputs. Only
+    for the stand-in of a cell off screen, so a rough figure is fine."""
+    line = 17
+    if cell.collapsed:
+        return line + 12
+    lines = max(1, min(len(cell.source.splitlines()), MAX_EDITOR_LINES))
+    h = lines * line + 20 + (24 if cell.title or cell.frames else 0)
+    for out in cell.outputs:
+        if out.kind == "image" or out.view is not None:
+            h += 320
+        elif isinstance(out.data, str):
+            h += min(len(out.data.splitlines()), 20) * line + 8
+        else:
+            h += 3 * line
+    if cell.is_view:
+        h = max(h, 340)
+    return h
 
 
 def _shape(cell: Cell):

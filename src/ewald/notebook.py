@@ -31,6 +31,8 @@ from __future__ import annotations
 import ast
 import contextlib
 import contextvars
+import copy
+import functools
 import io
 import json
 import os
@@ -87,16 +89,15 @@ class Cell:
 
     @property
     def is_step(self) -> bool:
-        return self.kind == "code" and step_call(self.source) is not None
+        return self.kind == "code" and _is_step_source(self.source)
 
     @property
     def view(self) -> dict | None:
         """The arguments of a view cell (``show(pipe, table=...)``), else None."""
         if self.kind != "code":
             return None
-        from .views import view_args
-
-        return view_args(self.source)
+        args = _view_source(self.source)
+        return None if args is None else copy.deepcopy(args)
 
     @property
     def is_view(self) -> bool:
@@ -215,6 +216,22 @@ def cell_py(cell: Cell) -> str:
     else:
         body = cell.source.rstrip("\n")
     return head + ("\n" + body if body else "")
+
+
+@functools.lru_cache(maxsize=4096)
+def _is_step_source(source: str) -> bool:
+    """:attr:`Cell.is_step` of a cell's code, parsed once per distinct source: the notebook asks
+    each cell several times while building its widget (a 200-cell notebook parsed 1900 times)."""
+    return step_call(source) is not None
+
+
+@functools.lru_cache(maxsize=4096)
+def _view_source(source: str) -> dict | None:
+    """:func:`ewald.views.view_args` of a cell's code, parsed once per distinct source
+    (:attr:`Cell.view` returns a copy)."""
+    from .views import view_args
+
+    return view_args(source)
 
 
 def step_call(source: str, name: str = PIPELINE_NAME) -> ast.expr | None:
