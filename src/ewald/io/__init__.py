@@ -174,6 +174,43 @@ class FileSource:
     def num_frames(self) -> int:
         return len(self._index)
 
+    def content_key(self) -> tuple | None:
+        """What the frames come from, as contents (:mod:`ewald.result_store`): every file read
+        (frames and steps tables) with its size and modification time, the format, ``join`` and
+        the reader arguments. Taken once, and again after :meth:`refresh`; remote files by their
+        SFTP size and modification time (whole seconds). None for plugin schemes (``aiida:``),
+        whose results then stay in their own pipeline."""
+        key = self.__dict__.get("_content_key", False)
+        if key is False:
+            key = self._content_key()
+            self.__dict__["_content_key"] = key
+        return key
+
+    def _content_key(self):
+        from .. import plugins
+        from ..pipeline import _UNKEYABLE, _freeze
+
+        files = [*self.paths, *(self.thermo.sources if self.thermo is not None else ())]
+        stamps = []
+        for p in files:
+            p = os.fspath(p)
+            if plugins.scheme_reader(p) is not None:
+                return None
+            try:
+                if remote.is_remote(p):   # one round trip per Run all, as the open itself costs
+                    st = remote.stat(p)
+                    stamps.append((str(remote.parse_remote(p)), int(st.st_size or 0), int(st.st_mtime or 0)))
+                    continue
+                st = os.stat(p)
+            except Exception:  # noqa: BLE001 - gone, or the host cannot be reached: not shared
+                return None
+            stamps.append((os.path.normcase(os.path.abspath(p)), st.st_size, st.st_mtime_ns))
+        settings = _freeze((self.format, self.join, self.kwargs,
+                            self.thermo_arg if isinstance(self.thermo_arg, (str, type(None))) else str(self.thermo_arg)))
+        if settings is _UNKEYABLE:
+            return None
+        return ("FileSource", tuple(stamps), settings, self.num_frames)
+
     @property
     def incomplete(self) -> list[str]:
         """``"file: what is missing"`` for each file of a calculation that is still running or
@@ -217,6 +254,7 @@ class FileSource:
                 changed_at[id(reader)] = changed
         if not changed_at and list(paths) == self.paths:
             return None
+        self.__dict__.pop("_content_key", None)
         self.paths = list(paths)
         self.readers = [readers[p] for p in paths]
         self._index = self._build_index()

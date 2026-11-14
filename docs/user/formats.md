@@ -90,6 +90,10 @@ netCDF-4, which is HDF5 underneath), and where they stand in ewald:
 
 "Lazy" means the file is indexed once and each frame is read when it is needed, so a
 multi-gigabyte trajectory opens immediately and uses memory for the frames in the cache only.
+The frame index of a LAMMPS dump, XDATCAR or extended XYZ file of 32 MB or more is kept on disk
+(in the cache folder, `EWALD_CACHE_DIR`), also for files on another machine, so opening the file
+again skips the scan; a file a running simulation has appended to since is scanned only from
+its old last frame on. `EWALD_INDEX_CACHE=0` turns this off.
 
 ## Structure databases (OPTIMADE)
 

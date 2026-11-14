@@ -36,7 +36,8 @@ class _TrajectoryModifier(Modifier):
         key = (ctx.upstream_key(), repr(self))
         cache = self.__dict__.get("_result")
         if cache is None or cache[0] != key:
-            cache = (key, compute())
+            # also by content, for this step in a new pipeline running the same cells (Run all)
+            cache = (key, ctx.shared(("trajectory", type(self).__qualname__, key), compute))
             self._result = cache
         return cache[1]
 

@@ -30,6 +30,7 @@ ewald.ComputeContext.check_cancel()
 ewald.ComputeContext.input_frame(frame)
 ewald.ComputeContext.input_frames(frames)
 ewald.ComputeContext.reference_frame(frame=0, offset=None)
+ewald.ComputeContext.shared(key, compute)
 ewald.ComputeContext.source_frame(frame)
 ewald.ComputeContext.upstream_key()
 ewald.ComputeContext.xp
@@ -88,6 +89,7 @@ ewald.Pipeline.num_frames
 ewald.Pipeline.refresh()
 ewald.Pipeline.refresh_source(source=None)
 ewald.Pipeline.render(filename=None, frame=None, tab=None, **kwargs)
+ewald.Pipeline.share_results = True
 ewald.Pipeline.source
 ewald.Pipeline.source_frame(frame)
 ewald.Pipeline.to_ase(frames=None)

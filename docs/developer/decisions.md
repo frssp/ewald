@@ -836,7 +836,7 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   candidates and picked "1+2+5 (작고 안전한 것)" on the decision card.
 - **Considered:** the same plus the on-disk reader index; all five, including content-keyed
   results across Run all; the step checkpoints only.
-- **Landed:** public PR #67.
+- **Landed:** public PR #67. The two open items followed in D108.
 
 ### D65. Profile plots and the 3D view follow each other, as a general link (2026-10-24)
 
@@ -1437,6 +1437,23 @@ Pull request numbers up to #242 refer to the pre-publication repository, which i
   parsing, done as well: about 15 % for 200 cells); build the rest in the background after
   the first screen (the whole cost still spent while the person starts working).
 - **Landed:** public PR #158.
+
+### D108. Results survive Run all by content; the disk frame index follows grown and remote files (2026-11-14)
+
+- **Decision:** the two caching items D64 left open are done. Pipelines also keep their reusable
+  results in one store per process (`ewald.result_store`, 512 MiB), keyed by contents only: the
+  source's files with size and modification time, the frame, each built-in step's class and
+  settings, and the size and modification time of local files a setting names. A notebook's Run
+  all, which makes a new pipeline and new steps, finds them; so do all-frames steps (`msd`,
+  `@all_frames`) over the same trajectory. Keys that name an object by identity are never
+  shared. The on-disk frame index (#137) was extended rather than duplicated: a file that only
+  grew is scanned from its old last frame on, and remote files are kept under their SFTP size
+  and modification time.
+- **Why:** the owner asked to start both open caching items ("성능 캐싱 둘다 시작"), after
+  D64 had left them open.
+- **Alternatives:** keeping the old pipeline's caches across Run all and matching its steps to
+  the new ones by position (breaks when cells move); only the disk index; leaving both open.
+- **Landed:** public PR #157.
 
 ## Adding an entry
 

@@ -50,6 +50,9 @@ def _isolated_settings(tmp_path, monkeypatch):
 
     monkeypatch.setattr(remote, "gui_thread", None)   # set again by each test's MainWindow
     monkeypatch.setenv("EWALD_INDEX_CACHE", "0")    # no frame indexes in the real cache folder (test_index_cache)
+    from ewald.result_store import shared
+
+    shared.clear()   # results kept across pipelines (Run all) do not carry from one test to the next
 
 
 def _qt_app():
