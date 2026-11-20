@@ -78,6 +78,7 @@ def apply_viewport_settings(vp, s: Settings):
     vp.interactive_atoms = s["viewport.interactive_atoms"]
     vp.max_bond_sticks = s["viewport.max_bond_sticks"]
     vp.refine_delay = s["viewport.refine_delay"]
+    vp.play_resolution = s["viewport.play_resolution"]
     vp.show_overlay = s["viewport.show_overlay"]
     vp.initial_view = s["viewport.initial_view"]
     vp.set_axes_visible(s["viewport.show_axes"])

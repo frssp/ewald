@@ -72,6 +72,35 @@ container: the worker builds in 0.65 s, the GUI thread then spends 0.13 s on act
 input plus the render (0.74 s on llvmpipe, a few ms on a GPU), where it spent about 0.8 s
 before the render.
 
+## Lower resolution while playing
+
+`viewport.play_resolution` (2026-11-20) draws a playing trajectory into a smaller VTK
+framebuffer; pyvistaqt's FBO widget already blits VTK's framebuffer to the widget with linear
+filtering, so `ScaledInteractor` in `gui/viewport.py` only sets the render window to
+`render_scale` times the device pixels, scales mouse events by the same factor and keeps text
+the same size on screen (`SetDPI`). Color bars, the caption and picking go through
+`Viewport._vtk_ratio()`. Playback picks one scale when it starts (`play_scale`: Auto lowers it
+only when the last full-resolution frame missed 1/target fps), and `refine` restores full
+resolution `refine_delay` after it stops. Camera drags keep full resolution for now.
+
+Frame switches while playing, `QT_SCALE_FACTOR=2` (200 % scaling), 1100x750 window = 2200x1500
+device pixels, container (llvmpipe, 4 cores), Ball & stick:
+
+| atoms | set_data | render at 100 % | render at 50 % |
+| --- | --- | --- | --- |
+| 2,000, atoms only | 6 ms | 68 ms | 24 ms |
+| 2,000, bonds | 14 ms | 145 ms | 65 ms |
+| 20,000, atoms only | 9 ms | 138 ms | 48 ms |
+| 20,000, bonds | 62 ms | 423 ms | 208 ms |
+| 108,000, atoms only | 17 ms | 289 ms | 110 ms |
+| 108,000, bonds | 362 ms | 1013 ms | 494 ms |
+
+On llvmpipe the render is mostly filling pixels, so half resolution per side makes it 2-3x
+faster. On a real GPU a few thousand impostor atoms take a few ms at any resolution, and a
+frame is then limited by reading, the pipeline and plots; the gain there is for big scenes,
+weak integrated GPUs at high DPI, and software OpenGL (remote desktops, VMs). `benchmarks/viewport.py`
+times both scales (`--scales`), so the owner's Arc and RTX numbers will say which.
+
 ## Plan
 
 | phase | what | state |

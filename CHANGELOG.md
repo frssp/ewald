@@ -10,6 +10,12 @@ How to cut a release is in [docs/developer/release.md](docs/developer/release.md
 
 ### Added
 
+- Lower resolution while playing (Preferences › 3D view › Performance › *Resolution while
+  playing*, `viewport.play_resolution`): a playing trajectory is drawn into fewer pixels and
+  stretched to the view, and is sharp again *Refine after* the last frame. Auto lowers it only
+  when a full-resolution frame misses the target frame rate. `benchmarks/viewport.py --scales`
+  times frame switches at each resolution.
+
 - Results survive Run all (D108, #157): built-in steps' results are also kept by what they were
   computed from (the source files' size and modification time, the frame, the steps' settings
   and the files they name), so a notebook's Run all, which makes a new pipeline, gets them back

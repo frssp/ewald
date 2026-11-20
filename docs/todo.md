@@ -864,6 +864,12 @@ From the feature-ideas review (2026-10-19), after the four in progress above.
 
 ## Verify outside the cloud container
 
+- Lower resolution while playing (`viewport.play_resolution`): on the owner's Windows laptop at
+  200 % scaling, play a trajectory with Auto, 50 % and Full and compare the frame rate; run
+  `python benchmarks/viewport.py --atoms 20000 108000 -o arc.json` (it now also times frame
+  switches at 100 % and 50 % resolution) on the Intel Arc and the RTX. Only llvmpipe was measured
+  (render 2-3x faster at 50 %); on a real GPU fill may not be the bottleneck for small systems.
+  Also check that rotating and picking while playing at 50 % hit the atom under the cursor.
 - Memory guard (D102): `python -c "import ewald.backend as b; print(b.format_bytes(b.free_memory()))"`
   on the owner's Windows PC and on a Mac should print about what Task Manager / Activity Monitor
   show as available (Windows reads `GlobalMemoryStatusEx` through ctypes, macOS `os.sysconf`; only

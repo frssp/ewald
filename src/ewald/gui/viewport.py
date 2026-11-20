@@ -173,6 +173,79 @@ def release_gl(widget) -> None:
                 setattr(widget, name, None)
 
 
+_INTERACTOR_CLASS = None
+
+
+def scaled_interactor_class():
+    """pyvistaqt's ``QtInteractor`` with a render scale: VTK draws into a framebuffer of
+    ``render_scale`` times the widget's device pixels, and the blit to the screen stretches it
+    (the 3D view lowers the resolution while playing, see ``Viewport.play_scale``). Mouse
+    events are mapped into the smaller framebuffer, so rotating and picking stay right."""
+    global _INTERACTOR_CLASS
+    if _INTERACTOR_CLASS is not None:
+        return _INTERACTOR_CLASS
+    from pyvistaqt import QtInteractor
+
+    class ScaledInteractor(QtInteractor):
+        render_scale = 1.0
+        # the FBO widget (pyvistaqt >= 0.13) blits VTK's framebuffer to the widget's size
+        supports_render_scale = hasattr(QtInteractor, "_blit") and hasattr(QtInteractor, "resizeGL")
+
+        def vtk_ratio(self) -> float:
+            """VTK display pixels per Qt pixel: the device pixel ratio times the render scale."""
+            return (self.devicePixelRatioF() or 1.0) * self.render_scale
+
+        def set_render_scale(self, scale: float) -> bool:
+            """Draw at ``scale`` (0.25-1) of the full resolution; True when the size changed."""
+            scale = 1.0 if not self.supports_render_scale else min(1.0, max(0.25, float(scale)))
+            if scale == self.render_scale:
+                return False
+            self.render_scale = scale
+            self.resizeGL(self.width(), self.height())
+            return True
+
+        def resizeGL(self, w, h):
+            super().resizeGL(w, h)
+            rw = getattr(self, "_RenderWindow", None)
+            if rw is None or self.render_scale == 1.0:
+                return
+            ratio = self.vtk_ratio()
+            dw, dh = max(1, round(w * ratio)), max(1, round(h * ratio))
+            iren = rw.GetInteractor()
+            if iren is not None:
+                iren.UpdateSize(dw, dh)
+                iren.InvokeEvent("ConfigureEvent")
+            else:
+                rw.SetSize(dw, dh)
+            rw.SetDPI(max(1, round(72 * ratio)))   # VTK text keeps its size on screen
+
+        def _setEventInformation(self, x, y, ctrl, shift, key, repeat=0, keysum=None):  # noqa: PLR0913
+            if self.render_scale == 1.0:
+                return super()._setEventInformation(x, y, ctrl, shift, key, repeat, keysum)
+            scale = self.vtk_ratio()
+            self._Iren.SetEventInformation(round(x * scale), round((self.height() - y - 1) * scale),
+                                           ctrl, shift, key, repeat, keysum)
+
+    _INTERACTOR_CLASS = ScaledInteractor
+    return ScaledInteractor
+
+
+def play_scale(choice: str, render_time: float, budget: float) -> float:
+    """The render scale (fraction of the full resolution per axis) for playing a trajectory.
+
+    ``choice`` is ``viewport.play_resolution``: "full", "75%", "50%", or "auto": half
+    resolution when the last full-resolution frame took longer than ``budget`` seconds (the
+    target frame rate), less when even that would miss it (render time goes with the pixel
+    count, so a scale s costs about s² of a full frame), never below a quarter."""
+    if choice == "full":
+        return 1.0
+    if choice.endswith("%"):
+        return min(1.0, max(0.25, float(choice[:-1]) / 100))
+    if render_time <= budget or render_time <= 0:
+        return 1.0
+    return max(0.25, min(0.5, round((budget / render_time) ** 0.5 * 20) / 20))
+
+
 def _image_actor(rgba, dx, dy, anchor):
     """A 2D actor showing an RGBA image with its lower-left corner (dx, dy) display pixels from ``anchor``
     (normalized viewport coordinates)."""
@@ -249,6 +322,7 @@ class Viewport(QtWidgets.QWidget):
         self.interactive_atoms = 1_000_000  # coarse scenes draw at most this many atoms
         self.max_bond_sticks = 8_000_000  # more bond cylinders are left out (GPU memory)
         self.refine_delay = 0.3           # seconds of idle before the full-detail scene returns
+        self.play_resolution = "auto"     # viewport.play_resolution: render scale while playing
         self._render_time = 0.0           # last full-detail render, seconds
         self._build_time = 0.0            # last full-detail scene build + render, seconds
         self._pending_build = None        # build time of a scene not rendered yet
@@ -368,11 +442,9 @@ class Viewport(QtWidgets.QWidget):
     def _create_view(self) -> QtWidgets.QWidget:
         """The 3D widget: a VTK QtInteractor (``self.plotter``) wired to the pick and LOD handlers."""
         wait_view_modules()   # the window asked for the view before the preload thread finished
-        from pyvistaqt import QtInteractor
-
         # always interactive, even when PYVISTA_OFF_SCREEN is set for headless rendering
         # no auto-update timer: it re-rendered the scene 5 times a second even when idle
-        self.plotter = QtInteractor(self, off_screen=False, auto_update=False)
+        self.plotter = scaled_interactor_class()(self, off_screen=False, auto_update=False)
         # drop its wrapper of the GL surface as soon as the widget goes (see release_gl)
         self.plotter.destroyed.connect(lambda *_, ref=weakref.ref(self.plotter): release_gl(ref()))
         self.plotter.set_background(self.style.background)
@@ -757,8 +829,28 @@ class Viewport(QtWidgets.QWidget):
         self.playing, self._play_coarse = playing, None
         if playing:
             self._refine_timer.stop()
+            budget = 1.0 / max(self.target_fps, 1e-3)
+            self._set_render_scale(play_scale(self.play_resolution, self._render_time, budget))
         else:
             self._schedule_refine()
+
+    def _vtk_ratio(self) -> float:
+        """VTK display pixels per Qt pixel of the 3D widget (device pixels times the render scale)."""
+        w = self.plotter.interactor
+        ratio = getattr(w, "vtk_ratio", None)
+        return ratio() if ratio is not None else (w.devicePixelRatioF() or 1.0)
+
+    @property
+    def render_scale(self) -> float:
+        """Fraction of the full resolution per axis the 3D view draws at now (1 when stopped)."""
+        return getattr(self._plotter, "render_scale", 1.0) if self._plotter is not None else 1.0
+
+    def _set_render_scale(self, scale: float):
+        """Draw at ``scale`` of the full resolution from the next frame on (playback); the color
+        bars and caption, sized in VTK pixels, are drawn again for it by the next redraw."""
+        setter = getattr(self._plotter, "set_render_scale", None) if self._plotter is not None else None
+        if setter is not None:
+            setter(scale)
 
     parked = False
     _parked_stale = False
@@ -962,7 +1054,7 @@ class Viewport(QtWidgets.QWidget):
             return
         t1 = time.perf_counter()
         p.render()
-        if not coarse:
+        if not coarse and self.render_scale == 1.0:   # the full-resolution frame times decide the detail
             t2 = time.perf_counter()
             self._render_time, self._build_time = t2 - t1, t2 - t0
 
@@ -1003,7 +1095,12 @@ class Viewport(QtWidgets.QWidget):
             self.bondsDropped.emit(count)
 
     def refine(self):
-        """Replace a coarse scene with full detail (called after ``refine_delay`` of idle)."""
+        """Replace a coarse scene with full detail and a lowered resolution with the full one
+        (called after ``refine_delay`` of idle)."""
+        if self.render_scale != 1.0 and not self.playing:
+            self._set_render_scale(1.0)
+            self.redraw()   # full detail, and color bars and caption sized for the full resolution
+            return
         if not self.coarse or self.data is None:
             return
         p = self.plotter
@@ -1093,7 +1190,7 @@ class Viewport(QtWidgets.QWidget):
     def _schedule_refine(self):
         """Refine a coarse scene after ``refine_delay`` of idle; not while playing (frames keep the
         first one's level of detail, a refine in between flickered the bonds) or parked."""
-        if self.coarse and not self.playing and not self.parked:
+        if (self.coarse or self.render_scale != 1.0) and not self.playing and not self.parked:
             self._refine_timer.start(int(self.refine_delay * 1000))
 
     def opengl_info(self) -> dict:
@@ -1155,6 +1252,9 @@ class Viewport(QtWidgets.QWidget):
 
     def _render_ended(self, *_):
         self._camera_check()
+        if self.render_scale != 1.0:   # only full-resolution frames decide the detail
+            self._pending_build = None
+            return
         if self.coarse or getattr(self, "_t_render", None) is None:
             return
         dt = time.perf_counter() - self._t_render
@@ -1346,7 +1446,7 @@ class Viewport(QtWidgets.QWidget):
         release observers to the interactor style, which has no event position."""
         x, y = self.plotter.iren.interactor.GetEventPosition()
         w = self.plotter.interactor
-        ratio = w.devicePixelRatioF() or 1.0
+        ratio = self._vtk_ratio()
         return x / ratio, w.height() - y / ratio
 
     def _on_press(self, obj, event):
@@ -1432,7 +1532,7 @@ class Viewport(QtWidgets.QWidget):
         idx = self.hover_index(x, y, w.width(), w.height())
         if idx is not None:
             return idx
-        ratio = w.devicePixelRatioF() or 1.0
+        ratio = self._vtk_ratio()
         picker = vtkPropPicker()
         if not picker.Pick(x * ratio, (w.height() - y) * ratio, 0, self.plotter.renderer):
             return None
@@ -1575,7 +1675,7 @@ class Viewport(QtWidgets.QWidget):
         if not bars:
             return
         w = self.plotter.interactor
-        ratio = w.devicePixelRatioF() or 1.0
+        ratio = self._vtk_ratio()
         W, H = max(1, int(w.width() * ratio)), max(1, int(w.height() * ratio))
         ink = ink_color(self.style.background, False)
         items = colorbar_items(bars, (W, H), unit=self.COLORBAR_FONT * ratio, ink=ink, background=self.style.background,
@@ -1592,7 +1692,7 @@ class Viewport(QtWidgets.QWidget):
 
     def _inset_px(self) -> tuple[float, float]:
         """:meth:`hud_insets` in VTK display pixels."""
-        ratio = self.plotter.interactor.devicePixelRatioF() or 1.0
+        ratio = self._vtk_ratio()
         left, top = self.hud_insets()
         return left * ratio, top * ratio
 
@@ -1603,7 +1703,7 @@ class Viewport(QtWidgets.QWidget):
         a = vtkTextActor()
         a.SetInput(text)
         tp = a.GetTextProperty()
-        tp.SetFontSize(round(12 * (self.plotter.interactor.devicePixelRatioF() or 1.0)))
+        tp.SetFontSize(round(12 * self._vtk_ratio()))
         tp.SetColor((0.9, 0.91, 0.93) if dark else (0.0, 0.0, 0.0))
         tp.SetVerticalJustificationToTop()
         left, top = self._inset_px()

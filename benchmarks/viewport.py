@@ -15,6 +15,9 @@ For each size and bond setting it reports:
 - **frame switch**: ``set_data`` of other frames of the same atoms plus their render, as when
   playing or scrubbing a trajectory, after the bond search the main window's compute worker
   does off the GUI thread (timed apart; file reading is not included, see docs/developer/readers.md);
+- **playing at a lower resolution**: the same frame switches drawn at each ``--scales`` fraction of
+  the window's device pixels (``viewport.play_resolution``), to see whether filling pixels is
+  what limits playback on this GPU;
 - the OpenGL driver, the process memory, and how many bond sticks the GPU holds.
 
 Each render waits for the GPU to finish, so the numbers are real frame times. ``-o`` writes them
@@ -87,7 +90,7 @@ def cylinders(plotter) -> int:
     return sum(stick_count(a) for name, a in plotter.actors.items() if str(name).startswith("bonds"))
 
 
-def run_case(qapp, view, make_frame, bonds: bool, rotate: int, switches: int) -> dict:
+def run_case(qapp, view, make_frame, bonds: bool, rotate: int, switches: int, scales=(1.0, 0.5)) -> dict:
     from ewald.bonds import find_bonds
 
     style = view.style
@@ -153,6 +156,27 @@ def run_case(qapp, view, make_frame, bonds: bool, rotate: int, switches: int) ->
     out["switch_render_s"] = float(np.mean(renders))
     out["switch_total_s"] = out["switch_set_data_s"] + out["switch_render_s"]
     out["switch_worker_s"] = float(np.mean(worker)) if worker else 0.0
+    # playback at a lower resolution (viewport.play_resolution): the same frame switches, drawn
+    # into a smaller framebuffer that the widget stretches to its size
+    out["play_scale"] = {}
+    for scale in scales:
+        view._set_render_scale(scale)
+        qapp.processEvents()
+        draw()
+        sets, renders = [], []
+        for _ in range(switches):
+            data = make_frame()
+            if pairs:
+                from ewald.render import scene_bonds
+
+                scene_bonds(data, None, pairs)
+            t = time.perf_counter()
+            view.set_data(data, interactive=True)
+            sets.append(time.perf_counter() - t)
+            renders.append(draw())
+        out["play_scale"][str(scale)] = {"set_data_s": float(np.mean(sets)), "render_s": float(np.mean(renders)),
+                                         "pixels": list(p.render_window.GetSize())}
+    view._set_render_scale(1.0)
     out["memory_mb"], out["peak_memory_mb"] = memory_mb()
     return out
 
@@ -168,6 +192,9 @@ def report(r: dict):
     print(f"  frame switch {r['switch_total_s']:7.3f} s on the GUI thread (set_data {r['switch_set_data_s']:.3f} s"
           f" + render {r['switch_render_s']:.3f} s)"
           + (f", {r['switch_worker_s']:.3f} s before it on the worker" if r.get("switch_worker_s") else ""))
+    for scale, v in r.get("play_scale", {}).items():
+        print(f"  playing at {float(scale):.0%} resolution ({v['pixels'][0]}x{v['pixels'][1]}): frame "
+              f"{v['set_data_s'] + v['render_s']:.3f} s (set_data {v['set_data_s']:.3f} s + render {v['render_s']:.3f} s)")
     if r["peak_memory_mb"] is not None:
         print(f"  peak memory {r['peak_memory_mb']:.0f} MB")
     sys.stdout.flush()
@@ -183,6 +210,8 @@ def main():
     ap.add_argument("--max-cylinders", type=float, default=8e6,
                     help="skip bond cases above this many bond sticks (default 8e6, about 4.6 GB of GPU memory "
                          "with VTK's stick mapper; the crystal needs 6 per atom)")
+    ap.add_argument("--scales", type=float, nargs="+", default=[1.0, 0.5],
+                    help="render scales to time frame switches at (viewport.play_resolution; default 1 0.5)")
     ap.add_argument("-o", "--output", help="also write the results to this JSON file")
     args = ap.parse_args()
 
@@ -225,7 +254,7 @@ def main():
                 print(f"{n:>10,} atoms, bonds: skipped (about {6 * n:,} sticks > --max-cylinders)")
                 results.append({"atoms": n, "bonds": True, "skipped": "max-cylinders"})
                 continue
-            r = run_case(qapp, view, make_frame, bonds, args.rotate, args.switches)
+            r = run_case(qapp, view, make_frame, bonds, args.rotate, args.switches, args.scales)
             report(r)
             results.append(r)
             view.set_data(None)
