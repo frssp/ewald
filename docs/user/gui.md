@@ -496,7 +496,13 @@ impostors and leaves out labels and measurements; above *Atoms while moving* (1,
 draws every k-th atom and then leaves out bonds and arrows too. Full detail returns after
 *Refine after* (0.3 s) of idle. Playback keeps the level of detail its first frame got and
 refines only when it stops, so bonds do not blink between frames. *Always coarse*
-and *Always full* fix the choice. When frames are requested faster than they can be computed,
+and *Always full* fix the choice. *Resolution while playing* (Auto) draws the playing view
+into fewer pixels and stretches them to the view; *Refine after* the last frame, it is sharp
+again. Auto lowers it (to half per side, a quarter of the pixels, or less) only when a
+full-resolution frame misses the target frame rate, so small structures on a fast GPU look the
+same while playing; *75 %* and *50 %* always lower it and *Full* never does. It helps where
+filling pixels is the slow part: high-DPI screens (200 % scaling has four times the pixels) and
+software OpenGL. When frames are requested faster than they can be computed,
 the queued requests collapse into the latest one. The pipeline runs on a worker thread, so the
 window stays responsive while a long analysis computes: the view keeps the previous result and
 the status bar says *Computing frame n…* until the new one arrives, and changing the frame or a

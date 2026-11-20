@@ -160,6 +160,12 @@ OPTIONS = (
            "one cylinder). Pictures and the ray tracer still draw them.", minimum=0, maximum=1_000_000_000),
     Option("viewport.refine_delay", 0.3, "Refine after", "Idle seconds before full detail returns.",
            minimum=0.0, maximum=10.0),
+    Option("viewport.play_resolution", "auto", "Resolution while playing",
+           "Draw the 3D view at a lower resolution while a trajectory plays, stretched to the view, "
+           "and at full resolution again 'Refine after' seconds after it stops. Auto lowers it (to "
+           "half, or less) only when a full-resolution frame misses the target frame rate, which "
+           "matters most on high-DPI screens and software OpenGL. Exports always use full quality.",
+           choices=("auto", "full", "75%", "50%")),
 
     Option("elements.color_scheme", "Jmol", "Color scheme", choices=("Jmol", "CPK")),
     Option("elements.radius_source", "covalent", "Radius preset",

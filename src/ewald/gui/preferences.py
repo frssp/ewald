@@ -45,7 +45,7 @@ LAYOUT = {
         ("Overlays", ["viewport.show_axes", "viewport.show_overlay", "viewport.render_frame"]),
         ("Hover", ["viewport.hover_info", "viewport.hover_delay"]),
         ("Performance", ["viewport.backend", "viewport.gpu", "viewport.interactive_detail", "viewport.target_fps", "viewport.interactive_atoms", "viewport.max_bond_sticks",
-                         "viewport.refine_delay", "viewport.sphere_drawing", "viewport.anti_aliasing",
+                         "viewport.refine_delay", "viewport.play_resolution", "viewport.sphere_drawing", "viewport.anti_aliasing",
                          "viewport.sphere_resolution", "viewport.arrow_resolution",
                          "viewport.mesh_limit"])]),
     "Atoms & bonds": ("Default atom colors, radii and bond search, like VESTA's elements.ini.", [

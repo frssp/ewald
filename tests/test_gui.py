@@ -4452,6 +4452,66 @@ def test_worker_threads_outlive_the_widgets_that_started_them(tmp_path):
     assert r.returncode == 0 and r.stdout.strip().endswith("ok"), r.stdout + r.stderr
 
 
+def test_play_scale_choices():
+    """viewport.play_resolution: fixed fractions, full, and auto lowering only when a full-resolution
+    frame misses the budget (half, less when render time says so, never below a quarter)."""
+    from ewald.gui.viewport import play_scale
+
+    assert play_scale("full", 1.0, 0.033) == 1.0
+    assert play_scale("75%", 0.0, 0.033) == 0.75 and play_scale("50%", 0.0, 0.033) == 0.5
+    assert play_scale("auto", 0.020, 0.033) == 1.0          # fast enough: same look while playing
+    assert play_scale("auto", 0.0, 0.033) == 1.0            # not measured yet
+    assert play_scale("auto", 0.050, 0.033) == 0.5
+    assert play_scale("auto", 0.300, 0.033) == 0.35
+    assert play_scale("auto", 10.0, 0.033) == 0.25
+
+
+@pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="viewport needs an X display with OpenGL (xvfb-run)")
+def test_playback_lowers_resolution_and_restores_it_when_stopped(app, cu_fcc):
+    """Playing draws into a smaller framebuffer that the widget stretches (viewport.play_resolution);
+    mouse events and picks map into it; stopping restores the full resolution after refine_delay."""
+    from ewald.gui.style import ViewStyle
+    from ewald.gui.viewport import Viewport
+
+    vp = Viewport(ViewStyle())
+    vp.resize(400, 300)
+    vp.show()
+    vp.ensure_view()
+    app.processEvents()
+    vp.set_data(cu_fcc)
+    app.processEvents()
+    w, rw = vp.plotter.interactor, vp.plotter.render_window
+    if not getattr(w, "supports_render_scale", False):
+        pytest.skip("pyvistaqt without the FBO widget")
+    full = tuple(rw.GetSize())
+    vp.play_resolution = "auto"
+    vp._render_time = 0.0                 # fast: auto keeps the full resolution
+    vp.set_playing(True)
+    assert vp.render_scale == 1.0 and tuple(rw.GetSize()) == full
+    vp.set_playing(False)
+    vp.refine()
+    vp.play_resolution = "50%"
+    vp.set_playing(True)
+    vp.set_data(cu_fcc, interactive=True)
+    app.processEvents()
+    assert vp.render_scale == 0.5
+    assert tuple(rw.GetSize()) == (round(full[0] / 2), round(full[1] / 2))
+    assert vp._vtk_ratio() == pytest.approx(0.5 * (w.devicePixelRatioF() or 1.0))
+    w._setEventInformation(100, 50, False, False, chr(0))
+    x, y = vp._event_position()
+    assert x == pytest.approx(100, abs=2) and y == pytest.approx(50, abs=2)   # whole VTK pixels
+    vp._render_time = 5.0
+    vp._render_ended()                    # a scaled frame does not change the full-resolution timing
+    assert vp._render_time == 5.0
+    vp.set_playing(False)
+    assert vp._refine_timer.isActive() and vp.render_scale == 0.5   # still lowered until idle
+    vp.refine()
+    assert vp.render_scale == 1.0 and tuple(rw.GetSize()) == full
+    vp._refine_timer.stop()
+    vp.close()
+    vp.deleteLater()
+
+
 @pytest.mark.skipif(not os.environ.get("DISPLAY"), reason="viewport needs an X display with OpenGL (xvfb-run)")
 def test_coarse_scene_refines_only_when_idle_shown_and_not_playing(app):
     """A coarse scene is refined after refine_delay of idle, but not during playback (a wheel zoom
